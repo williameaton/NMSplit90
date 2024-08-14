@@ -1,10 +1,20 @@
 module params 
     
+include "precision.h"
+
+
+! Numbers: 
+real(KIND=CUSTOM_REAL), parameter :: HALF  = 0.5000000d0
+real(KIND=CUSTOM_REAL), parameter :: ONE   = 1.0000000d0
+real(KIND=CUSTOM_REAL), parameter :: TWO   = 2.0000000d0
+real(KIND=CUSTOM_REAL), parameter :: FOUR  = 2.0000000d0
+
+
+
+
+
 ! Data: 
 character(len=250) :: datadir = 'DATABASES_MPI/inner_core'
-
-! Precision - see specfem3d_globe/shared/constants.h (not .h.in): 
-integer, parameter :: CUSTOM_REAL = 4
 
 ! Mesh coordinates 
 double precision, allocatable :: xstore(:,:,:,:), & 

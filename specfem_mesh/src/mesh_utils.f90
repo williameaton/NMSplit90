@@ -2,9 +2,11 @@ subroutine map_local_global_custom_real(loc, glob, direction)
     ! mappings between local and global variables
     ! direction: 0   local  --> global 
     !            1   global --> local 
-    use params, only: ngllx, nglly, ngllz, nspec, nglob, CUSTOM_REAL, ibool
 
+    use params, only: ngllx, nglly, ngllz, nspec, nglob, ibool
     implicit none 
+    
+    include "precision.h"
 
     ! I/O variables: 
     real(kind=CUSTOM_REAL) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)

@@ -1,8 +1,8 @@
 program read_specfem_mesh
-
 use params 
 
 implicit none 
+include "precision.h"
 
 
 integer :: iproc                  
@@ -33,7 +33,6 @@ call load_ibool(iproc, region)
 ! Example mapping of local to global
 allocate(globalrho(nglob))
 call map_local_global_custom_real(rho, globalrho, 0)
-
 
 
 
@@ -187,10 +186,11 @@ end subroutine read_proc_coordinates
 
 
 subroutine read_proc_variable(iproc, region, variable, varname)
-    use params, only: ngllx, nglly, ngllz, nspec, CUSTOM_REAL, datadir
+    use params, only: ngllx, nglly, ngllz, nspec, datadir
 
     implicit none 
-    
+    include "precision.h"
+
     ! IO variables: 
     character(len=250) :: varname 
     integer            :: iproc
@@ -229,10 +229,11 @@ end subroutine read_proc_variable
 
 
 subroutine read_integer_proc_variable(iproc, region, variable, varname)
-    use params, only: ngllx, nglly, ngllz, nspec, CUSTOM_REAL,datadir
+    use params, only: ngllx, nglly, ngllz, nspec,datadir
 
     implicit none 
-    
+    include "precision.h"
+
     ! IO variables: 
     character(len=250) :: varname 
     integer            :: iproc
