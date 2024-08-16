@@ -2,41 +2,119 @@ program read_specfem_mesh
 use params 
 
 implicit none 
-include "precision.h"
 
-
-integer :: iproc                  
+integer :: iproc, i                  
 integer :: nprocs                ! Number of processors used by mesher 
 integer :: region                ! Region code
-character(len=250) :: varname 
+character(len=250) :: varname
 
+integer :: n, l, m 
 ! Setup parameters: 
 region = 3      ! Inner core
-iproc  = 3
-nprocs = 54
+iproc  = 1
+nprocs = 6
+
+n = 10
+l = 5
+m = 2
 
 
-! Read the mesh info and coordinates
-call read_proc_coordinates(iproc, region)
+! Read mineos model 
+call process_mineos_model()
 
-! Load density variable: 
-allocate(rho(ngllx,nglly,ngllz,nspec))
-varname = 'rho'
-call read_proc_variable(iproc, region, rho, varname)
+do iproc = 0, nprocs -1 
+
+    ! Read the mesh info and coordinates
+    call read_proc_coordinates(iproc, region)
+
+    ! Load density variable: 
+    !allocate(rho(ngllx,nglly,ngllz,nspec))
+    !varname = 'rho'
+    !call read_proc_variable(iproc, region, rho, varname)
+
+    ! Load ibool variable: 
+    call load_ibool(iproc, region)
 
 
-! Load ibool variable: 
-call load_ibool(iproc, region)
+    ! Get unique mesh radii that are present
+    call get_mesh_radii()
+
+    ! We will need the r theta phi coordinates: 
+    call compute_rtp_from_xyz()
+    
+    ! Compute strain tensor for mode
+    allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 
+            globalstrain(6, nglob))
+    call compute_gll_mode_strain('S', n, l, m, strain1)
+
+    call map_complex_vector(6, strain1, globalstrain, 0)
+
+
+    allocate(x_glob(nglob), y_glob(nglob), z_glob(nglob))
+    call map_local_global_double_precision(xstore, x_glob, 0)
+    call map_local_global_double_precision(ystore, y_glob, 0)
+    call map_local_global_double_precision(zstore, z_glob, 0)
+
+    call create_ensight_file_prefix(iproc, region)
+    call create_proc_case_file()
+    call create_proc_geo_file(iproc, region, 1)
+    call write_complex_symtensor_to_ensight(globalstrain, 'strain', 1)
+
+
+    call cleanup_for_mode()
 
 
 
-! Example mapping of local to global
-allocate(globalrho(nglob))
-call map_local_global_custom_real(rho, globalrho, 0)
-
+enddo ! i proc
 
 
 end program
+
+
+subroutine cleanup_for_mode()
+    use params
+    implicit none 
+
+    deallocate(xstore)
+    deallocate(ystore)
+    deallocate(zstore)
+    deallocate(ibool)
+    deallocate(strain1)
+    deallocate(rad_id)
+    deallocate(unique_r)
+    deallocate(rstore)
+    deallocate(thetastore)
+    deallocate(phistore)
+    deallocate(u_spl)
+    deallocate(udot_spl)
+    deallocate(v_spl)
+    deallocate(vdot_spl)
+    deallocate(interp_id_r)
+    deallocate(globalstrain)
+    deallocate(xx)
+    !deallocate(zz)
+    deallocate(x_glob)
+    deallocate(y_glob)
+    deallocate(z_glob)
+
+
+
+end subroutine cleanup_for_mode
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

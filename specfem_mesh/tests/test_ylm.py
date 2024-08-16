@@ -23,7 +23,5 @@ def test_ylm():
 
         err = np.abs((ylm-d[i,-1])/ylm)
         assert err < 2e-6
-
-
 test_ylm()
 
