@@ -229,26 +229,15 @@ subroutine compute_rtp_from_xyz()
         do i = 1, ngllx
             do j = 1, nglly
                 do k = 1, ngllz
-                    
-                    !write(*,*)'x:  ', xstore(i,j,k,ispec)
-                    !write(*,*)'y:  ', ystore(i,j,k,ispec)
-                    !write(*,*)'z:  ', zstore(i,j,k,ispec)
-
                     rstore(i,j,k,ispec) = (xstore(i,j,k,ispec)**TWO + ystore(i,j,k,ispec)**TWO + zstore(i,j,k,ispec)**TWO)**HALF
-                    
-                    !write(*,*)'r:  ', rstore(i,j,k,ispec)
-                    
+                                        
                     ! 0 <= phi <= 2pi
                     phistore(i,j,k,ispec) = atan2(ystore(i,j,k,ispec), xstore(i,j,k,ispec))   
                     if(phistore(i,j,k,ispec) .lt. ZERO) phistore(i,j,k,ispec)  = TWO_PI + phistore(i,j,k,ispec) 
                     !write(*,*)'phistore:  ', phistore(i,j,k,ispec)                    
 
                     ! 0 <= theta <= pi                        
-                    !thetastore = atan2((xstore**TWO + ystore**TWO)**HALF, zstore) 
                     thetastore(i,j,k,ispec) = PI_OVER_TWO -  atan2(zstore(i,j,k,ispec), (xstore(i,j,k,ispec)**TWO + ystore(i,j,k,ispec)**TWO)**HALF) 
-
-                    !write(*,*)'thetastore:  ', thetastore(i,j,k,ispec)                    
-
 
                 enddo 
             enddo 
@@ -260,4 +249,5 @@ subroutine compute_rtp_from_xyz()
 
 
 end subroutine compute_rtp_from_xyz
+
 

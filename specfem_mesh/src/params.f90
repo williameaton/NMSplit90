@@ -54,11 +54,14 @@ integer :: ngllz
 integer, allocatable                   :: ibool(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: rho(:,:,:,:)
 complex(kind=CUSTOM_REAL), allocatable :: strain1(:,:,:,:,:)
+complex(kind=CUSTOM_REAL), allocatable :: disp1(:,:,:,:,:)
 
 ! Global mesh variables 
 real(kind=CUSTOM_REAL), allocatable    :: globalrho(:)
 double precision, allocatable    :: x_glob(:), y_glob(:), z_glob(:)
+double precision, allocatable    :: theta_glob(:), phi_glob(:)
 complex(kind=CUSTOM_REAL), allocatable :: globalstrain(:,:)
+complex(kind=CUSTOM_REAL), allocatable :: globaldisp(:,:)
 
 ! Spline arrays: 
 real(kind=CUSTOM_REAL), allocatable :: u_spl(:),    &
@@ -76,6 +79,8 @@ integer, parameter :: CASEUNIT         = 11
 integer, parameter :: GEOUNIT          = 12
 integer, parameter :: TENSORSYMOUT_I   = 14
 integer, parameter :: TENSORSYMOUT_R   = 15
+integer, parameter :: VECOUT_R         = 16
+integer, parameter :: VECOUT_I         = 17
 character(len=5), parameter  :: intfmt  = "(i10)"
 character(len=7), parameter  :: realfmt = "(e12.5)"
 

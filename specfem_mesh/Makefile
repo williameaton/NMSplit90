@@ -33,6 +33,9 @@ $(OBJ_DIR)/params.o: $(SRC_DIR)/params.f90 | $(OBJ_DIR) $(MOD_DIR)
 $(OBJ_DIR)/mesh_utils.o: $(SRC_DIR)/mesh_utils.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
 
+$(OBJ_DIR)/allocation.o: $(SRC_DIR)/allocation.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
+	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
+
 # Compile get_mode.f90 after params.mod is generated
 $(OBJ_DIR)/get_mode.o: $(SRC_DIR)/get_mode.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
@@ -56,7 +59,6 @@ $(OBJ_DIR)/mineos_model.o: $(SRC_DIR)/mineos_model.f90 $(OBJ_DIR)/params.o | $(O
 # Compile visual.f90 after params.mod is generated
 $(OBJ_DIR)/visual.o: $(SRC_DIR)/visual.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
-
 
 
 # Compile read_mesh.f90 after params.mod is generated

@@ -163,18 +163,17 @@ subroutine write_complex_symtensor_to_ensight(symten, suffix, part)
     open(unit=TENSORSYMOUT_R, file=trim(fname), & 
          status='unknown',form='formatted',action='write')
 
-    write(CASEUNIT,'(a/)')'tensor symm per node: strain_real '//trim(en_fname)//'.'//trim(suffix)//'_real'
+    write(CASEUNIT,'(a/)')'tensor symm per node: '//suffix//'_real '//trim(en_fname)//'.'//trim(suffix)//'_real'
 
     ! Imaginary variable file 
     fname = trim(en_dir)//trim(en_fname)//'.'//trim(suffix)//'_imag'
     open(unit=TENSORSYMOUT_I,file=trim(fname), & 
          status='unknown',form='formatted',action='write')
     
-    write(CASEUNIT,'(a/)')'tensor symm per node: strain_imag '//trim(en_fname)//'.'//trim(suffix)//'_imag'
+    write(CASEUNIT,'(a/)')'tensor symm per node: '//suffix//'_imag '//trim(en_fname)//'.'//trim(suffix)//'_imag'
 
     ! We no longer need the case file 
     close(CASEUNIT)
-
 
 
     ! Write the bits we need 
@@ -207,9 +206,76 @@ subroutine write_complex_symtensor_to_ensight(symten, suffix, part)
     close(TENSORSYMOUT_R)
     close(TENSORSYMOUT_I)
 
-
-
-
 end subroutine
 
 
+
+
+subroutine write_complex_vector_to_ensight(comvec, suffix, part)
+    ! Write a complex vector to ensight
+    use params, only: nglob, en_dir, en_fname, VECOUT_R, VECOUT_I, & 
+                      intfmt, realfmt, CASEUNIT
+
+    implicit none 
+    include "constants.h"
+
+    ! IO variables: 
+    integer :: part
+    complex(kind=CUSTOM_REAL) :: comvec(3, nglob)
+    character(len=*) :: suffix
+
+    ! Local 
+    integer :: i, component
+    character(len=79)   :: buffer
+    character(len=250)  :: r_fname, i_fname 
+
+    ! Case file: 
+    open(unit=CASEUNIT,file=trim(en_dir)//trim(en_fname)//'.case', & 
+          status='old', form='formatted', action='write', position='append')
+
+    ! Real variable file 
+    r_fname = trim(en_fname)//'.'//trim(suffix)//'_real'
+    open(unit=VECOUT_R, file=trim(en_dir)//trim(r_fname), & 
+         status='unknown',form='formatted', action='write')
+    
+    ! Imaginary variable file 
+    i_fname = trim(en_fname)//'.'//trim(suffix)//'_imag'
+    open(unit=VECOUT_I,file=trim(en_dir)//trim(i_fname), & 
+         status='unknown',form='formatted', action='write')
+    
+    write(CASEUNIT,'(a/)')'complex vector per node: '//suffix//'  '//trim(r_fname)//'  '//trim(i_fname)//'  UNDEFINED'
+
+    ! We no longer need the case file 
+    close(CASEUNIT)
+
+
+    ! Write the bits we need 
+    buffer = 'Complex vec real for '//trim(suffix)
+    write(VECOUT_R, '(a)')buffer
+    buffer = 'Complex vec imag for '//trim(suffix)
+    write(VECOUT_I, '(a)')buffer
+
+    ! Add the part lines
+    buffer = 'part'
+    write(VECOUT_R, '(a)')buffer
+    write(VECOUT_I, '(a)')buffer
+
+    write(VECOUT_R, intfmt)part
+    write(VECOUT_I, intfmt)part
+
+    ! Add coordinate tag line
+    buffer = 'coordinates'
+    write(VECOUT_R, '(a)')buffer
+    write(VECOUT_I, '(a)')buffer
+
+    do component = 1, 3
+        do i = 1, nglob
+            write(VECOUT_R, realfmt)  real(comvec(component, i))
+            write(VECOUT_I, realfmt) aimag(comvec(component, i))
+        enddo 
+    enddo 
+
+    close(VECOUT_R)
+    close(VECOUT_I)
+
+end subroutine write_complex_vector_to_ensight

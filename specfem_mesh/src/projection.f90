@@ -121,12 +121,123 @@ end subroutine get_mesh_radii
 
 
 
+subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
+    use params, only: rad_mineos, NL, IC_ID, n_unique_rad, nspec, ngllx, & 
+    nglly, ngllz, thetastore, phistore, rad_id, rstore,& 
+    unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz
+    use spline, only: interpolate_mode_eigenfunctions
+    use ylm_plm, only: ylm_complex, ylm_deriv
+    implicit none
+    include "constants.h"
+
+    ! IO variables: 
+    character(len=1) :: mode_type     ! mode type; S or T
+    integer          :: nord          ! n value of mode
+    integer          :: l             ! l value (degree) of mode
+    integer          :: m             ! m value (order)  of mode
+    complex(kind=CUSTOM_REAL) :: disp(3,ngllx, nglly, ngllz, nspec)
+    
+    ! Local variables: 
+    real(kind=4)  :: omega            ! normalized anglar frequency   
+    real(kind=4)  :: qval             ! normalized Q factor            
+    real(kind=4)  :: u(NL), du(NL)    ! must be 4 bytes
+    real(kind=4)  :: v(NL), dv(NL)    ! must be 4 bytes
+    complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
+    real(kind=CUSTOM_REAL)    ::  mf, lf, ll1, theta, phi, u_r, v_r,w_r
+    integer :: i,j,k,ispec
+
+
+    ! Load the mode from the database
+    call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv, .true.)
+
+    ! Spline interpolation: 
+    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
+    
+    ! DT98 below D.1: k = sqrt(l(l+1))
+    lf  = real(l, kind=CUSTOM_REAL)
+    mf  = real(m, kind=CUSTOM_REAL)
+    ll1 = sqrt(lf*(lf+ONE))
+    v_spl    = v_spl    / ll1
+    vdot_spl = vdot_spl / ll1
+    if(mode_type.eq.'T')then 
+        ! Code uses u and du to store w and dw
+        u_spl    = u_spl    / ll1
+        udot_spl = udot_spl / ll1
+    endif 
+
+
+    if (mode_type.eq.'S')then 
+        do ispec = 1, nspec
+            do i = 1, ngllx
+                do j = 1, nglly
+                    do k = 1, ngllz
+                    
+                        ! Get ylm and the partial derivatives
+                        theta = thetastore(i,j,k,ispec)
+                        phi   = phistore(i,j,k,ispec)
+                        ylm   = ylm_complex(l,m, theta, phi)
+                        call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
+                        
+                        ! u, v at at the radius of this node
+                        u_r   =    u_spl(rad_id(i,j,k,ispec))
+                        v_r   =    v_spl(rad_id(i,j,k,ispec))
+
+                        ! S_r     (DT98 D.4)
+                        disp(1,i,j,k,ispec) = ylm*u_r  
+
+                        ! S_theta (DT98 D.5)
+                        disp(2,i,j,k,ispec) = v_r*dylm_theta
+
+                        ! S_phi   (DT98 D.6)
+                        disp(3,i,j,k,ispec) = iONE * mf * v_r * ylm / sin(theta)
+                    enddo 
+                enddo 
+            enddo 
+        enddo 
+    elseif (mode_type.eq.'T')then 
+        do ispec = 1, nspec
+            do i = 1, ngllx
+                do j = 1, nglly
+                    do k = 1, ngllz
+                    
+                        ! Get ylm and the partial derivatives, and 
+                        ! w at the radius of this node
+                        w_r   = u_spl(rad_id(i,j,k,ispec))
+                        theta = thetastore(i,j,k,ispec)
+                        phi   = phistore(i,j,k,ispec)
+                        ylm   = ylm_complex(l,m, theta, phi)
+                        call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
+
+                        ! S_r     (DT98 D.4)
+                        disp(1,i,j,k,ispec) = (ZERO, ZERO) 
+
+                        ! S_theta (DT98 D.5)
+                        disp(2,i,j,k,ispec) = iONE * mf * w_r * ylm / sin(theta)
+
+                        ! S_phi   (DT98 D.6)
+                        disp(3,i,j,k,ispec) = -w_r * dylm_theta 
+                    enddo 
+                enddo 
+            enddo 
+        enddo 
+
+    else
+        write(*,*)'ERROR: Mode type must be S or T but was ', mode_type
+        stop
+    endif 
+
+end subroutine compute_global_mode_displacement
+
+
+
+
 
 subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     use params, only: rad_mineos, NL, IC_ID, n_unique_rad, nspec, ngllx, & 
                       nglly, ngllz, thetastore, phistore, rad_id, rstore,& 
                       unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz
     use ylm_plm, only: ylm_complex, ylm_deriv
+    use spline, only: interpolate_mode_eigenfunctions
     implicit none
     include "constants.h"
 
@@ -141,7 +252,7 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     real(kind=4)  :: qval   ! normalized Q factor        
 
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
-    real(kind=CUSTOM_REAL)    :: theta, phi, ylm_r, ylm_i, du_r, u_r, & 
+    real(kind=CUSTOM_REAL)    :: theta, phi, du_r, u_r, & 
                                  unq_r, dv_r, v_r, mf, lf, ll1, xx_r, & 
                                  zz_r, sinth, tanth, w_r, dw_r
     integer :: ispec, i,j,k
@@ -156,18 +267,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
     ! Spline interpolation: 
     !   - Computes the value of u, v, du, dv at each of the unique radial values
-    allocate(u_spl(n_unique_rad),    v_spl(n_unique_rad),    & 
-             udot_spl(n_unique_rad), vdot_spl(n_unique_rad))
-    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID),  u(1:IC_ID),    u_spl)
-    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID),  v(1:IC_ID),    v_spl)
-    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID), du(1:IC_ID), udot_spl)
-    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID), dv(1:IC_ID), vdot_spl)
-
-
-    lf = real(l, kind=CUSTOM_REAL)
-    mf = real(m, kind=CUSTOM_REAL)
+    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
     
     ! DT98 below D.1: k = sqrt(l(l+1))
+    lf  = real(l, kind=CUSTOM_REAL)
+    mf  = real(m, kind=CUSTOM_REAL)
     ll1 = sqrt(lf*(lf+ONE))
 
     ! Convert eigenfunctions to auxillary form
@@ -204,9 +308,6 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         ylm   = ylm_complex(l,m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
                         
-                        ! imaginary and real parts of the Ylm
-                        ylm_r =  real(ylm)
-                        ylm_i = aimag(ylm)
 
                         ! u, v, udot, vdo, x, at at the radius of this node
                         u_r   =    u_spl(rad_id(i,j,k,ispec))
@@ -261,9 +362,6 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         ylm   = ylm_complex(l,m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
                         
-                        ! imaginary and real parts of the Ylm
-                        ylm_r =  real(ylm)
-                        ylm_i = aimag(ylm)
 
                         ! w, wdot, z, at at the radius of this node
                         w_r   =    u_spl(rad_id(i,j,k,ispec))

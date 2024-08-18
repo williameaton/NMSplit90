@@ -1,5 +1,6 @@
 program read_specfem_mesh
 use params 
+use allocation_module
 
 implicit none 
 
@@ -43,27 +44,42 @@ do iproc = 0, nprocs -1
     call compute_rtp_from_xyz()
     
     ! Compute strain tensor for mode
-    allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 
-            globalstrain(6, nglob))
-    call compute_gll_mode_strain('S', n, l, m, strain1)
+    !allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 
+    !        globalstrain(6, nglob))
+    !call compute_gll_mode_strain('S', n, l, m, strain1)
+    !call map_complex_vector(6, strain1, globalstrain, 0)
 
-    call map_complex_vector(6, strain1, globalstrain, 0)
-
-
-    allocate(x_glob(nglob), y_glob(nglob), z_glob(nglob))
+    ! needed for ensight geo file
+    call allocate_if_unallocated(nglob, x_glob)
+    call allocate_if_unallocated(nglob, y_glob)
+    call allocate_if_unallocated(nglob, z_glob)
     call map_local_global_double_precision(xstore, x_glob, 0)
     call map_local_global_double_precision(ystore, y_glob, 0)
     call map_local_global_double_precision(zstore, z_glob, 0)
 
+
+    call allocate_if_unallocated(nglob, theta_glob)
+    call allocate_if_unallocated(nglob, phi_glob)
+    call map_local_global_double_precision(thetastore, theta_glob, 0)
+    call map_local_global_double_precision(phistore,   phi_glob,   0)
+
+
     call create_ensight_file_prefix(iproc, region)
     call create_proc_case_file()
     call create_proc_geo_file(iproc, region, 1)
-    call write_complex_symtensor_to_ensight(globalstrain, 'strain', 1)
+    !call write_complex_symtensor_to_ensight(globalstrain, 'strain', 1)
+
+    ! Compute global mode displacement 
+    call allocate_if_unallocated(3, nglob, globaldisp)
+    call allocate_if_unallocated(3, ngllx, nglly, ngllz, nspec, disp1)
+
+    call compute_global_mode_displacement('S', n, l, m, disp1)
+    call map_complex_vector(3, disp1, globaldisp, 0)
+    call write_complex_vector_to_ensight(globaldisp, 'disp', 1)
+
 
 
     call cleanup_for_mode()
-
-
 
 enddo ! i proc
 
@@ -71,31 +87,31 @@ enddo ! i proc
 end program
 
 
+
 subroutine cleanup_for_mode()
     use params
+    use allocation_module
     implicit none 
 
-    deallocate(xstore)
-    deallocate(ystore)
-    deallocate(zstore)
-    deallocate(ibool)
-    deallocate(strain1)
-    deallocate(rad_id)
-    deallocate(unique_r)
-    deallocate(rstore)
-    deallocate(thetastore)
-    deallocate(phistore)
-    deallocate(u_spl)
-    deallocate(udot_spl)
-    deallocate(v_spl)
-    deallocate(vdot_spl)
-    deallocate(interp_id_r)
-    deallocate(globalstrain)
-    deallocate(xx)
-    !deallocate(zz)
-    deallocate(x_glob)
-    deallocate(y_glob)
-    deallocate(z_glob)
+    call deallocate_if_allocated(zstore)
+    call deallocate_if_allocated(ibool)
+    call deallocate_if_allocated(strain1)
+    call deallocate_if_allocated(rad_id)
+    call deallocate_if_allocated(unique_r)
+    call deallocate_if_allocated(rstore)
+    call deallocate_if_allocated(thetastore)
+    call deallocate_if_allocated(phistore)
+    call deallocate_if_allocated(u_spl)
+    call deallocate_if_allocated(udot_spl)
+    call deallocate_if_allocated(v_spl)
+    call deallocate_if_allocated(vdot_spl)
+    call deallocate_if_allocated(interp_id_r)
+    call deallocate_if_allocated(globalstrain)
+    call deallocate_if_allocated(xx)
+    call deallocate_if_allocated(zz)
+    call deallocate_if_allocated(x_glob)
+    call deallocate_if_allocated(y_glob)
+    call deallocate_if_allocated(z_glob)
 
 
 
@@ -144,11 +160,12 @@ end subroutine check_ibool_is_defined
 
 subroutine load_ibool(iproc, region)
     use params
+    use allocation_module, only: allocate_if_unallocated
     implicit none 
     integer :: iproc, region
     character(len=250) :: varname 
 
-    allocate(ibool(ngllx,nglly,ngllz,nspec))
+    call allocate_if_unallocated(ngllx,nglly,ngllz,nspec, ibool)
     varname = 'ibool'
     call read_integer_proc_variable(iproc, region, ibool, varname)
 
@@ -163,7 +180,7 @@ subroutine read_proc_coordinates(iproc, region)
     use params, only: ngllx, nglly, ngllz, nspec, & 
                       xstore, ystore, zstore, nglob, &
                       datadir 
-
+    use allocation_module, only: allocate_if_unallocated
     implicit none 
     
     ! IO variables: 
@@ -206,9 +223,9 @@ subroutine read_proc_coordinates(iproc, region)
 
 
     ! Allocate mesh arrays: 
-    allocate(xstore(ngllx,nglly,ngllz,nspec))
-    allocate(ystore(ngllx,nglly,ngllz,nspec))
-    allocate(zstore(ngllx,nglly,ngllz,nspec))
+    call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore)
+    call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, ystore)
+    call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, zstore)
 
 
     ! Open the x coordinate and load: 
