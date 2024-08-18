@@ -63,6 +63,9 @@ double precision, allocatable    :: theta_glob(:), phi_glob(:)
 complex(kind=CUSTOM_REAL), allocatable :: globalstrain(:,:)
 complex(kind=CUSTOM_REAL), allocatable :: globaldisp(:,:)
 
+real(kind=CUSTOM_REAL), allocatable :: Rmat(:,:,:)
+
+
 ! Spline arrays: 
 real(kind=CUSTOM_REAL), allocatable :: u_spl(:),    &
                                        udot_spl(:), &

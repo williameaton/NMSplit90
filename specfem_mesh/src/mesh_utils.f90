@@ -244,10 +244,72 @@ subroutine compute_rtp_from_xyz()
         enddo
     enddo 
 
-
-
-
-
 end subroutine compute_rtp_from_xyz
+
+
+
+subroutine compute_rotation_matrix()
+    ! Computes rotation matrix R that converts a vector in r, theta, phi
+    ! to cartesian coordinates
+    ! R holds the normalised unit vectors r, theta, phi in cartesian coords
+    ! as columns e.g. 
+    !     ( r_x  θ_x  φ_x )
+    ! R = ( r_y  θ_y  φ_y ) 
+    !     ( r_z  θ_z  φ_z )
+
+    use params, only :  x_glob, y_glob, z_glob, nglob, Rmat
+    use allocation_module, only: allocate_if_unallocated
+    implicit none 
+    include "constants.h"
+
+    double precision :: x, y, z, r, theta, phi, ct, cp, st, sp, norm
+    integer :: iglob
+
+
+    !TODO:  check allocations of x, y, z glob
+
+
+    call allocate_if_unallocated(3, 3, nglob, Rmat)
+
+    do iglob = 1, nglob
+
+        ! Get x, y, z coordinates: 
+        x = x_glob(iglob) * TWO
+        y = y_glob(iglob) * TWO
+        z = z_glob(iglob) * TWO
+
+        r = sqrt(x ** 2 + y ** 2 + z ** 2)
+
+        ! Note that theta and phi here are not necessarily the same
+        ! as in DT98 i.e. theta here will be between -pi/2 and pi/2
+        theta = dacos(z/r)
+        phi   = datan2(y,x)
+
+        ct = dcos(theta);  cp = dcos(phi)
+        st = dsin(theta);  sp = dsin(phi)
+
+        ! Radial vector
+        norm =((st*cp)**TWO + (st*sp)**TWO + ct**TWO)**half
+        Rmat(1, 1, iglob) = st*cp / norm
+        Rmat(2, 1, iglob) = st*sp / norm
+        Rmat(3, 1, iglob) = ct    / norm
+
+        ! Theta vector
+        norm =((ct*cp)**TWO + (ct*sp)**TWO + st**TWO)**half
+        Rmat(1, 2, iglob) = ct*cp / norm
+        Rmat(2, 2, iglob) = ct*sp / norm
+        Rmat(3, 2, iglob) = -st   / norm
+
+        ! Phi vector
+        norm =(sp*sp + cp*cp)**half
+        Rmat(1, 3, iglob) = -sp / norm
+        Rmat(2, 3, iglob) =  cp / norm
+        Rmat(3, 3, iglob) = 0.0d0
+    enddo 
+
+
+
+
+end subroutine compute_rotation_matrix
 
 

@@ -13,6 +13,11 @@ module allocation_module
         module procedure allocate_double_array_2d
         module procedure allocate_complex_array_2d
 
+        module procedure allocate_integer_array_3d
+        module procedure allocate_real_array_3d
+        module procedure allocate_double_array_3d
+        module procedure allocate_complex_array_3d
+
         module procedure allocate_integer_array_4d
         module procedure allocate_real_array_4d
         module procedure allocate_double_array_4d
@@ -34,6 +39,11 @@ module allocation_module
         module procedure deallocate_real_array_2d
         module procedure deallocate_double_array_2d
         module procedure deallocate_complex_array_2d
+
+        module procedure deallocate_integer_array_3d
+        module procedure deallocate_real_array_3d
+        module procedure deallocate_double_array_3d
+        module procedure deallocate_complex_array_3d
 
         module procedure deallocate_integer_array_4d
         module procedure deallocate_real_array_4d
@@ -117,6 +127,40 @@ module allocation_module
           allocate(array(m,n))
         endif
       end subroutine allocate_complex_array_2d
+
+    ! ......................... 3D allocation .........................
+
+      subroutine allocate_integer_array_3d(l, m, n, array)
+        integer, intent(in) :: l,m,n
+        integer, allocatable, intent(inout) :: array(:,:,:)
+        if (.not. allocated(array)) then
+          allocate(array(l,m,n))
+        endif
+      end subroutine allocate_integer_array_3d
+    
+      subroutine allocate_real_array_3d(l, m, n, array)
+        integer, intent(in) :: l,m,n
+        real(kind=CUSTOM_REAL), allocatable, intent(inout) :: array(:,:,:)
+        if (.not. allocated(array)) then
+          allocate(array(l,m,n))
+        endif
+      end subroutine allocate_real_array_3d
+  
+      subroutine allocate_double_array_3d(l, m, n, array)
+        integer, intent(in) :: l,m,n
+        double precision, allocatable, intent(inout) :: array(:,:,:)
+        if (.not. allocated(array)) then
+          allocate(array(l,m,n))
+        endif
+      end subroutine allocate_double_array_3d
+    
+      subroutine allocate_complex_array_3d(l, m, n, array)
+          integer, intent(in) :: l,m,n
+          complex(kind=CUSTOM_REAL), allocatable, intent(inout) :: array(:,:,:)
+          if (.not. allocated(array)) then
+            allocate(array(l,m,n))
+          endif
+        end subroutine allocate_complex_array_3d
 
     ! ......................... 4D allocation .........................
 
@@ -246,6 +290,37 @@ module allocation_module
         deallocate(array)
       endif
     end subroutine deallocate_complex_array_2d
+
+    ! ........................ 3D deallocation ........................
+
+    subroutine deallocate_integer_array_3d(array)
+      integer, allocatable, intent(inout) :: array(:,:,:)
+      if (allocated(array)) then
+        deallocate(array)
+      endif
+    end subroutine deallocate_integer_array_3d
+
+    subroutine deallocate_real_array_3d(array)
+      real(kind=CUSTOM_REAL), allocatable, intent(inout) :: array(:,:,:)
+      if (allocated(array)) then
+        deallocate(array)
+      endif
+    end subroutine deallocate_real_array_3d
+
+    subroutine deallocate_double_array_3d(array)
+      double precision, allocatable, intent(inout) :: array(:,:,:)
+      if (allocated(array)) then
+        deallocate(array)
+      endif
+    end subroutine deallocate_double_array_3d
+
+
+    subroutine deallocate_complex_array_3d(array)
+      complex(kind=CUSTOM_REAL), allocatable, intent(inout) :: array(:,:,:)
+      if (allocated(array)) then
+        deallocate(array)
+      endif
+    end subroutine deallocate_complex_array_3d
 
     ! ........................ 4D deallocation ........................
 
