@@ -279,3 +279,58 @@ subroutine write_complex_vector_to_ensight(comvec, suffix, part)
     close(VECOUT_I)
 
 end subroutine write_complex_vector_to_ensight
+
+
+
+
+
+subroutine write_real_scalar_to_ensight(realscal, suffix, part)
+    ! Write a real scalar array to ensight
+    use params, only: nglob, en_dir, en_fname, REALSCALOUT, & 
+                      intfmt, realfmt, CASEUNIT
+
+    implicit none 
+    include "constants.h"
+
+    ! IO variables: 
+    integer :: part
+    real(kind=CUSTOM_REAL) :: realscal(nglob)
+    character(len=*) :: suffix
+
+    ! Local 
+    integer :: i, component
+    character(len=79)   :: buffer
+    character(len=250)  :: fname
+
+
+    ! Variable file 
+    fname = trim(en_fname)//'.'//trim(suffix)
+    open(unit=REALSCALOUT, file=trim(en_dir)//trim(fname), & 
+         status='unknown',form='formatted', action='write')
+
+    ! Case file: 
+    open(unit=CASEUNIT,file=trim(en_dir)//trim(en_fname)//'.case', & 
+          status='old', form='formatted', action='write', position='append')
+    write(CASEUNIT,'(a/)')'scalar per node: '//suffix//'  '//trim(fname)
+    close(CASEUNIT)
+
+    ! Write the bits we need 
+    buffer = 'Scalar for '//trim(suffix)
+    write(REALSCALOUT, '(a)')buffer
+
+    ! Add the part lines
+    buffer = 'part'
+    write(REALSCALOUT, '(a)')buffer
+    write(REALSCALOUT, intfmt)part
+
+    ! Add coordinate tag line
+    buffer = 'coordinates'
+    write(REALSCALOUT, '(a)')buffer
+
+    do i = 1, nglob
+        write(REALSCALOUT, realfmt)realscal(i)
+    enddo 
+
+    close(REALSCALOUT)
+
+end subroutine write_real_scalar_to_ensight

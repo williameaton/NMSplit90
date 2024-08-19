@@ -253,6 +253,7 @@ module mesh_utils
 
     subroutine compute_rtp_from_xyz()
         ! Converts the stored xyz to r theta phi
+        use allocation_module, only: allocate_if_unallocated
         use params, only: xstore, ystore, zstore, rstore, thetastore, phistore, & 
                         ngllx, nglly, ngllz, nspec     
         implicit none
@@ -260,9 +261,9 @@ module mesh_utils
 
         integer ispec, i ,j , k
 
-        allocate(rstore(ngllx,nglly,ngllz,nspec))
-        allocate(thetastore(ngllx,nglly,ngllz,nspec))
-        allocate(phistore(ngllx,nglly,ngllz,nspec))
+        call allocate_if_unallocated(ngllx,nglly,ngllz,nspec, rstore)
+        call allocate_if_unallocated(ngllx,nglly,ngllz,nspec, thetastore)
+        call allocate_if_unallocated(ngllx,nglly,ngllz,nspec, phistore)
 
 
         do ispec = 1, nspec
@@ -348,5 +349,283 @@ module mesh_utils
 
     end subroutine compute_rotation_matrix
 
+
+
+
+
+
+    subroutine cleanup_for_mode()
+        use params
+        use allocation_module
+        implicit none 
+    
+        call deallocate_if_allocated(xstore)
+        call deallocate_if_allocated(ystore)
+        call deallocate_if_allocated(zstore)
+        call deallocate_if_allocated(ibool)
+        call deallocate_if_allocated(strain1)
+        call deallocate_if_allocated(rad_id)
+        call deallocate_if_allocated(unique_r)
+        call deallocate_if_allocated(rstore)
+        call deallocate_if_allocated(thetastore)
+        call deallocate_if_allocated(phistore)
+        call deallocate_if_allocated(u_spl)
+        call deallocate_if_allocated(udot_spl)
+        call deallocate_if_allocated(v_spl)
+        call deallocate_if_allocated(vdot_spl)
+        call deallocate_if_allocated(interp_id_r)
+        call deallocate_if_allocated(globalstrain)
+        call deallocate_if_allocated(xx)
+        call deallocate_if_allocated(zz)
+        call deallocate_if_allocated(x_glob)
+        call deallocate_if_allocated(y_glob)
+        call deallocate_if_allocated(z_glob)
+    end subroutine cleanup_for_mode
+    
+    
+    subroutine check_ibool_is_defined()
+        ! Checks that ibool is allocated and not just zero
+        ! TODO: call ibool loading if not allocated? 
+        use params, only: ibool,nglob
+        implicit none 
+    
+        if(.not. allocated(ibool))then 
+            write(*,*)'ERROR: ibool is not allocated but is about to be used.'
+            stop
+        else 
+            if (nglob.ne.maxval(ibool))then
+                write(*,*)'ERROR: nglob is not equal to the maximum ibool value'
+                write(*,*)'nglob    : ', nglob
+                write(*,*)'max ibool: ', maxval(ibool)
+                stop
+            endif
+        endif 
+    end subroutine check_ibool_is_defined
+    
+    
+    
+    subroutine load_ibool(iproc, region)
+        use params
+        use allocation_module, only: allocate_if_unallocated
+        implicit none 
+        integer :: iproc, region
+        character(len=250) :: varname 
+    
+        call allocate_if_unallocated(ngllx,nglly,ngllz,nspec, ibool)
+        varname = 'ibool'
+        call read_integer_proc_variable(iproc, region, ibool, varname)
+    
+        call check_ibool_is_defined()
+    end subroutine
+    
+    
+    
+    
+    
+    subroutine read_proc_coordinates(iproc, region)
+        use params, only: ngllx, nglly, ngllz, nspec, & 
+                          xstore, ystore, zstore, nglob, &
+                          datadir, verbose
+        use allocation_module, only: allocate_if_unallocated
+        implicit none 
+        
+        ! IO variables: 
+        integer            :: iproc
+        integer            :: region
+    
+        ! Local variables
+        integer :: IIN, ier
+        character(len=250) :: binname
+    
+        IIN = 1
+    
+        ! File name prefix: 
+        write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'
+    
+        if(verbose.gt.1)then
+            write(*,'(/,a,/)')'• Reading files from '//trim(datadir)
+            write(*,'(a,i1)')'  -- region      : ', region
+            write(*,'(a,i0.6,/)')'  -- processor id: ', iproc
+        endif
+    
+        ! Read processor info to get ngll and nspec
+        open(unit=IIN,file=trim(binname)//'info.bin', &
+        status='unknown',form='unformatted',action='read',iostat=ier)
+        if (ier.ne.0)then 
+            write(*,'(a, i0.6)')'Couldnt read info file for proc ', iproc
+            stop
+        endif 
+        read(IIN)nglob
+        read(IIN)nspec
+        read(IIN)ngllx
+        read(IIN)nglly
+        read(IIN)ngllz
+            
+        if(verbose.ge.3)then
+            write(*,'(a)')'  -- Info: '
+            write(*,*)'    --> nglob: ', nglob
+            write(*,*)'    --> nspec: ', nspec
+            write(*,'(a,i1)')'     --> ngllx: ', ngllx
+            write(*,'(a,i1)')'     --> nglly: ', nglly
+            write(*,'(a,i1)')'     --> ngllz: ', ngllz
+        endif 
+    
+        ! Allocate mesh arrays: 
+        call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore)
+        call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, ystore)
+        call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, zstore)
+    
+    
+        ! Open the x coordinate and load: 
+        open(unit=IIN,file=trim(binname)//'xstore.bin', &
+        status='unknown',form='unformatted',action='read',iostat=ier)
+        if (ier.ne.0)then 
+            write(*,'(a, i0.6)')'Couldnt read xstore file for proc ', iproc
+            stop
+        endif 
+        read(IIN)xstore
+    
+        if(verbose.ge.3)then
+            write(*,'(/,a)')'  -- X coordinates:'
+            write(*,*)'     --> min. value: ', minval(xstore)
+            write(*,*)'     --> max. value: ', maxval(xstore)
+        endif
+    
+    
+        ! Open the y coordinate and load: 
+        open(unit=IIN,file=trim(binname)//'ystore.bin', &
+        status='unknown',form='unformatted',action='read',iostat=ier)
+        if (ier.ne.0)then 
+            write(*,'(a, i0.6)')'Couldnt read ystore file for proc ', iproc
+            stop
+        endif 
+        read(IIN)ystore
+    
+        if(verbose.ge.3)then
+            write(*,'(/,a)')'  -- Y coordinates:'
+            write(*,*)'     --> min. value: ', minval(ystore)
+            write(*,*)'     --> max. value: ', maxval(ystore)
+        endif 
+    
+        ! Open the z coordinate and load: 
+        open(unit=IIN,file=trim(binname)//'zstore.bin', &
+        status='unknown',form='unformatted',action='read',iostat=ier)
+        if (ier.ne.0)then 
+            write(*,'(a, i0.6)')'Couldnt read zstore file for proc ', iproc
+            stop
+        endif 
+        read(IIN)zstore
+    
+        if(verbose.ge.3)then
+            write(*,'(/,a)')'  -- Z coordinates:'
+            write(*,*)'     --> min. value: ', minval(zstore)
+            write(*,*)'     --> max. value: ', maxval(zstore)
+        endif 
+    
+        return 
+    end subroutine read_proc_coordinates
+    
+    
+    
+    
+    
+    subroutine read_proc_variable(iproc, region, variable, varname)
+        use params, only: ngllx, nglly, ngllz, nspec, datadir, verbose
+    
+        implicit none 
+        include "precision.h"
+    
+        ! IO variables: 
+        character(len=250) :: varname 
+        integer            :: iproc
+        integer            :: region
+        real(kind=CUSTOM_REAL)   :: variable(ngllx, nglly, ngllz, nspec)
+    
+        ! Local variables
+        integer :: IIN, ier
+        character(len=250) :: binname
+    
+        IIN = 1
+    
+        ! File name prefix: 
+        write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'//trim(varname)//'.bin'
+        
+        if(verbose.ge.3)then
+            write(*,'(/,/,a)')'• Reading variable called '//trim(varname)
+            write(*,'(/,a,i1)')'  -- data type : CUSTOM_REAL of length ', CUSTOM_REAL 
+            write(*,'(a)')'  -- file name : '//trim(binname)
+        endif 
+    
+        ! Open the variable file and load: 
+        open(unit=IIN,file=trim(binname), &
+        status='unknown',form='unformatted',action='read',iostat=ier)
+        if (ier.ne.0)then 
+            write(*,'(a, i0.6)')'Couldnt read "'//trim(varname)//'" file for proc ', iproc
+            stop
+        endif 
+        read(IIN)variable
+    
+        if(verbose.ge.2)then
+            write(*,'(a)')'  -- '//trim(varname)//' :'
+            write(*,*)'     --> min. value: ', minval(variable)
+            write(*,*)'     --> max. value: ', maxval(variable)
+        endif 
+        
+        return 
+    
+    end subroutine read_proc_variable
+    
+    
+    
+    subroutine read_integer_proc_variable(iproc, region, variable, varname)
+        use params, only: ngllx, nglly, ngllz, nspec,datadir, verbose
+    
+        implicit none 
+        include "precision.h"
+    
+        ! IO variables: 
+        character(len=250) :: varname 
+        integer            :: iproc
+        integer            :: region
+        integer            :: variable(ngllx, nglly, ngllz, nspec)
+    
+        ! Local variables
+        integer :: IIN, ier
+        character(len=250) :: binname
+    
+        IIN = 1
+    
+        ! File name prefix: 
+        write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'//trim(varname)//'.bin'
+        if(verbose.ge.3)then
+            write(*,'(/,/,a)')'• Reading variable called '//trim(varname)
+            write(*,'(a,i1)')'  -- data type : integer'
+            write(*,'(a)')'  -- file name : '//trim(binname)
+        endif 
+    
+        ! Open the variable file and load: 
+        open(unit=IIN,file=trim(binname), &
+        status='unknown',form='unformatted',action='read',iostat=ier)
+        if (ier.ne.0)then 
+            write(*,'(a, i0.6)')'Couldnt read "'//trim(varname)//'" file for proc ', iproc
+            stop
+        endif 
+        read(IIN)variable
+    
+        if(verbose.ge.2)then
+            write(*,'(a)')'  -- '//trim(varname)//' :'
+            write(*,*)'     --> min. value: ', minval(variable)
+            write(*,*)'     --> max. value: ', maxval(variable)
+        endif 
+    
+        return 
+    
+    end subroutine read_integer_proc_variable
+    
+
+
+
+
 end module mesh_utils
+
 
