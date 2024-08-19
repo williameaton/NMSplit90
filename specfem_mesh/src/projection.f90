@@ -238,6 +238,7 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                       unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz
     use ylm_plm, only: ylm_complex, ylm_deriv
     use spline, only: interpolate_mode_eigenfunctions
+    use mesh_utils, only: delta_real
     implicit none
     include "constants.h"
 
@@ -254,7 +255,8 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
     real(kind=CUSTOM_REAL)    :: theta, phi, du_r, u_r, & 
                                  unq_r, dv_r, v_r, mf, lf, ll1, xx_r, & 
-                                 zz_r, sinth, tanth, w_r, dw_r
+                                 zz_r, sinth, tanth, w_r, dw_r, tl14p, & 
+                                 ff, dm0, dd1, dd2, kr2
     integer :: ispec, i,j,k
     ! Mineos eigenfunction values:
     ! Note that these NEED to be 4-byte because that is the mineos
@@ -273,6 +275,12 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     lf  = real(l, kind=CUSTOM_REAL)
     mf  = real(m, kind=CUSTOM_REAL)
     ll1 = sqrt(lf*(lf+ONE))
+    tl14p = ((TWO*lf + ONE)/(FOUR*PI))**HALF    ! (2l+1/4π)^1/2
+    kr2 = ll1*((ll1*ll1 - TWO)**half)
+
+    dm0 = delta_real(m, 0)                       ! δ_{m0}
+    dd1 = delta_real(m, -1) - delta_real(m, 1)   ! δ_{m -1} - δ_{m 1}
+    dd2 = delta_real(m, -2) + delta_real(m, 2)   ! δ_{m -2} + δ_{m 2}
 
     ! Convert eigenfunctions to auxillary form
     ! DT98 D.1: 
@@ -301,14 +309,12 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
             do i = 1, ngllx
                 do j = 1, nglly
                     do k = 1, ngllz
-                        
                         ! Get ylm and the partial derivatives
                         theta = thetastore(i,j,k,ispec)
                         phi   = phistore(i,j,k,ispec)
                         ylm   = ylm_complex(l,m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
                         
-
                         ! u, v, udot, vdo, x, at at the radius of this node
                         u_r   =    u_spl(rad_id(i,j,k,ispec))
                         v_r   =    v_spl(rad_id(i,j,k,ispec))
@@ -321,24 +327,45 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         sinth = sin(theta)
                         tanth = tan(theta)
 
-                        ! E_rr: DT98 D.14
-                        strain(1,i,j,k,ispec) = ylm*du_r  
-                        
-                        ! E_tt: DT98 D.15
-                        strain(2,i,j,k,ispec) = (ylm*u_r - v_r*(dylm_theta/tanth -  ylm*(mf/sinth)**TWO + ll1*ll1*ylm))/unq_r
+                        if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                            ! Values at the pole 
+                            ! D.28
+                            ff = (two*u_r - ll1*ll1*v_r)/unq_r    
+                            ! E_rr: DT98 D.22
+                            strain(1,i,j,k,ispec) = tl14p * du_r * dm0
+                            ! E_tt: DT98 D.23
+                            strain(2,i,j,k,ispec) = half * tl14p * &
+                                                    (ff*dm0 + & 
+                                                    kr2*TWO*v_r * & 
+                                                    dd2/(FOUR*unq_r))
 
-                        ! E_pp: DT98 D.16
-                        strain(3,i,j,k,ispec) = (ylm*u_r + v_r*(dylm_theta/tanth -  ylm*(mf/sinth)**TWO))/unq_r
+                            ! E_pp: DT98 D.24
+                            strain(3,i,j,k,ispec) = half * tl14p * &
+                                                    (ff*dm0 - & 
+                                                    kr2*TWO*v_r * & 
+                                                    dd2/(FOUR*unq_r))
 
-                        ! E_rt: DT98 D.17
-                        strain(4,i,j,k,ispec) = HALF * xx_r * dylm_theta
-
-                        ! E_rp: DT98 D.18
-                        strain(5,i,j,k,ispec) = HALF * iONE * mf * xx_r * ylm/sinth
-
-                        ! E_tp: DT98 D.19
-                        strain(6,i,j,k,ispec) = iONE * mf * v_r * (dylm_theta - ylm/tanth) / (unq_r * sinth)
-
+                            ! E_rt: DT98 D.25
+                            strain(4,i,j,k,ispec) = tl14p * ll1 * xx_r * dd1/FOUR
+                            ! E_rp: DT98 D.26
+                            strain(5,i,j,k,ispec) = tl14p * ll1 * iONE * mf * xx_r/FOUR
+                            ! E_tp: DT98 D.27
+                            strain(6,i,j,k,ispec) = tl14p * kr2 * iONE * mf * v_r * dd2/(EIGHT*unq_r)
+                        else 
+                            ! Values away from the pole
+                            ! E_rr: DT98 D.14
+                            strain(1,i,j,k,ispec) = ylm*du_r  
+                            ! E_tt: DT98 D.15
+                            strain(2,i,j,k,ispec) = (ylm*u_r - v_r*(dylm_theta/tanth -  ylm*(mf/sinth)**TWO + ll1*ll1*ylm))/unq_r
+                            ! E_pp: DT98 D.16
+                            strain(3,i,j,k,ispec) = (ylm*u_r + v_r*(dylm_theta/tanth -  ylm*(mf/sinth)**TWO))/unq_r
+                            ! E_rt: DT98 D.17
+                            strain(4,i,j,k,ispec) = HALF * xx_r * dylm_theta
+                            ! E_rp: DT98 D.18
+                            strain(5,i,j,k,ispec) = HALF * iONE * mf * xx_r * ylm/sinth
+                            ! E_tp: DT98 D.19
+                            strain(6,i,j,k,ispec) = iONE * mf * v_r * (dylm_theta - ylm/tanth) / (unq_r * sinth)
+                        endif 
                     enddo 
                 enddo 
             enddo 
@@ -355,13 +382,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
             do i = 1, ngllx
                 do j = 1, nglly
                     do k = 1, ngllz
-                        
                         ! Get ylm and the partial derivatives
                         theta = thetastore(i,j,k,ispec)
                         phi   = phistore(i,j,k,ispec)
                         ylm   = ylm_complex(l,m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
-                        
 
                         ! w, wdot, z, at at the radius of this node
                         w_r   =    u_spl(rad_id(i,j,k,ispec))
@@ -373,34 +398,40 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         sinth = sin(theta)
                         tanth = tan(theta)
 
-                        ! E_rr: DT98 D.14
-                        strain(1,i,j,k,ispec) = iZERO
-                        
-                        ! E_tt: DT98 D.15
-                        strain(2,i,j,k,ispec) = iONE * mf * w_r * (dylm_theta - ylm/tanth) / (unq_r*sinth)
-
-                        ! E_pp: DT98 D.16
-                        strain(3,i,j,k,ispec) = - strain(2,i,j,k,ispec)
-
-                        ! E_rt: DT98 D.17
-                        strain(4,i,j,k,ispec) = HALF * iONE * mf * zz_r * ylm / sinth
-
-                        ! E_rp: DT98 D.18
-                        strain(5,i,j,k,ispec) =  - HALF * zz_r * dylm_theta
-
-                        ! E_tp: DT98 D.19
-                        strain(6,i,j,k,ispec) = (dylm_theta/tanth + & 
-                                                 (HALF*ll1*ll1 - (mf/sinth)**TWO)*ylm & 
-                                                )* w_r / unq_r
-
+                        if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                            ! Values at the pole 
+                            ! E_rr: DT98 D.22
+                            strain(1,i,j,k,ispec) = (zero, zero)
+                            ! E_tt: DT98 D.23
+                            strain(2,i,j,k,ispec) = half * tl14p * iONE * mf * w_r * dd2 * kr2/(four * unq_r)
+                            ! E_pp: DT98 D.24
+                            strain(3,i,j,k,ispec) = - half * tl14p * iONE * mf * w_r * dd2 * kr2/(four * unq_r)
+                            ! E_rt: DT98 D.25
+                            strain(4,i,j,k,ispec) = tl14p * ll1 * iONE * mf * zz_r * dd1 / FOUR
+                            ! E_rp: DT98 D.26
+                            strain(5,i,j,k,ispec) = - tl14p * ll1 * zz_r * dd1 / FOUR
+                            ! E_tp: DT98 D.27
+                            strain(6,i,j,k,ispec) = - tl14p * kr2 * w_r * dd2 / (unq_r * FOUR)
+                        else
+                            ! E_rr: DT98 D.14
+                            strain(1,i,j,k,ispec) = iZERO
+                            ! E_tt: DT98 D.15
+                            strain(2,i,j,k,ispec) = iONE * mf * w_r * (dylm_theta - ylm/tanth) / (unq_r*sinth)
+                            ! E_pp: DT98 D.16
+                            strain(3,i,j,k,ispec) = - strain(2,i,j,k,ispec)
+                            ! E_rt: DT98 D.17
+                            strain(4,i,j,k,ispec) = HALF * iONE * mf * zz_r * ylm / sinth
+                            ! E_rp: DT98 D.18
+                            strain(5,i,j,k,ispec) =  - HALF * zz_r * dylm_theta
+                            ! E_tp: DT98 D.19
+                            strain(6,i,j,k,ispec) = (dylm_theta/tanth + & 
+                                                    (HALF*ll1*ll1 - (mf/sinth)**TWO)*ylm & 
+                                                    )* w_r / unq_r
+                        endif 
                     enddo 
                 enddo 
             enddo 
         enddo
-
-
-
-
     else
         write(*,*)'Error: mode_type must be S or T'
         stop
