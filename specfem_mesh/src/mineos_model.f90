@@ -1,7 +1,7 @@
 subroutine process_mineos_model()
 
-    use params, only: rad_mineos, NR, NL, ddir, model_fname, RA, radius, & 
-    IC_ID, CMB_ID
+    use params, only: rad_mineos, NR, NL, ddir, model_fname, RA, radius, &
+                      verbose, IC_ID, CMB_ID
 
     implicit none
     include "constants.h"
@@ -16,7 +16,8 @@ subroutine process_mineos_model()
     ! read model file to get radius array (normalised 0 to 1)
     model_file = trim(ddir)//trim(model_fname)
     
-    write(*,'(/,a)')'- Reading Model file ....'
+    if(verbose.ge.2) write(*,'(/,a)')'- Reading Model file ....'
+
     open(iomod, file = model_file, status = 'old', iostat = ios)
     ! Error check
     if (ios .ne. 0) stop 'Error reading model file'
@@ -35,7 +36,7 @@ subroutine process_mineos_model()
     allocate(radius(NR), rad_mineos(NR))
 
     ! Warning if not radius 6371 km 
-    if (RA .ne. SCALE_R)then 
+    if (RA.ne.SCALE_R .and. verbose.ge.1)then 
         write(*,*)'Warning: Radius is not 6371 km but that is being used for general non-dimensionalisation scaling'
         write(*,*)'         Maximum value may of non-dimensional rad_mineos may not be 1'
     endif 
@@ -69,8 +70,7 @@ subroutine process_mineos_model()
     ! Find the discontinuities
     call find_disc
 
-
-    write(*,'(a,/)')'--> finished reading model file.'
+    if(verbose.ge.2) write(*,'(a,/)')'--> finished reading model file.'
 end subroutine process_mineos_model
 
 

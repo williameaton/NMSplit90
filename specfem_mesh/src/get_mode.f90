@@ -14,7 +14,7 @@
         !     in case of toroidal and radial modes, only u,du
         !     is valid, for spheroidal modes, all are valid.
         !
-        use params, only: NL, NR,ddir,model_fname, rad_mineos
+        use params, only: NL, NR,ddir,model_fname, rad_mineos, verbose
         implicit none
         include "constants.h"
 
@@ -80,7 +80,7 @@
     
     
         ! get the record number of the desired mode from catalogue file
-        write(*,'(a,/,2x,a)')'- Reading Catalogue file: ', catalogue
+        if(verbose.ge.3) write(*,'(a,/,2x,a)')'- Reading Catalogue file: ', catalogue
         nrec = 0
         open(iocat,file=catalogue,status='old',iostat=ios)
     
@@ -102,7 +102,7 @@
         if (ios .gt. 0) stop 'Error reading 1'
         if (ios .lt. 0) stop 'Mode not found in the catalogue' !when would this ever trigger? 
         
-        write(*,'(a,1x,i6)')'Found mode at ID', nrec
+        if(verbose.ge.3) write(*,'(a,1x,i6)')'Found mode at ID', nrec
     
     
     
@@ -126,13 +126,15 @@
         close(iobin)
     
         
-        write(*,*)
-        write(*,*)'Angular Freq in rad :', wcom
-        write(*,*)'Frequency in mHz    :', wwmhz
-        write(*,*)'Period in seconds   :', 2*PI/wcom
-        write(*,*)'Q value             :', qmod
-        write(*,*)'Group velocity      :', cg4
-        write(*,*)
+        if(verbose.ge.3)then
+            write(*,*)
+            write(*,*)'Angular Freq in rad :', wcom
+            write(*,*)'Frequency in mHz    :', wwmhz
+            write(*,*)'Period in seconds   :', 2*PI/wcom
+            write(*,*)'Q value             :', qmod
+            write(*,*)'Group velocity      :', cg4
+            write(*,*)
+        endif
     
         
         if(save_mode)then

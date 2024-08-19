@@ -105,12 +105,12 @@ contains
     real(kind=CUSTOM_REAL) function xlm(l,m,theta)
         implicit none 
         include "constants.h"
-
+    
         ! IO variables: 
         integer :: l, m 
         real(kind=CUSTOM_REAL) :: theta
         ! Local: 
-        real(kind=CUSTOM_REAL) :: lf, mf, tmp, pole_tolerance
+        real(kind=CUSTOM_REAL) :: lf, mf, tmp
 
         ! Convert l and m to floats for computation: 
         lf = real(l, kind=CUSTOM_REAL)
@@ -124,7 +124,7 @@ contains
             return
         endif 
 
-        pole_tolerance = 1e-4 ! ~ 600 metres of pole
+        
 
         
         ! Xlm has limiting behaviour at the poles: 

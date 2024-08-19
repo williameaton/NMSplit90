@@ -1,7 +1,7 @@
 program read_specfem_mesh
 use params 
 use allocation_module
-
+use mesh_utils 
 implicit none 
 
 integer :: iproc, i                  
@@ -12,7 +12,6 @@ character(len=250) :: varname
 integer :: n, l, m 
 ! Setup parameters: 
 region = 3      ! Inner core
-iproc  = 1
 nprocs = 6
 
 n = 10
@@ -20,10 +19,11 @@ l = 5
 m = 2
 
 
+
 ! Read mineos model 
 call process_mineos_model()
 
-iproc = 0
+do iproc = 0, 5
 
 ! Read the mesh info and coordinates
 call read_proc_coordinates(iproc, region)
@@ -46,10 +46,12 @@ call get_mesh_radii()
 call compute_rtp_from_xyz()
 
 ! Compute strain tensor for mode
-!allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 
-!        globalstrain(6, nglob))
-!call compute_gll_mode_strain('S', n, l, m, strain1)
-!call map_complex_vector(6, strain1, globalstrain, 0)
+allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 
+        globalstrain(6, nglob))
+call compute_gll_mode_strain('S', n, l, m, strain1)
+call map_complex_vector(6, strain1, globalstrain, 0)
+
+
 
 ! needed for ensight geo file
 call allocate_if_unallocated(nglob, x_glob)
@@ -70,7 +72,7 @@ call map_local_global_double_precision(phistore,   phi_glob,   0)
 call create_ensight_file_prefix(iproc, region)
 call create_proc_case_file()
 call create_proc_geo_file(iproc, region, 1)
-!call write_complex_symtensor_to_ensight(globalstrain, 'strain', 1)
+call write_complex_symtensor_to_ensight(globalstrain, 'strain', 1)
 
 ! Compute global mode displacement 
 call allocate_if_unallocated(3, nglob, globaldisp)
@@ -82,9 +84,12 @@ call write_complex_vector_to_ensight(globaldisp, 'disp', 1)
 
 
 call cleanup_for_mode()
-
+enddo 
 
 end program
+
+
+
 
 
 
@@ -112,28 +117,7 @@ subroutine cleanup_for_mode()
     call deallocate_if_allocated(x_glob)
     call deallocate_if_allocated(y_glob)
     call deallocate_if_allocated(z_glob)
-
-
-
 end subroutine cleanup_for_mode
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 subroutine check_ibool_is_defined()
@@ -153,7 +137,6 @@ subroutine check_ibool_is_defined()
             stop
         endif
     endif 
-
 end subroutine check_ibool_is_defined
 
 
@@ -179,7 +162,7 @@ end subroutine
 subroutine read_proc_coordinates(iproc, region)
     use params, only: ngllx, nglly, ngllz, nspec, & 
                       xstore, ystore, zstore, nglob, &
-                      datadir 
+                      datadir, verbose
     use allocation_module, only: allocate_if_unallocated
     implicit none 
     
@@ -196,10 +179,11 @@ subroutine read_proc_coordinates(iproc, region)
     ! File name prefix: 
     write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'
 
-    write(*,'(/,a,/)')'• Reading files from '//trim(datadir)
-    write(*,'(a,i1)')'  -- region      : ', region
-    write(*,'(a,i0.6,/)')'  -- processor id: ', iproc
-
+    if(verbose.gt.1)then
+        write(*,'(/,a,/)')'• Reading files from '//trim(datadir)
+        write(*,'(a,i1)')'  -- region      : ', region
+        write(*,'(a,i0.6,/)')'  -- processor id: ', iproc
+    endif
 
     ! Read processor info to get ngll and nspec
     open(unit=IIN,file=trim(binname)//'info.bin', &
@@ -214,13 +198,14 @@ subroutine read_proc_coordinates(iproc, region)
     read(IIN)nglly
     read(IIN)ngllz
         
-    write(*,'(a)')'  -- Info: '
-    write(*,*)'    --> nglob: ', nglob
-    write(*,*)'    --> nspec: ', nspec
-    write(*,'(a,i1)')'     --> ngllx: ', ngllx
-    write(*,'(a,i1)')'     --> nglly: ', nglly
-    write(*,'(a,i1)')'     --> ngllz: ', ngllz
-
+    if(verbose.ge.3)then
+        write(*,'(a)')'  -- Info: '
+        write(*,*)'    --> nglob: ', nglob
+        write(*,*)'    --> nspec: ', nspec
+        write(*,'(a,i1)')'     --> ngllx: ', ngllx
+        write(*,'(a,i1)')'     --> nglly: ', nglly
+        write(*,'(a,i1)')'     --> ngllz: ', ngllz
+    endif 
 
     ! Allocate mesh arrays: 
     call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore)
@@ -237,10 +222,11 @@ subroutine read_proc_coordinates(iproc, region)
     endif 
     read(IIN)xstore
 
-    write(*,'(/,a)')'  -- X coordinates:'
-    write(*,*)'     --> min. value: ', minval(xstore)
-    write(*,*)'     --> max. value: ', maxval(xstore)
-
+    if(verbose.ge.3)then
+        write(*,'(/,a)')'  -- X coordinates:'
+        write(*,*)'     --> min. value: ', minval(xstore)
+        write(*,*)'     --> max. value: ', maxval(xstore)
+    endif
 
 
     ! Open the y coordinate and load: 
@@ -252,10 +238,11 @@ subroutine read_proc_coordinates(iproc, region)
     endif 
     read(IIN)ystore
 
-    write(*,'(/,a)')'  -- Y coordinates:'
-    write(*,*)'     --> min. value: ', minval(ystore)
-    write(*,*)'     --> max. value: ', maxval(ystore)
-
+    if(verbose.ge.3)then
+        write(*,'(/,a)')'  -- Y coordinates:'
+        write(*,*)'     --> min. value: ', minval(ystore)
+        write(*,*)'     --> max. value: ', maxval(ystore)
+    endif 
 
     ! Open the z coordinate and load: 
     open(unit=IIN,file=trim(binname)//'zstore.bin', &
@@ -266,14 +253,13 @@ subroutine read_proc_coordinates(iproc, region)
     endif 
     read(IIN)zstore
 
-
-    write(*,'(/,a)')'  -- Z coordinates:'
-    write(*,*)'     --> min. value: ', minval(zstore)
-    write(*,*)'     --> max. value: ', maxval(zstore)
-
+    if(verbose.ge.3)then
+        write(*,'(/,a)')'  -- Z coordinates:'
+        write(*,*)'     --> min. value: ', minval(zstore)
+        write(*,*)'     --> max. value: ', maxval(zstore)
+    endif 
 
     return 
-
 end subroutine read_proc_coordinates
 
 
@@ -281,7 +267,7 @@ end subroutine read_proc_coordinates
 
 
 subroutine read_proc_variable(iproc, region, variable, varname)
-    use params, only: ngllx, nglly, ngllz, nspec, datadir
+    use params, only: ngllx, nglly, ngllz, nspec, datadir, verbose
 
     implicit none 
     include "precision.h"
@@ -300,9 +286,12 @@ subroutine read_proc_variable(iproc, region, variable, varname)
 
     ! File name prefix: 
     write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'//trim(varname)//'.bin'
-    write(*,'(/,/,a)')'• Reading variable called '//trim(varname)
-    write(*,'(/,a,i1)')'  -- data type : CUSTOM_REAL of length ', CUSTOM_REAL 
-    write(*,'(a)')'  -- file name : '//trim(binname)
+    
+    if(verbose.ge.3)then
+        write(*,'(/,/,a)')'• Reading variable called '//trim(varname)
+        write(*,'(/,a,i1)')'  -- data type : CUSTOM_REAL of length ', CUSTOM_REAL 
+        write(*,'(a)')'  -- file name : '//trim(binname)
+    endif 
 
     ! Open the variable file and load: 
     open(unit=IIN,file=trim(binname), &
@@ -313,10 +302,12 @@ subroutine read_proc_variable(iproc, region, variable, varname)
     endif 
     read(IIN)variable
 
-    write(*,'(a)')'  -- '//trim(varname)//' :'
-    write(*,*)'     --> min. value: ', minval(variable)
-    write(*,*)'     --> max. value: ', maxval(variable)
-
+    if(verbose.ge.2)then
+        write(*,'(a)')'  -- '//trim(varname)//' :'
+        write(*,*)'     --> min. value: ', minval(variable)
+        write(*,*)'     --> max. value: ', maxval(variable)
+    endif 
+    
     return 
 
 end subroutine read_proc_variable
@@ -324,7 +315,7 @@ end subroutine read_proc_variable
 
 
 subroutine read_integer_proc_variable(iproc, region, variable, varname)
-    use params, only: ngllx, nglly, ngllz, nspec,datadir
+    use params, only: ngllx, nglly, ngllz, nspec,datadir, verbose
 
     implicit none 
     include "precision.h"
@@ -343,9 +334,11 @@ subroutine read_integer_proc_variable(iproc, region, variable, varname)
 
     ! File name prefix: 
     write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'//trim(varname)//'.bin'
-    write(*,'(/,/,a)')'• Reading variable called '//trim(varname)
-    write(*,'(a,i1)')'  -- data type : integer'
-    write(*,'(a)')'  -- file name : '//trim(binname)
+    if(verbose.ge.3)then
+        write(*,'(/,/,a)')'• Reading variable called '//trim(varname)
+        write(*,'(a,i1)')'  -- data type : integer'
+        write(*,'(a)')'  -- file name : '//trim(binname)
+    endif 
 
     ! Open the variable file and load: 
     open(unit=IIN,file=trim(binname), &
@@ -356,9 +349,11 @@ subroutine read_integer_proc_variable(iproc, region, variable, varname)
     endif 
     read(IIN)variable
 
-    write(*,'(a)')'  -- '//trim(varname)//' :'
-    write(*,*)'     --> min. value: ', minval(variable)
-    write(*,*)'     --> max. value: ', maxval(variable)
+    if(verbose.ge.2)then
+        write(*,'(a)')'  -- '//trim(varname)//' :'
+        write(*,*)'     --> min. value: ', minval(variable)
+        write(*,*)'     --> max. value: ', maxval(variable)
+    endif 
 
     return 
 

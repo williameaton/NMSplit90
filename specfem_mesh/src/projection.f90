@@ -6,7 +6,7 @@ subroutine get_mesh_radii()
 
     use params, only: ngllx, nglly, ngllz, nspec, RA, &
                       xstore, ystore, zstore, unique_r, n_unique_rad, rad_id,&
-                      interp_id_r, rad_mineos, IC_ID
+                      interp_id_r, rad_mineos, IC_ID, verbose
     implicit none 
     include "constants.h"
 
@@ -80,11 +80,12 @@ subroutine get_mesh_radii()
     deallocate(unique_r_tmp)
 
     ! Print some details
-    write(*,'(/,a)')'• Determine unique mesh radii'
-    write(*,'(a,es8.1)')  '  -- tolerance value       :', tol
-    write(*,'(a,f8.2,a)') '  -- matches radii within  :', tol*RA, ' metres'
-    write(*,'(a,i8,a,i8)')'  -- number of unique radii:', n_unique_rad, ' out of ', size_r
-    
+    if(verbose.ge.2) then 
+        write(*,'(/,a)')'• Determine unique mesh radii'
+        write(*,'(a,es8.1)')  '  -- tolerance value       :', tol
+        write(*,'(a,f8.2,a)') '  -- matches radii within  :', tol*RA, ' metres'
+        write(*,'(a,i8,a,i8)')'  -- number of unique radii:', n_unique_rad, ' out of ', size_r
+    endif 
     ! Prints the difference between the original radius and the 'unique' radius it is pointed to 
     !do ispec = 1, nspec
     !    do i = 1, ngllx
@@ -127,6 +128,7 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
     unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz
     use spline, only: interpolate_mode_eigenfunctions
     use ylm_plm, only: ylm_complex, ylm_deriv
+    use mesh_utils, only: delta_real
     implicit none
     include "constants.h"
 
@@ -143,7 +145,8 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
     real(kind=4)  :: u(NL), du(NL)    ! must be 4 bytes
     real(kind=4)  :: v(NL), dv(NL)    ! must be 4 bytes
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
-    real(kind=CUSTOM_REAL)    ::  mf, lf, ll1, theta, phi, u_r, v_r,w_r
+    real(kind=CUSTOM_REAL)    :: mf, lf, ll1, theta, phi, u_r, v_r,w_r,&
+                                 tl14p, dd1, dm0, mone_l, pref
     integer :: i,j,k,ispec
 
 
@@ -157,6 +160,13 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
     lf  = real(l, kind=CUSTOM_REAL)
     mf  = real(m, kind=CUSTOM_REAL)
     ll1 = sqrt(lf*(lf+ONE))
+    tl14p = ((TWO*lf + ONE)/(FOUR*PI))**HALF    ! (2l+1/4π)^1/2
+    dm0 = delta_real(m, 0)                      ! δ_{m0}
+    dd1 = delta_real(m, -1) - delta_real(m, 1)  ! δ_{m -1} - δ_{m 1}
+    mone_l = (-ONE)**lf
+    pref   = half * tl14p * ll1
+
+
     v_spl    = v_spl    / ll1
     vdot_spl = vdot_spl / ll1
     if(mode_type.eq.'T')then 
@@ -164,7 +174,6 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
         u_spl    = u_spl    / ll1
         udot_spl = udot_spl / ll1
     endif 
-
 
     if (mode_type.eq.'S')then 
         do ispec = 1, nspec
@@ -182,14 +191,31 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                         u_r   =    u_spl(rad_id(i,j,k,ispec))
                         v_r   =    v_spl(rad_id(i,j,k,ispec))
 
-                        ! S_r     (DT98 D.4)
-                        disp(1,i,j,k,ispec) = ylm*u_r  
 
-                        ! S_theta (DT98 D.5)
-                        disp(2,i,j,k,ispec) = v_r*dylm_theta
-
-                        ! S_phi   (DT98 D.6)
-                        disp(3,i,j,k,ispec) = iONE * mf * v_r * ylm / sin(theta)
+                        if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                            ! North pole 
+                            ! S_r     (DT98 D.8)
+                            disp(1,i,j,k,ispec) = tl14p * u_r * dm0
+                            ! S_theta (DT98 D.9)
+                            disp(2,i,j,k,ispec) = pref * v_r * dd1
+                            ! S_phi   (DT98 D.10)
+                            disp(3,i,j,k,ispec) = pref * iONE * mf * v_r * dd1
+                        elseif (abs(theta-PI).le.pole_tolerance) then
+                            ! South pole
+                            ! S_r     (DT98 D.11)
+                            disp(1,i,j,k,ispec) = mone_l * tl14p * u_r * dm0
+                            ! S_theta (DT98 D.12)
+                            disp(2,i,j,k,ispec) = mone_l * pref * v_r * dd1
+                            ! S_phi   (DT98 D.13)
+                            disp(3,i,j,k,ispec) = -mone_l * pref * iONE * mf * v_r * dd1
+                        else 
+                            ! S_r     (DT98 D.4)
+                            disp(1,i,j,k,ispec) = ylm*u_r  
+                            ! S_theta (DT98 D.5)
+                            disp(2,i,j,k,ispec) = v_r*dylm_theta
+                            ! S_phi   (DT98 D.6)
+                            disp(3,i,j,k,ispec) = iONE * mf * v_r * ylm / sin(theta)
+                        endif 
                     enddo 
                 enddo 
             enddo 
@@ -208,14 +234,27 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                         ylm   = ylm_complex(l,m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
 
-                        ! S_r     (DT98 D.4)
+                        if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                            ! North pole 
+                            ! S_theta (DT98 D.9)
+                            disp(2,i,j,k,ispec) = pref * iONE * mf * w_r * dd1
+                            ! S_phi   (DT98 D.10)
+                            disp(3,i,j,k,ispec) = - pref * w_r * dd1
+                        elseif (abs(theta-PI).le.pole_tolerance) then
+                            ! South pole
+                            ! S_theta (DT98 D.12)
+                            disp(2,i,j,k,ispec) = - mone_l * pref * iONE * mf * w_r * dd1
+                            ! S_phi   (DT98 D.13)
+                            disp(3,i,j,k,ispec) = - mone_l * pref * w_r * dd1
+                        else 
+                            ! S_theta (DT98 D.5)
+                            disp(2,i,j,k,ispec) = iONE * mf * w_r * ylm / sin(theta)
+                            ! S_phi   (DT98 D.6)
+                            disp(3,i,j,k,ispec) = -w_r * dylm_theta 
+                        endif 
+
+                        ! No radial displacement for toroidal modes
                         disp(1,i,j,k,ispec) = (ZERO, ZERO) 
-
-                        ! S_theta (DT98 D.5)
-                        disp(2,i,j,k,ispec) = iONE * mf * w_r * ylm / sin(theta)
-
-                        ! S_phi   (DT98 D.6)
-                        disp(3,i,j,k,ispec) = -w_r * dylm_theta 
                     enddo 
                 enddo 
             enddo 
@@ -365,12 +404,12 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                             strain(5,i,j,k,ispec) = HALF * iONE * mf * xx_r * ylm/sinth
                             ! E_tp: DT98 D.19
                             strain(6,i,j,k,ispec) = iONE * mf * v_r * (dylm_theta - ylm/tanth) / (unq_r * sinth)
-                        endif 
+                        endif                      
+
                     enddo 
                 enddo 
             enddo 
         enddo
-
 
     elseif (mode_type.eq.'T')then 
         ! I believe that get_mode stores w, wdot in the u and du terms
@@ -414,7 +453,7 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                             strain(6,i,j,k,ispec) = - tl14p * kr2 * w_r * dd2 / (unq_r * FOUR)
                         else
                             ! E_rr: DT98 D.14
-                            strain(1,i,j,k,ispec) = iZERO
+                            strain(1,i,j,k,ispec) = (zero, zero)
                             ! E_tt: DT98 D.15
                             strain(2,i,j,k,ispec) = iONE * mf * w_r * (dylm_theta - ylm/tanth) / (unq_r*sinth)
                             ! E_pp: DT98 D.16
@@ -438,6 +477,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     endif 
 
 
-end subroutine
+    if (maxval(real(strain(1,:,:,:,:))).gt. 100.0)then
+        write(*,*)'ERROR: large strain max value:  ', maxval(real(strain(1,:,:,:,:)))
+        stop 
+    endif 
+
+end subroutine compute_gll_mode_strain
 
 

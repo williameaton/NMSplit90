@@ -2,6 +2,12 @@ module params
     
 include "precision.h"
 
+! Increasing number = increasing verbosity
+! 0  == no printing
+! 1  == minimal updates for fast run
+! 2  == while coding
+! 3  == while debugging
+integer, parameter :: verbose = 2 
 
 ! Specfem mesh files: 
 character(len=250) :: datadir = 'DATABASES_MPI/NEX176'
