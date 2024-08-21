@@ -14,7 +14,7 @@ open(unit=1,file='testplm.txt', &
 status='unknown',form='formatted',action='write')
    do l = 0,10
     do m = - l, + l
-        rr = Plm(cos(theta),l,m)
+        rr = Plm(cosp(theta),l,m)
         write(1,*)l, m, rr
     enddo 
 enddo

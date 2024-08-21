@@ -1,5 +1,6 @@
 import scipy.special as ss
 import numpy as np
+import os
 
 
 def test_ylm():
@@ -12,7 +13,7 @@ def test_ylm():
     # DT98 which we use in our code so add in here
 
     # l, m, ylm
-    d = np.loadtxt("testylm.txt")
+    d = np.loadtxt("./ylm/testylm.txt")
 
     theta = 0.5
     phi   = 0.124
@@ -23,5 +24,4 @@ def test_ylm():
 
         err = np.abs((ylm-d[i,-1])/ylm)
         assert err < 2e-6
-test_ylm()
 

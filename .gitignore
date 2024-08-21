@@ -2,3 +2,4 @@
 *.idea
 *.o
 *.mod
+*.pytest_cache
