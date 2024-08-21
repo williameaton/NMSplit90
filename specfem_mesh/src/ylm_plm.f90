@@ -1,5 +1,7 @@
 module ylm_plm
 
+use math, only: cosp, sinp, tanp, sqrtp
+implicit none 
 include "constants.h"
 
 contains
@@ -41,7 +43,7 @@ contains
 
 
     ! (1 - x^2)^0.5
-    y = sqrt(1-x**2)
+    y = sqrtp(1-x**2)
     
     do q = 0, m-1
         Plm = -(TWO*real(q, kind=CUSTOM_REAL)+ONE) * y * Plm
@@ -74,6 +76,7 @@ contains
     end function Plm
     
     ! ------------------------------------------------------------------
+
 
     subroutine convert_neg(neg_m, Plm, mf, lf)
         implicit none 
@@ -110,7 +113,7 @@ contains
         integer :: l, m 
         real(kind=CUSTOM_REAL) :: theta
         ! Local: 
-        real(kind=CUSTOM_REAL) :: lf, mf, tmp
+        real(kind=CUSTOM_REAL) :: lf, mf
 
         ! Convert l and m to floats for computation: 
         lf = real(l, kind=CUSTOM_REAL)
@@ -135,14 +138,14 @@ contains
         if (theta.gt.zero .and. theta.le.pole_tolerance) then 
             ! theta approx 0 -- North Pole 
             if (m.eq.0)then 
-                xlm = sqrt((TWO*lf + ONE)/(4*PI))
+                xlm = sqrtp((TWO*lf + ONE)/(FOUR*PI))
             else
                 xlm = zero
             endif 
 
         elseif (abs(PI - theta) .le. pole_tolerance)then 
             if (m.eq.0)then 
-                xlm = (lf**(-ONE))*sqrt((TWO*lf + ONE)/(4*PI))
+                xlm = (lf**(-ONE))*sqrtp((TWO*lf + ONE)/(FOUR*PI))
             else
                 xlm = zero
             endif 
@@ -150,7 +153,7 @@ contains
             xlm = ((-ONE)**mf) *                         & 
                 ( (TWO*lf+ONE)*gamma(lf-mf+ONE)/        & 
                     (FOUR*PI*gamma(lf+mf+ONE))  )**HALF       & 
-                *Plm(cos(theta),l,m)      
+                *Plm(cosp(theta),l,m)      
         endif
             
 
@@ -226,7 +229,7 @@ contains
         mf = real(m, kind=CUSTOM_REAL)
 
         ! Real component is the cos phi part
-        ylm_real = cos(mf*phi)*xlm(l,m,theta)
+        ylm_real = cosp(mf*phi)*xlm(l,m,theta)
 
     end function ylm_real
 
@@ -268,7 +271,7 @@ contains
         mf = real(m, kind=CUSTOM_REAL)
 
         ! Assign complex Ylm
-        ylm_complex = cmplx(cos(mf*phi), sin(mf*phi))*xlm(l,m,theta)
+        ylm_complex = cmplx(cosp(mf*phi), sinp(mf*phi))*xlm(l,m,theta)
 
     end function ylm_complex
 
@@ -284,7 +287,7 @@ contains
         real(kind=CUSTOM_REAL) :: theta, phi
         complex(kind=CUSTOM_REAL) :: dylm_dphi, dylm_dth
         ! Local variables
-        real(kind=CUSTOM_REAL) :: lf, mf, dplm_dt, dxlm_dt
+        real(kind=CUSTOM_REAL) :: lf, mf, dplm_dt
 
         ! Sanity checks on inputs: 
         if (theta.lt.0.0d0 .or. theta.gt.PI+PI_TOL)then 
@@ -311,7 +314,7 @@ contains
         ! d Ylm / d phi:
         ! ylm_complex   = cmplx(cos(mf*phi)*xlm, sin(mf*phi)*xlm)
         ! d Ylm / d phi = Xlm(theta) * (-msin(m phi) + im cos(m phi) )
-        dylm_dphi = cmplx(-mf*sin(mf*phi), mf*cos(mf*phi)) * xlm(l,m,theta)
+        dylm_dphi = cmplx(-mf*sinp(mf*phi), mf*cosp(mf*phi)) * xlm(l,m,theta)
 
         ! d Ylm / d theta:
         ! DT98 B.120
@@ -321,8 +324,8 @@ contains
         ! DT98 B.116
         ! Using the above option produces the wrong sign for dylm_dth when testing for Ylm with l = m
         ! https://math.stackexchange.com/questions/3256898/partial-derivatives-of-m-l-spherical-harmonics
-        dplm_dt = lf*Plm(cos(theta),l,m)/tan(theta) - (lf+mf)*Plm(cos(theta),l-1,m)/sin(theta)     
-        dylm_dth = cmplx(cos(mf*phi), sin(mf*phi)) * dplm_dt * ((-ONE)**mf)*((TWO*lf+ONE)*gamma(lf-mf+ONE)/(FOUR*PI*gamma(lf+mf+ONE)))**HALF
+        dplm_dt = lf*Plm(cosp(theta),l,m)/tanp(theta) - (lf+mf)*Plm(cosp(theta),l-1,m)/sinp(theta)     
+        dylm_dth = cmplx(cosp(mf*phi), sinp(mf*phi)) * dplm_dt * ((-ONE)**mf)*((TWO*lf+ONE)*gamma(lf-mf+ONE)/(FOUR*PI*gamma(lf+mf+ONE)))**HALF
 
     end subroutine ylm_deriv
 

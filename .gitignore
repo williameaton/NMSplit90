@@ -1,5 +1,20 @@
+# General trash
 *.bin
 *.idea
 *.o
 *.mod
 *.pytest_cache
+*__pycache__*
+*.DS_Store*
+
+# Some directories
+*DATABASES_MPI*
+specfem_mesh/ensight/*
+databases/*
+
+
+# Executables: 
+integrate_mesh
+read_mesh
+split_mesh
+

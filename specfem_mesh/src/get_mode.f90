@@ -21,17 +21,16 @@
         character(len=1)   :: type
         integer            :: nord,l
         real(4)            :: u(NL),du(NL)
-        real               :: radius(NR)
         real(4), optional  :: v(NL),dv(NL)
         logical :: save_mode
     
         character(len=200) :: catalogue,bin_file, eigstring
-        integer            :: ntype,nvec,reclen,i,j
+        integer            :: ntype,nvec,i,j
         integer            :: nnl 
         character(len=1)   :: type1,type2,char
-        integer            :: ieigtxt,iomod,iocat,iobin,nrec,ios,nn,ll,nnn,lll,junk1,junk2
-        real(8)            :: av,ah,bb,wwmhz,ttcom,ggcom,qqmod,eps, raylquo
-        real(4)            :: buf(6*NL),  wcom, qmod,av4,ah4, rn4, vnorm4, anorm4,  cg4, phsv
+        integer            :: ieigtxt,iomod,iocat,iobin,nrec,ios,nn,ll
+        real(8)            :: wwmhz,ttcom,ggcom,qqmod,eps, raylquo
+        real(4)            :: buf(6*NL),  wcom, qmod,  cg4, phsv
     
         integer(4)         :: n4, l4, n4old, l4old
     

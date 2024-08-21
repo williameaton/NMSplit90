@@ -3,7 +3,6 @@ subroutine get_mesh_radii()
     ! Determines a list of the unique radii of the GLL point
     ! Points each GLL point to its radial value in the list 
     ! 
-
     use params, only: ngllx, nglly, ngllz, nspec, RA, &
                       xstore, ystore, zstore, unique_r, n_unique_rad, rad_id,&
                       interp_id_r, rad_mineos, IC_ID, verbose
@@ -11,9 +10,9 @@ subroutine get_mesh_radii()
     include "constants.h"
 
     ! Local variables: 
-    double precision :: rr(ngllx, nglly, ngllz, nspec) , tol, rgll
-    double precision, allocatable :: unique_r_tmp(:)
-    integer :: i, j, k, ispec, size_r, unique_id, ur, i_unq, i_knot, min_knot
+    real(kind=CUSTOM_REAL) :: rr(ngllx, nglly, ngllz, nspec) , tol, rgll
+    real(kind=CUSTOM_REAL), allocatable :: unique_r_tmp(:)
+    integer :: i, j, k, ispec, size_r, unique_id, ur, i_unq, i_knot
     
     logical :: match
 
@@ -123,12 +122,14 @@ end subroutine get_mesh_radii
 
 
 subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
-    use params, only: rad_mineos, NL, IC_ID, n_unique_rad, nspec, ngllx, & 
-    nglly, ngllz, thetastore, phistore, rad_id, rstore,& 
-    unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz
+    use params, only:  NL, nspec, ngllx, & 
+    nglly, ngllz, thetastore, phistore, rad_id,& 
+    u_spl, v_spl, udot_spl, vdot_spl
     use spline, only: interpolate_mode_eigenfunctions
     use ylm_plm, only: ylm_complex, ylm_deriv
-    use mesh_utils, only: delta_real
+    use mesh_utils, only: delta_spline
+    use math, only: sinp, sqrtp
+
     implicit none
     include "constants.h"
 
@@ -142,12 +143,15 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
     ! Local variables: 
     real(kind=4)  :: omega            ! normalized anglar frequency   
     real(kind=4)  :: qval             ! normalized Q factor            
-    real(kind=4)  :: u(NL), du(NL)    ! must be 4 bytes
-    real(kind=4)  :: v(NL), dv(NL)    ! must be 4 bytes
+    real(kind=SPLINE_REAL)  :: u(NL), du(NL)    ! must be 4 bytes
+    real(kind=SPLINE_REAL)  :: v(NL), dv(NL)    ! must be 4 bytes
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
-    real(kind=CUSTOM_REAL)    :: mf, lf, ll1, theta, phi, u_r, v_r,w_r,&
-                                 tl14p, dd1, dm0, mone_l, pref
+    real(kind=CUSTOM_REAL)    ::  theta, phi, u_r, v_r,w_r,&
+                                  dd1, dm0
     integer :: i,j,k,ispec
+
+    real(kind=SPLINE_REAL)  ::  mf, lf, ll1, tl14p, mone_l, pref
+
 
 
     ! Load the mode from the database
@@ -157,14 +161,16 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
     call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
     
     ! DT98 below D.1: k = sqrt(l(l+1))
-    lf  = real(l, kind=CUSTOM_REAL)
-    mf  = real(m, kind=CUSTOM_REAL)
-    ll1 = sqrt(lf*(lf+ONE))
-    tl14p = ((TWO*lf + ONE)/(FOUR*PI))**HALF    ! (2l+1/4π)^1/2
-    dm0 = delta_real(m, 0)                      ! δ_{m0}
-    dd1 = delta_real(m, -1) - delta_real(m, 1)  ! δ_{m -1} - δ_{m 1}
-    mone_l = (-ONE)**lf
-    pref   = half * tl14p * ll1
+    lf  = real(l, kind=SPLINE_REAL)
+    mf  = real(m, kind=SPLINE_REAL)
+
+
+    ll1 = sqrtp(lf*(lf+SPLINE_ONE))
+    tl14p = ((SPLINE_TWO*lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2
+    dm0 = delta_spline(m, 0)                      ! δ_{m0}
+    dd1 = delta_spline(m, -1) - delta_spline(m, 1)  ! δ_{m -1} - δ_{m 1}
+    mone_l = (-SPLINE_ONE)**lf
+    pref   = SPLINE_HALF * tl14p * ll1
 
 
     v_spl    = v_spl    / ll1
@@ -182,8 +188,8 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                     do k = 1, ngllz
                     
                         ! Get ylm and the partial derivatives
-                        theta = thetastore(i,j,k,ispec)
-                        phi   = phistore(i,j,k,ispec)
+                        theta = real(thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
+                        phi   = real(phistore(i,j,k,ispec),   kind=CUSTOM_REAL)
                         ylm   = ylm_complex(l,m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
                         
@@ -214,7 +220,7 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                             ! S_theta (DT98 D.5)
                             disp(2,i,j,k,ispec) = v_r*dylm_theta
                             ! S_phi   (DT98 D.6)
-                            disp(3,i,j,k,ispec) = iONE * mf * v_r * ylm / sin(theta)
+                            disp(3,i,j,k,ispec) = iONE * mf * v_r * ylm / sinp(theta)
                         endif 
                     enddo 
                 enddo 
@@ -229,8 +235,8 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                         ! Get ylm and the partial derivatives, and 
                         ! w at the radius of this node
                         w_r   = u_spl(rad_id(i,j,k,ispec))
-                        theta = thetastore(i,j,k,ispec)
-                        phi   = phistore(i,j,k,ispec)
+                        theta = real(thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
+                        phi   = real(phistore(i,j,k,ispec), kind=CUSTOM_REAL)
                         ylm   = ylm_complex(l,m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
 
@@ -248,7 +254,7 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                             disp(3,i,j,k,ispec) = - mone_l * pref * w_r * dd1
                         else 
                             ! S_theta (DT98 D.5)
-                            disp(2,i,j,k,ispec) = iONE * mf * w_r * ylm / sin(theta)
+                            disp(2,i,j,k,ispec) = iONE * mf * w_r * ylm / sinp(theta)
                             ! S_phi   (DT98 D.6)
                             disp(3,i,j,k,ispec) = -w_r * dylm_theta 
                         endif 
@@ -272,12 +278,14 @@ end subroutine compute_global_mode_displacement
 
 
 subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
-    use params, only: rad_mineos, NL, IC_ID, n_unique_rad, nspec, ngllx, & 
+    use params, only: NL, n_unique_rad, nspec, ngllx, & 
                       nglly, ngllz, thetastore, phistore, rad_id, rstore,& 
                       unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz
     use ylm_plm, only: ylm_complex, ylm_deriv
     use spline, only: interpolate_mode_eigenfunctions
-    use mesh_utils, only: delta_real
+    use mesh_utils, only: delta_spline
+    use math, only: sinp, tanp, sqrtp
+
     implicit none
     include "constants.h"
 
@@ -293,15 +301,19 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
     real(kind=CUSTOM_REAL)    :: theta, phi, du_r, u_r, & 
-                                 unq_r, dv_r, v_r, mf, lf, ll1, xx_r, & 
-                                 zz_r, sinth, tanth, w_r, dw_r, tl14p, & 
-                                 ff, dm0, dd1, dd2, kr2
+                                 unq_r, dv_r, v_r,  & 
+                                 sinth, tanth, w_r, dw_r, & 
+                                 ff, dm0, dd1, dd2
+
+
     integer :: ispec, i,j,k
     ! Mineos eigenfunction values:
     ! Note that these NEED to be 4-byte because that is the mineos
     ! output format 
-    real(kind=4)            :: u(NL), du(NL)
-    real(kind=4)            :: v(NL), dv(NL)
+    real(kind=SPLINE_REAL)            :: u(NL), du(NL)
+    real(kind=SPLINE_REAL)            :: v(NL), dv(NL)
+
+    real(kind=SPLINE_REAL)  :: xx_r, zz_r, mf, lf, ll1, tl14p, kr2
 
     ! Load the mode from the database
     call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv, .true.)
@@ -311,15 +323,16 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
     
     ! DT98 below D.1: k = sqrt(l(l+1))
-    lf  = real(l, kind=CUSTOM_REAL)
-    mf  = real(m, kind=CUSTOM_REAL)
-    ll1 = sqrt(lf*(lf+ONE))
-    tl14p = ((TWO*lf + ONE)/(FOUR*PI))**HALF    ! (2l+1/4π)^1/2
-    kr2 = ll1*((ll1*ll1 - TWO)**half)
+    lf  = real(l, kind=SPLINE_REAL)
+    mf  = real(m, kind=SPLINE_REAL)
+    ll1 = sqrtp(lf*(lf+SPLINE_ONE))
+    tl14p = ((SPLINE_TWO*lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2
+    kr2 = ll1*((ll1*ll1 - SPLINE_TWO)**SPLINE_HALF)
 
-    dm0 = delta_real(m, 0)                       ! δ_{m0}
-    dd1 = delta_real(m, -1) - delta_real(m, 1)   ! δ_{m -1} - δ_{m 1}
-    dd2 = delta_real(m, -2) + delta_real(m, 2)   ! δ_{m -2} + δ_{m 2}
+
+    dm0 = delta_spline(m, 0)                       ! δ_{m0}
+    dd1 = delta_spline(m, -1) - delta_spline(m, 1)   ! δ_{m -1} - δ_{m 1}
+    dd2 = delta_spline(m, -2) + delta_spline(m, 2)   ! δ_{m -2} + δ_{m 2}
 
     ! Convert eigenfunctions to auxillary form
     ! DT98 D.1: 
@@ -341,7 +354,7 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     !   --> x should be 0
     if (mode_type.eq.'S')then 
         allocate(xx(n_unique_rad))
-        xx = udot_spl + (u_spl - v_spl)/unique_r
+        xx = udot_spl + (u_spl - v_spl)/real(unique_r, kind=SPLINE_REAL)
 
         ! Loop over each GLL point: 
         do ispec = 1, nspec
@@ -363,8 +376,8 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
                         ! r and theta at the node  
                         unq_r = rstore(i,j,k,ispec)
-                        sinth = sin(theta)
-                        tanth = tan(theta)
+                        sinth = sinp(theta)
+                        tanth = tanp(theta)
 
                         if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                             ! Values at the pole 
@@ -414,7 +427,7 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     elseif (mode_type.eq.'T')then 
         ! I believe that get_mode stores w, wdot in the u and du terms
         allocate(zz(n_unique_rad))
-        zz = udot_spl - u_spl/unique_r
+        zz = udot_spl - u_spl/real(unique_r, kind=SPLINE_REAL)
 
         ! Loop over each GLL point: 
         do ispec = 1, nspec
@@ -434,8 +447,8 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
                         ! r and theta at the node  
                         unq_r = rstore(i,j,k,ispec)
-                        sinth = sin(theta)
-                        tanth = tan(theta)
+                        sinth = sinp(theta)
+                        tanth = tanp(theta)
 
                         if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                             ! Values at the pole 

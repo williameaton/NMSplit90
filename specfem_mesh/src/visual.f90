@@ -1,10 +1,10 @@
-subroutine create_proc_geo_file(region, iproc, part)
+subroutine create_proc_geo_file(part)
     use params, only: GEOUNIT, nglob, x_glob, y_glob, z_glob, nspec, & 
                       ngllx, nglly, ngllz, en_fname, intfmt, realfmt, en_dir, ibool
     implicit none 
     
     ! IO variables
-    integer :: iproc, region, part
+    integer :: part
 
     ! Local variables
     character(len=78) :: buffer
@@ -24,7 +24,6 @@ subroutine create_proc_geo_file(region, iproc, part)
     buffer = 'part'
     write(GEOUNIT, '(a)')buffer
     write(GEOUNIT, intfmt) part 
-
 
     ! COORDINATES
     buffer = 'coord_desc_line_we'   ! coordinate description line
@@ -79,16 +78,10 @@ end subroutine create_proc_geo_file
 
 
 subroutine create_proc_case_file()
-    use params, only: CASEUNIT, nglob, x_glob, y_glob, z_glob, nspec, & 
-                      ngllx, nglly, ngllz, en_fname, intfmt, realfmt, en_dir
+    use params, only: CASEUNIT, en_fname, intfmt, realfmt, en_dir
     implicit none 
     
     ! IO variables
-
-    ! Local variables
-    character(len=80) :: buffer
-
-    integer :: i, nhex
 
     open(unit=CASEUNIT,file=trim(en_dir)//trim(en_fname)//'.case', & 
           status='unknown',form='formatted',action='write')
@@ -298,7 +291,7 @@ subroutine write_real_scalar_to_ensight(realscal, suffix, part)
     character(len=*) :: suffix
 
     ! Local 
-    integer :: i, component
+    integer :: i
     character(len=79)   :: buffer
     character(len=250)  :: fname
 

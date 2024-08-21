@@ -2,6 +2,9 @@ program read_specfem_mesh
 use params 
 use allocation_module
 use mesh_utils 
+use gll 
+use ylm_plm
+
 implicit none 
 
 integer :: iproc, i                  
@@ -10,6 +13,9 @@ integer :: region                ! Region code
 character(len=250) :: varname
 
 integer :: n, l, m 
+
+real(4) :: can_delete
+
 ! Setup parameters: 
 region = 3      ! Inner core
 nprocs = 6
@@ -17,6 +23,14 @@ nprocs = 6
 n = 10
 l = 5
 m = 2
+
+
+
+!can_delete =  lagrange(6, 4, 0.23)
+write(*,*)can_delete
+
+!can_delete = lagrange(4, 0.3)
+!write(*,*)can_delete
 
 
 
@@ -36,7 +50,8 @@ call read_proc_coordinates(iproc, region)
 ! Load ibool variable: 
 call load_ibool(iproc, region)
 
-
+call setup_gll()
+call compute_jacobian()
 
 
 ! Get unique mesh radii that are present
@@ -71,7 +86,7 @@ call map_local_global_double_precision(phistore,   phi_glob,   0)
 
 call create_ensight_file_prefix(iproc, region)
 call create_proc_case_file()
-call create_proc_geo_file(iproc, region, 1)
+call create_proc_geo_file(1)
 call write_complex_symtensor_to_ensight(globalstrain, 'strain', 1)
 
 ! Compute global mode displacement 
@@ -85,6 +100,9 @@ call write_complex_vector_to_ensight(globaldisp, 'disp', 1)
 
 call cleanup_for_mode()
 enddo 
+
+
+
 
 end program
 

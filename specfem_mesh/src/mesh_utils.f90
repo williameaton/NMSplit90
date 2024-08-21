@@ -1,30 +1,27 @@
 module mesh_utils
     
+    use math, only: cosp, atan2p, acosp
+
     implicit none 
     include "constants.h"
-
-
-
-    interface delta
-        module procedure delta_real
-    end interface delta
 
     contains 
     
 
 
-    real(kind=CUSTOM_REAL) function delta_real(i,j)
+    real(kind=SPLINE_REAL) function delta_spline(i,j)
+    ! Delta function with same precision as eigenfunctions
     integer :: i,j
         if (i.eq.j)then 
-            delta_real = ONE
+            delta_spline = ONE
             return  
         else
-            delta_real = ZERO
+            delta_spline = ZERO
             return  
         endif 
-    end function delta_real
+    end function delta_spline
 
-    
+
     integer function delta_int(i,j)
     integer :: i,j
         if (i.eq.j)then 
@@ -101,7 +98,7 @@ module mesh_utils
         include "precision.h"
 
         ! I/O variables: 
-        double precision :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
+        real(kind=CUSTOM_REAL) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
         integer :: direction
 
 
@@ -208,7 +205,7 @@ module mesh_utils
         ! direction: 0   local  --> global 
         !            1   global --> local 
         
-        use params, only: ngllx, nglly, ngllz, nspec, nglob, ibool
+        use params, only: ngllx, nglly, ngllz, nspec, nglob
         implicit none 
         
         include "precision.h"
@@ -299,12 +296,12 @@ module mesh_utils
 
         use params, only :  x_glob, y_glob, z_glob, nglob, Rmat
         use allocation_module, only: allocate_if_unallocated
+        use math, only: sinp, cosp, sqrtp
         implicit none 
         include "constants.h"
 
-        double precision :: x, y, z, r, theta, phi, ct, cp, st, sp, norm
+        real(kind=CUSTOM_REAL) :: x, y, z, r, theta, phi, ct, cp, st, sp, norm
         integer :: iglob
-
 
         !TODO:  check allocations of x, y, z glob
 
@@ -314,19 +311,21 @@ module mesh_utils
         do iglob = 1, nglob
 
             ! Get x, y, z coordinates: 
-            x = x_glob(iglob) * TWO
-            y = y_glob(iglob) * TWO
-            z = z_glob(iglob) * TWO
+            x = real(x_glob(iglob) * TWO, kind=CUSTOM_REAL)
+            y = real(y_glob(iglob) * TWO, kind=CUSTOM_REAL)
+            z = real(z_glob(iglob) * TWO, kind=CUSTOM_REAL)
 
-            r = sqrt(x ** 2 + y ** 2 + z ** 2)
+            r = sqrtp(x ** 2 + y ** 2 + z ** 2)
 
             ! Note that theta and phi here are not necessarily the same
             ! as in DT98 i.e. theta here will be between -pi/2 and pi/2
-            theta = dacos(z/r)
-            phi   = datan2(y,x)
+            theta = acosp(z/r)
+            phi   = atan2p(y,x)
 
-            ct = dcos(theta);  cp = dcos(phi)
-            st = dsin(theta);  sp = dsin(phi)
+            ct = real(cosp(theta), kind=CUSTOM_REAL)
+            cp = real(cosp(phi),   kind=CUSTOM_REAL)
+            st = real(sinp(theta), kind=CUSTOM_REAL)
+            sp = real(sinp(phi),   kind=CUSTOM_REAL)
 
             ! Radial vector
             norm =((st*cp)**TWO + (st*sp)**TWO + ct**TWO)**half
@@ -344,7 +343,7 @@ module mesh_utils
             norm =(sp*sp + cp*cp)**half
             Rmat(1, 3, iglob) = -sp / norm
             Rmat(2, 3, iglob) =  cp / norm
-            Rmat(3, 3, iglob) = 0.0d0
+            Rmat(3, 3, iglob) = zero
         enddo 
 
     end subroutine compute_rotation_matrix
@@ -418,7 +417,83 @@ module mesh_utils
         call check_ibool_is_defined()
     end subroutine
     
-    
+    subroutine compute_jacobian()
+        use params, only: jac, detjac, nspec, ngllx, nglly, ngllz, & 
+                          xstore, ystore, zstore, dgll,verbose
+        use allocation_module, only: allocate_if_unallocated
+        implicit none 
+        include "constants.h"
+
+        ! Local variables: 
+        integer :: i, j, s, t, n, p, ispec
+        real(kind=CUSTOM_REAL) :: val, jl(3,3)
+        real(kind=CUSTOM_REAL), dimension(:,:,:,:), pointer :: cc
+
+
+        if(verbose.ge.2)then
+            write(*,'(/,a)')'• Setting up jacobian'
+        endif 
+
+        call allocate_if_unallocated(3, 3, ngllx, nglly, ngllz, nspec, jac)
+        call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, detjac)
+
+        detjac = zero 
+        jac    = zero 
+
+        do ispec = 1, nspec
+            do s = 1, ngllx
+                do t = 1, nglly
+                    do n = 1, ngllz
+                        ! Jij = del x_i/del Xi_j
+
+                        ! Loop over x,y,z
+                        do i = 1,3 
+                            ! cc becomes x, y, or z 
+                            if     (i .eq. 1) then 
+                                cc => xstore
+                            elseif (i .eq. 2) then 
+                                cc => ystore
+                            else
+                                cc => zstore
+                            endif 
+                            
+                            ! Loop over xi, eta, zeta
+                            do j = 1, 3
+                                val = zero
+
+                                do p = 1, ngllx
+                                    if (j.eq.1) then     ! xi 
+                                        val = real(val + cc(p, t, n, ispec) * dgll(p, s), kind=CUSTOM_REAL)
+                                    elseif (j.eq.2) then ! eta 
+                                        val = real(val + cc(s, p, n, ispec) * dgll(p, t), kind=CUSTOM_REAL)
+                                    else                 ! zeta
+                                        val = real(val + cc(s, t, p, ispec) * dgll(p, n), kind=CUSTOM_REAL)
+                                    endif 
+                                enddo                                 
+                                jac(i,j,s,t,n,ispec) = val 
+                            enddo !j 
+                        enddo! i 
+
+                        ! Compute determinant for this GLL point 
+                        jl(:,:) = jac(:,:,s,t,n,ispec)
+
+                        detjac(s,t,n,ispec) = jl(1,1) * ( jl(2,2)*jl(3,3) - jl(2,3)*jl(3,2))  - & 
+                                              jl(1,2) * ( jl(2,1)*jl(3,3) - jl(2,3)*jl(3,1))  + & 
+                                              jl(1,3) * ( jl(2,1)*jl(3,2) - jl(2,2)*jl(3,1)) 
+                        
+                        !write(*,*) jl(1,1), jl(1,2), jl(1,3)
+                        !write(*,*) jl(2,1), jl(2,2), jl(2,3)
+                        !write(*,*) jl(3,1), jl(3,2), jl(3,3)
+                        !write(*,*) detjac(s,t,n,ispec)
+                        !write(*,*)
+                    enddo ! n 
+                enddo !t
+            enddo ! s
+        enddo ! ispec
+
+        if(verbose.ge.2)write(*,'(a)')'  --> done'
+
+    end subroutine compute_jacobian
     
     
     
@@ -436,7 +511,10 @@ module mesh_utils
         ! Local variables
         integer :: IIN, ier
         character(len=250) :: binname
-    
+        
+        double precision, allocatable :: xstore_dp(:,:,:,:)
+        double precision, allocatable :: ystore_dp(:,:,:,:)
+        double precision, allocatable :: zstore_dp(:,:,:,:)
         IIN = 1
     
         ! File name prefix: 
@@ -470,9 +548,15 @@ module mesh_utils
             write(*,'(a,i1)')'     --> ngllz: ', ngllz
         endif 
     
-        ! Allocate mesh arrays: 
+        ! Allocate mesh arrays:
+        
+        
+        
+        call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore_dp)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore)
+        call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, ystore_dp)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, ystore)
+        call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, zstore_dp)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, zstore)
     
     
@@ -483,14 +567,7 @@ module mesh_utils
             write(*,'(a, i0.6)')'Couldnt read xstore file for proc ', iproc
             stop
         endif 
-        read(IIN)xstore
-    
-        if(verbose.ge.3)then
-            write(*,'(/,a)')'  -- X coordinates:'
-            write(*,*)'     --> min. value: ', minval(xstore)
-            write(*,*)'     --> max. value: ', maxval(xstore)
-        endif
-    
+        read(IIN)xstore_dp
     
         ! Open the y coordinate and load: 
         open(unit=IIN,file=trim(binname)//'ystore.bin', &
@@ -499,13 +576,7 @@ module mesh_utils
             write(*,'(a, i0.6)')'Couldnt read ystore file for proc ', iproc
             stop
         endif 
-        read(IIN)ystore
-    
-        if(verbose.ge.3)then
-            write(*,'(/,a)')'  -- Y coordinates:'
-            write(*,*)'     --> min. value: ', minval(ystore)
-            write(*,*)'     --> max. value: ', maxval(ystore)
-        endif 
+        read(IIN)ystore_dp
     
         ! Open the z coordinate and load: 
         open(unit=IIN,file=trim(binname)//'zstore.bin', &
@@ -514,9 +585,24 @@ module mesh_utils
             write(*,'(a, i0.6)')'Couldnt read zstore file for proc ', iproc
             stop
         endif 
-        read(IIN)zstore
+        read(IIN)zstore_dp
     
+
+      ! Cast from DP to CUSTOM_REAL (could also be DP)
+        xstore(:,:,:,:) = real(xstore_dp(:,:,:,:), kind=CUSTOM_REAL)
+        ystore(:,:,:,:) = real(ystore_dp(:,:,:,:), kind=CUSTOM_REAL)
+        zstore(:,:,:,:) = real(zstore_dp(:,:,:,:), kind=CUSTOM_REAL)
+
+
         if(verbose.ge.3)then
+            write(*,'(/,a)')'  -- X coordinates:'
+            write(*,*)'     --> min. value: ', minval(xstore)
+            write(*,*)'     --> max. value: ', maxval(xstore)
+
+            write(*,'(/,a)')'  -- Y coordinates:'
+            write(*,*)'     --> min. value: ', minval(ystore)
+            write(*,*)'     --> max. value: ', maxval(ystore)
+    
             write(*,'(/,a)')'  -- Z coordinates:'
             write(*,*)'     --> min. value: ', minval(zstore)
             write(*,*)'     --> max. value: ', maxval(zstore)
@@ -622,6 +708,9 @@ module mesh_utils
     
     end subroutine read_integer_proc_variable
     
+
+
+
 
 
 

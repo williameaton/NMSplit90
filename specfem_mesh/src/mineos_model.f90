@@ -46,7 +46,7 @@ subroutine process_mineos_model()
     ! Second read of the file: 
     open(iomod, file = model_file, status = 'old', iostat = ios)
 
-    vsv_prev = 99.99d0
+    vsv_prev = 99.99_CUSTOM_REAL
     do i = 1 , NR
         read(iomod,*,iostat=ios)  intjunk, radius(i), rho, vpv, vph, vsv, vsh
 
@@ -82,8 +82,8 @@ subroutine find_disc()
     implicit none
     include "precision.h"
     
-    real(8) :: eps, radius_last
-    integer :: nlayer,jdisc,iomod,i
+    real(8) :: radius_last
+    integer :: jdisc,iomod,i
     
     ! Temporary discontinuity arrays
     integer :: disctmp(NR)

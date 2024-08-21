@@ -1,0 +1,21 @@
+Splitting functions
+- Elastic tensor 
+- Gauss integral 
+
+Utilities
+- Rotate tensor XYZ --> RTP 
+  --> we have RTP to XYZ so invert? 
+- Gauss integration - weights, jacobians from specfem etc
+
+
+
+Strain
+- Trace occassional error? 
+
+
+Testing
+- Check xyz -> rtp of coordinates 
+
+
+Visual 
+- Allow output of single mode 

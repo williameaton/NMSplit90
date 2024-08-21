@@ -1,5 +1,6 @@
 module spline 
-  implicit none 
+  implicit none
+  include "precision.h" 
   contains 
 
 
@@ -11,8 +12,8 @@ module spline
 
     ! IO variables
     character(len=1)        :: mode_type     ! mode type; S or T
-    real(kind=4)            :: u(NL), du(NL)
-    real(kind=4)            :: v(NL), dv(NL)
+    real(kind=SPLINE_REAL)            :: u(NL), du(NL)
+    real(kind=SPLINE_REAL)            :: v(NL), dv(NL)
 
     ! Interpolate u, du (or w, dw if toroidal)
     call allocate_if_unallocated(n_unique_rad, u_spl)
@@ -43,12 +44,13 @@ module spline
 
     ! I/O variables
     integer :: n 
-    real(kind=CUSTOM_REAL) :: x(n), y(n)
-    real(kind=CUSTOM_REAL) :: interp(n_unique_rad)
+    real(kind=CUSTOM_REAL) :: x(n)
+    real(kind=SPLINE_REAL) :: y(n)
+    real(kind=SPLINE_REAL) :: interp(n_unique_rad)
 
     ! Local variables
     real(kind=CUSTOM_REAL):: dx(n-1),dy(n-1), slope(n-1), A(3, n), b(n), d, & 
-                            du(n-1), dd(n), dl(n-1), bb(n), t(n-1), c(4,n-1), xp
+                            du(n-1), dd(n), dl(n-1), bb(n), t(n-1), c(4,n-1)
     integer :: i, info, j, m, k 
 
     ! Compute dx
@@ -117,7 +119,8 @@ module spline
     do i = 1, n_unique_rad
       j = interp_id_r(i)
         do m = 0, k
-            interp(i) = interp(i) + c(m+1,j)*(unique_r(i) - rad_mineos(j))**(k-m) 
+            !interp(i) = interp(i) + c(m+1,j)*(unique_r(i) - rad_mineos(j))**(k-m) 
+            interp(i) = interp(i) +  real(c(m+1,j)*(unique_r(i) - rad_mineos(j)), kind=SPLINE_REAL)**(real(k-m, kind=SPLINE_REAL)) 
         enddo
     enddo 
 
