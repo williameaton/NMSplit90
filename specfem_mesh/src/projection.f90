@@ -330,18 +330,12 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     real(kind=SPLINE_REAL)  :: xx_r, zz_r, mf, lf, ll1, tl14p, kr2
 
 
-    !write(*,*)'MARKER 31'
-
     ! Load the mode from the database
-    call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv, .true.)
-
-    !write(*,*)'MARKER 32'
+    call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv,.false.)
 
     ! Spline interpolation: 
     !   - Computes the value of u, v, du, dv at each of the unique radial values
     call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
-    
-    !write(*,*)'MARKER 33'
 
 
     ! DT98 below D.1: k = sqrt(l(l+1))
@@ -352,7 +346,6 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     kr2 = ll1*((ll1*ll1 - SPLINE_TWO)**SPLINE_HALF)
 
 
-    !write(*,*)'MARKER 34'
 
     dm0 = delta_spline(m, 0)                       ! δ_{m0}
     dd1 = delta_spline(m, -1) - delta_spline(m, 1)   ! δ_{m -1} - δ_{m 1}
@@ -369,9 +362,6 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
         u_spl    = u_spl    / ll1
         udot_spl = udot_spl / ll1
     endif 
-
-
-    !write(*,*)'MARKER 35'
 
     ! Compute x and z auxillary variables - DT98 D.20
     ! If spheroidal mode then u,v are non zero but w, wdot are 0

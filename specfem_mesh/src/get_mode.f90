@@ -143,9 +143,11 @@
             write(ieigtxt,*)n4,  type1, l4
             do i =1,NR
                if(type1=='S')then 
+                ! Radius, U, U', V, V', P, P'
                   write(ieigtxt,*)rad_mineos(i), buf(i), buf(i + NR), buf(i + 2*NR), buf(i + 3*NR), buf(i + 4*NR), buf(i + 5*NR)
                elseif (type1=='T')then 
-                  write(ieigtxt,*)rad_mineos(i), buf(i), buf(i + NR), buf(i + 2*NR), buf(i + 3*NR)
+                ! Radius, W, W' ?
+                  write(ieigtxt,*)rad_mineos(i), buf(i), buf(i + NR)
                endif 
             enddo 
             close(ieigtxt)
@@ -159,13 +161,16 @@
         endif 
         
         ! Format buffer into arrays 
-        u(1 : NL) = buf(1 : NL)
+        ! Toroidal only
+        u(1 : NL)  = buf(1 : NL)
         du(1 : NL) = buf (NL + 1 : 2 * NL)
     
         if (ntype == 2) then
+            ! Radial
             v(1 : NL) = 0.
-           dv(1 : NL)    = 0.
+           dv(1 : NL) = 0.
         else if (ntype == 3) then
+            ! Spheroidal
             v(1 : NL) = buf (2 * NL + 1 : 3 * NL)
            dv(1 : NL) = buf (3 * NL + 1 : 4 * NL)
         endif

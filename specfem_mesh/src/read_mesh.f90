@@ -40,33 +40,18 @@ do iproc = 0, 5
         call setup_gll()
         call compute_jacobian()
 
-
         ! Get unique mesh radii that are present
         call get_mesh_radii()
 
-
-        !write(*,*)'MARKER 1'
-
         ! We will need the r theta phi coordinates: 
         call compute_rtp_from_xyz()
-        !write(*,*)'MARKER 2'
-
-
-        write(*,*)'dim of rad_mineos is ', NR
-        write(*,*)'max and min of interp ', minval(interp_id_r), maxval(interp_id_r)
-
-
 
         ! Compute strain tensor for mode
         allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 
                 globalstrain(6, nglob))
         call compute_gll_mode_strain('S', n, l, m, strain1)
 
-        !write(*,*)'MARKER 3'
-
         call map_complex_vector(6, strain1, globalstrain, 0)
-
-        !write(*,*)'MARKER 4'
 
         ! needed for ensight geo file
         call allocate_if_unallocated(nglob, x_glob)
