@@ -26,7 +26,7 @@ A current list of tests in this directory, listed by subdirectory:
 
 
 ### `spline`: 
--   Currently a plotting test - needs updating to run from cmd line.
+-   Tests the spline interpolation of eigenfunction for a Spheroidal mode and compares with scipy.
 
 
 ### `ylm`: 
