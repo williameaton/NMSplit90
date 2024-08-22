@@ -7,6 +7,7 @@ subroutine get_mesh_radii()
                       xstore, ystore, zstore, unique_r, n_unique_rad, rad_id,&
                       interp_id_r, rad_mineos, IC_ID, verbose
     use allocation_module, only: allocate_if_unallocated
+    use spline, only: create_interpolation_radial_map
     implicit none 
     include "constants.h"
 
@@ -97,32 +98,8 @@ subroutine get_mesh_radii()
     !enddo
 
 
-    ! Find the knot id's of the unique radii 
-    ! we will want to interpolate to 
     allocate(interp_id_r(n_unique_rad))
-    interp_id_r(:) = 0
-    do i_unq = 1, n_unique_rad
-        ! For each radius we want to find the last knot that it is larger than
-        do i_knot = 1, IC_ID+1
-            if (unique_r(i_unq) .le. rad_mineos(i_knot))then 
-                ! This should be the first time that the knot is above the
-                ! radius in question and so we want the i_knot - 1 to be stored
-                ! Note that in some cases the radius will equal a knot (e.g. the IC radius)
-                ! In this case set it equal to that knot with the assumption the spline interpolation
-                ! will hold at the the boundaries of each knot
-                interp_id_r(i_unq) = i_knot - 1 
-                exit 
-            else
-            endif
-        enddo 
-    enddo 
-
-
-    ! Check the interp_id_r 
-    if(minval(interp_id_r).le.0 .or. maxval(interp_id_r).gt.IC_ID)then
-        write(*,*)'Error in assigning values to interp_id_r'
-        stop
-    endif 
+    call create_interpolation_radial_map(unique_r, interp_id_r, n_unique_rad, 1, IC_ID)
 
 
 
@@ -131,10 +108,11 @@ end subroutine get_mesh_radii
 
 
 
+
 subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
     use params, only:  NL, nspec, ngllx, & 
     nglly, ngllz, thetastore, phistore, rad_id,& 
-    u_spl, v_spl, udot_spl, vdot_spl
+    u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r
     use spline, only: interpolate_mode_eigenfunctions
     use ylm_plm, only: ylm_complex, ylm_deriv
     use mesh_utils, only: delta_spline
@@ -168,7 +146,7 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
     call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv, .true.)
 
     ! Spline interpolation: 
-    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
+    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, unique_r, n_unique_rad, interp_id_r)
     
     ! DT98 below D.1: k = sqrt(l(l+1))
     lf  = real(l, kind=SPLINE_REAL)
@@ -290,7 +268,7 @@ end subroutine compute_global_mode_displacement
 subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     use params, only: NL, n_unique_rad, nspec, ngllx, & 
                       nglly, ngllz, thetastore, phistore, rad_id, rstore,& 
-                      unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz
+                      unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz, interp_id_r
     use ylm_plm, only: ylm_complex, ylm_deriv
     use spline, only: interpolate_mode_eigenfunctions
     use mesh_utils, only: delta_spline
@@ -335,7 +313,7 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
     ! Spline interpolation: 
     !   - Computes the value of u, v, du, dv at each of the unique radial values
-    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
+    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, unique_r, n_unique_rad, interp_id_r)
 
 
     ! DT98 below D.1: k = sqrt(l(l+1))

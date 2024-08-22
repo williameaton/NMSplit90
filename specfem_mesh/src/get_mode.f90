@@ -74,6 +74,17 @@
                 nvec = 4 * NL
             endif
         endif ! l=0
+
+        elseif (type == 'C' .or. type == 'c') then
+            type1 = 'C'; type2 = 'c';
+            ! Inner core toroidal modes
+            ntype = 4
+            catalogue = trim(ddir)//'prem_ani_att_C'
+            nvec = 2 * NL        
+            bin_file = trim(ddir)//'prem_ani_att_C.bin'
+        else
+            write(*,*)'Error in get_mode: mode type must be S, T or C but was '//type
+
         endif ! T or S 
     
     
@@ -145,7 +156,7 @@
                if(type1=='S')then 
                 ! Radius, U, U', V, V', P, P'
                   write(ieigtxt,*)rad_mineos(i), buf(i), buf(i + NR), buf(i + 2*NR), buf(i + 3*NR), buf(i + 4*NR), buf(i + 5*NR)
-               elseif (type1=='T')then 
+               elseif (type1=='T' .or. type1=='C')then 
                 ! Radius, W, W' ?
                   write(ieigtxt,*)rad_mineos(i), buf(i), buf(i + NR)
                endif 

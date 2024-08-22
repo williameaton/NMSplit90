@@ -4,48 +4,114 @@ module spline
   contains 
 
 
-  subroutine interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
-    use params, only: n_unique_rad, u_spl, v_spl, udot_spl, vdot_spl, & 
+  subroutine interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, new_rad, nlength, interp_map)
+    use params, only: u_spl, v_spl, udot_spl, vdot_spl, & 
                       IC_ID, rad_mineos, NL
-    use allocation_module, only: allocate_if_unallocated
+    use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     implicit none
-
     ! IO variables
+    integer :: nlength
     character(len=1)        :: mode_type     ! mode type; S or T
     real(kind=SPLINE_REAL)            :: u(NL), du(NL)
     real(kind=SPLINE_REAL)            :: v(NL), dv(NL)
+    real(kind=CUSTOM_REAL)            :: new_rad(nlength)
+    integer                           :: interp_map(nlength)
 
     ! Interpolate u, du (or w, dw if toroidal)
-    call allocate_if_unallocated(n_unique_rad, u_spl)
-    call allocate_if_unallocated(n_unique_rad, udot_spl)
+    call deallocate_if_allocated(u_spl)
+    call allocate_if_unallocated(nlength, u_spl)
+    call deallocate_if_allocated(udot_spl)
+    call allocate_if_unallocated(nlength, udot_spl)
  
-    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID),  u(1:IC_ID),    u_spl)
-    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID), du(1:IC_ID), udot_spl)
+    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID),  u(1:IC_ID), nlength, new_rad, u_spl,    interp_map)
+    call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID), du(1:IC_ID), nlength, new_rad, udot_spl, interp_map)
 
     ! Interpolate v, dv if spheroidal
     if(mode_type.eq.'S')then 
-      call allocate_if_unallocated(n_unique_rad, v_spl)
-      call allocate_if_unallocated(n_unique_rad, vdot_spl)
-      call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID),  v(1:IC_ID),    v_spl)
-      call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID), dv(1:IC_ID), vdot_spl)
+      call allocate_if_unallocated(nlength, v_spl)
+      call allocate_if_unallocated(nlength, vdot_spl)
+      call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID),  v(1:IC_ID), nlength, new_rad,    v_spl, interp_map)
+      call cubic_spline_interp(IC_ID, rad_mineos(1:IC_ID), dv(1:IC_ID), nlength, new_rad, vdot_spl, interp_map)
     endif 
-
   end subroutine interpolate_mode_eigenfunctions
 
 
 
 
-  subroutine cubic_spline_interp(n, x, y, interp)
+
+  subroutine create_interpolation_radial_map(radial_arr, map_arr, arr_len, min_knot_id, max_knot_id)
+    use params, only: rad_mineos
+    implicit none 
+
+    ! IO variables
+    integer :: arr_len, map_arr(arr_len), min_knot_id, max_knot_id
+    real(kind=CUSTOM_REAL) :: radial_arr(arr_len)
+
+    ! Local variables
+    integer :: i_unq, i_knot
+
+    ! Find the knot id's of the radii just below the points we will want to interpolate to 
+    map_arr(:) = 0
+    do i_unq = 1, arr_len
+        ! For each radius we want to find the last knot that it is larger than
+        do i_knot = min_knot_id, max_knot_id
+            if (radial_arr(i_unq) .le. rad_mineos(i_knot))then 
+                ! This should be the first time that the knot is above the
+                ! radius in question and so we want the i_knot - 1 to be stored
+                ! Note that in some cases the radius will equal a knot (e.g. the IC radius)
+                ! In this case set it equal to that knot with the assumption the spline interpolation
+                ! will hold at the the boundaries of each knot
+                map_arr(i_unq) = i_knot - 1 
+                exit 
+            else
+            endif
+        enddo 
+    enddo 
+
+    ! Check the interp_id_r 
+    if(minval(map_arr).lt.min_knot_id .or. maxval(map_arr).gt.max_knot_id)then
+        write(*,*)'Error in assigning values to map'
+        write(*,*)' -- min value: ', minval(map_arr)
+        write(*,*)' -- max value: ', maxval(map_arr)
+
+        write(*,*)' ------ some useful debugging things -----'
+        write(*,*)' -- min value of your radial array  : ', minval(radial_arr)
+        write(*,*)' -- min value of mineos radial array: ', rad_mineos(min_knot_id)
+
+        write(*,*)' -- max value of your radial array  : ', maxval(radial_arr)
+        write(*,*)' -- max value of mineos radial array: ', rad_mineos(max_knot_id)
+    endif 
+
+
+
+  end subroutine
+  
+  
+
+
+
+
+
+
+  subroutine cubic_spline_interp(n, x, y, nout, outradial, interp, interp_map)
     ! Interpolate a radial eigenfunction (y) of length n specified at 
     ! radial points x, to the unique_r radii of the mesh
-    use params, only: interp_id_r, n_unique_rad, unique_r, rad_mineos
+    ! n = number of knots in input model 
+    ! x = radial/x values for function 
+    ! y = y values for function to be interpolated
+    ! nout = number of knots/radial points in the output (interpolated) function
+    ! interp = array with interpolated values at the nout radial points
+    ! interp_map: a map which, for each radial value in out radial, gives the index
+    ! of the mineos knot below the point
+
+    use params, only: n_unique_rad, rad_mineos
 
     implicit none 
     include "constants.h"
 
     ! I/O variables
-    integer :: n 
-    real(kind=CUSTOM_REAL) :: x(n)
+    integer :: n , nout , interp_map(nout)
+    real(kind=CUSTOM_REAL) :: x(n), outradial(nout)
     real(kind=SPLINE_REAL) :: y(n)
     real(kind=SPLINE_REAL) :: interp(n_unique_rad)
 
@@ -123,16 +189,49 @@ module spline
     ! where x[i] is the knot below the point xp 
     k = 3
     interp(:) = zero
-    do i = 1, n_unique_rad
-      j = interp_id_r(i)
+    do i = 1, nout
+      j = interp_map(i)
         do m = 0, k
-
-            !interp(i) = interp(i) + c(m+1,j)*(unique_r(i) - rad_mineos(j))**(k-m) 
-            interp(i) = interp(i) +  c(m+1,j)*(real(unique_r(i) - rad_mineos(j), kind=SPLINE_REAL))**(real(k-m, kind=SPLINE_REAL)) 
+            interp(i) = interp(i) +  c(m+1,j)*(real(outradial(i) - rad_mineos(j), kind=SPLINE_REAL))**(real(k-m, kind=SPLINE_REAL)) 
         enddo
     enddo 
 
 
   end subroutine cubic_spline_interp
+
+
+
+  subroutine write_mode_spline(n, mode_type, l, rad_arr, npoints)
+    ! Output the spline values: 
+    ! Save eigenfunctions to text file in column format 
+    use params, only: u_spl, udot_spl, v_spl, vdot_spl
+    implicit none 
+    ! IO variables: 
+    integer :: n, l 
+    character :: mode_type
+    real(kind=CUSTOM_REAL) :: rad_arr(npoints)
+    integer :: npoints
+
+    ! Local :
+    integer :: i
+    character(len=30) :: eigstring
+
+
+    write(eigstring,'(a,i2,a, i2, a)') 'spline_', n, mode_type, l, '.txt'
+    open(1,file=trim(eigstring))
+    do i =1, npoints
+        if(mode_type=='S')then 
+            write(1,*)rad_arr(i), u_spl(i), udot_spl(i), v_spl(i), vdot_spl(i)
+        elseif (mode_type=='T')then 
+            write(1,*)rad_arr(i), u_spl(i), udot_spl(i)
+        endif 
+    enddo 
+    close(1)
+
+
+
+  end subroutine write_mode_spline
+
+
 
 end module spline

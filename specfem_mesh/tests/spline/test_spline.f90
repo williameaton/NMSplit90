@@ -1,7 +1,7 @@
 program read_specfem_mesh
-    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r
+    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r
     use mesh_utils, only: read_proc_coordinates, load_ibool
-    use spline, only: interpolate_mode_eigenfunctions
+    use spline, only: interpolate_mode_eigenfunctions, write_mode_spline
     
     implicit none
     include "constants.h"
@@ -16,7 +16,6 @@ program read_specfem_mesh
     real(kind=SPLINE_REAL), allocatable :: u(:), du(:)
     real(kind=SPLINE_REAL), allocatable :: v(:), dv(:)
     character(len=1) :: mode_type
-    character(len=30) :: eigstring
     integer :: n, l, m, i
     
     ! Setup parameters: 
@@ -48,22 +47,10 @@ program read_specfem_mesh
 
     ! Spline interpolation: 
     !   - Computes the value of u, v, du, dv at each of the unique radial values
-    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
-    
-    ! Output the spline values: 
-    ! Save eigenfunctions to text file in column format 
+    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, unique_r, n_unique_rad, interp_id_r)
 
-    write(eigstring,'(a,i2,a, i2, a)') 'spline_', n, mode_type, l, '.txt'
-    open(1,file=trim(eigstring))
-    do i =1, n_unique_rad
-        if(mode_type=='S')then 
-            write(1,*)unique_r(i), u_spl(i), udot_spl(i), v_spl(i), vdot_spl(i)
-        elseif (mode_type=='T')then 
-            write(1,*)unique_r(i), u_spl(i), udot_spl(i)
-        endif 
-    enddo 
-    close(1)
 
+    call write_mode_spline(n, mode_type, l, unique_r, n_unique_rad)
 
     end program
     
