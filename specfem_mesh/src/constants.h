@@ -37,6 +37,12 @@ real(kind=SPLINE_REAL), parameter :: SPLINE_EIGHT = 8.0000000_SPLINE_REAL
 complex(kind=CUSTOM_REAL), parameter :: iZERO  = (ZERO, ZERO)
 complex(kind=CUSTOM_REAL), parameter :: iONE   = (ZERO, ONE)
 
+complex(kind=SPLINE_REAL), parameter :: SPLINE_iZERO  = (ZERO, ZERO)
+complex(kind=SPLINE_REAL), parameter :: SPLINE_iONE   = (ZERO, ONE)
+
+
+
+
 ! Scaling factors
 real(kind=CUSTOM_REAL), parameter :: RHOAV     = 5514.3_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: GRAV      = 6.6723e-11

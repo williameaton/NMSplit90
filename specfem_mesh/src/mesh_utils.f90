@@ -5,6 +5,19 @@ module mesh_utils
     implicit none 
     include "constants.h"
 
+
+    interface map_local_global
+        module procedure map_local_global_double_precision
+        module procedure map_local_global_real_4
+        module procedure map_local_global_complex_4
+    end interface map_local_global
+
+
+    interface map_complex_vector
+        module procedure map_complex_vector_4
+        module procedure map_complex_vector_8
+    end interface map_complex_vector
+
     contains 
     
 
@@ -35,7 +48,7 @@ module mesh_utils
 
 
 
-    subroutine map_local_global_custom_real(loc, glob, direction)
+    subroutine map_local_global_real_4(loc, glob, direction)
         ! mappings between local and global variables
         ! direction: 0   local  --> global 
         !            1   global --> local 
@@ -46,9 +59,8 @@ module mesh_utils
         include "precision.h"
 
         ! I/O variables: 
-        real(kind=CUSTOM_REAL) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
+        real(kind=4) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
         integer :: direction
-
 
         ! Local variables: 
         integer :: ispec, i, j, k
@@ -83,9 +95,8 @@ module mesh_utils
             stop
         endif 
 
-
         return 
-    end subroutine map_local_global_custom_real
+    end subroutine map_local_global_real_4
 
     subroutine map_local_global_double_precision(loc, glob, direction)
         ! mappings between local and global variables
@@ -98,9 +109,8 @@ module mesh_utils
         include "precision.h"
 
         ! I/O variables: 
-        real(kind=CUSTOM_REAL) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
+        real(kind=8) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
         integer :: direction
-
 
         ! Local variables: 
         integer :: ispec, i, j, k
@@ -135,18 +145,12 @@ module mesh_utils
             stop
         endif 
 
-
         return 
     end subroutine map_local_global_double_precision
 
 
 
-
-
-
-
-
-    subroutine map_local_global_complex(loc, glob, direction)
+    subroutine map_local_global_complex_4(loc, glob, direction)
         ! mappings between local and global variables
         ! direction: 0   local  --> global 
         !            1   global --> local 
@@ -157,9 +161,8 @@ module mesh_utils
         include "precision.h"
 
         ! I/O variables: 
-        complex(kind=CUSTOM_REAL) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
+        complex(kind=4) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
         integer :: direction
-
 
         ! Local variables: 
         integer :: ispec, i, j, k
@@ -194,17 +197,67 @@ module mesh_utils
             stop
         endif 
         return 
-    end subroutine map_local_global_complex
+    end subroutine map_local_global_complex_4
 
 
 
 
-    subroutine map_complex_vector(dim1, loc, glob, direction)
+
+    subroutine map_local_global_complex_8(loc, glob, direction)
+        ! mappings between local and global variables
+        ! direction: 0   local  --> global 
+        !            1   global --> local 
+
+        use params, only: ngllx, nglly, ngllz, nspec, nglob, ibool
+        implicit none 
+        
+        include "precision.h"
+
+        ! I/O variables: 
+        complex(kind=8) :: loc(ngllx,nglly,ngllz,nspec), glob(nglob)
+        integer :: direction
+
+        ! Local variables: 
+        integer :: ispec, i, j, k
+    
+        ! Ensure we have ibool ready to use
+        call check_ibool_is_defined()
+
+        if (direction.eq.0)then 
+            ! Map local to global
+            do ispec = 1, nspec 
+                do i = 1, ngllx 
+                    do j = 1, nglly
+                        do k = 1, ngllz
+                            glob(ibool(i,j,k,ispec)) = loc(i,j,k,ispec)
+                        enddo 
+                    enddo 
+                enddo 
+            enddo
+        elseif(direction.eq.1)then 
+            ! Map global to local
+            do ispec = 1, nspec 
+                do i = 1, ngllx 
+                    do j = 1, nglly
+                        do k = 1, ngllz
+                            loc(i,j,k,ispec) = glob(ibool(i,j,k,ispec))
+                        enddo 
+                    enddo 
+                enddo 
+            enddo
+        else
+            write(*,*)'ERROR: direction can only be 1 or 0 but has value ', direction
+            stop
+        endif 
+        return 
+    end subroutine map_local_global_complex_8
+
+
+    subroutine map_complex_vector_4(dim1, loc, glob, direction)
         ! Wrapper of map_local_global_complex that maps vector
         ! arrays from local <--> global 
         ! direction: 0   local  --> global 
         !            1   global --> local 
-        
         use params, only: ngllx, nglly, ngllz, nspec, nglob
         implicit none 
         
@@ -212,34 +265,69 @@ module mesh_utils
 
         ! IO variables:
         integer :: dim1, direction
-        complex(kind=CUSTOM_REAL) :: loc(dim1, ngllx, nglly, ngllz, nspec)
-        complex(kind=CUSTOM_REAL) :: glob(dim1, nglob)
+        complex(kind=4) :: loc(dim1, ngllx, nglly, ngllz, nspec)
+        complex(kind=4) :: glob(dim1, nglob)
 
         ! Local: 
-        complex(kind=CUSTOM_REAL) :: loc_tmp(ngllx, nglly, ngllz, nspec)
-        complex(kind=CUSTOM_REAL) :: glob_tmp(nglob)
+        complex(kind=4) :: loc_tmp(ngllx, nglly, ngllz, nspec)
+        complex(kind=4) :: glob_tmp(nglob)
         integer                   :: i
-
 
         if (direction.eq.0)then
             ! local -> global
             do i = 1, dim1
                 loc_tmp(:, :, :, :) = loc(i, :, :, :, :)
-                call map_local_global_complex(loc_tmp, glob_tmp, direction)
+                call map_local_global_complex_4(loc_tmp, glob_tmp, direction)
                 glob(i,:) = glob_tmp
             enddo
         elseif(direction.eq.1)then
             ! global -> local
             do i = 1, dim1
                 glob_tmp(:) = glob(i, :)
-                call map_local_global_complex(loc_tmp, glob_tmp, direction)
+                call map_local_global_complex_4(loc_tmp, glob_tmp, direction)
                 loc(i, :, :, :, :) = loc_tmp(:, :, :, :)
             enddo
         endif  
-    
-    end subroutine map_complex_vector
+    end subroutine map_complex_vector_4
 
 
+
+    subroutine map_complex_vector_8(dim1, loc, glob, direction)
+        ! Wrapper of map_local_global_complex that maps vector
+        ! arrays from local <--> global 
+        ! direction: 0   local  --> global 
+        !            1   global --> local 
+        use params, only: ngllx, nglly, ngllz, nspec, nglob
+        implicit none 
+        
+        include "precision.h"
+
+        ! IO variables:
+        integer :: dim1, direction
+        complex(kind=8) :: loc(dim1, ngllx, nglly, ngllz, nspec)
+        complex(kind=8) :: glob(dim1, nglob)
+
+        ! Local: 
+        complex(kind=8) :: loc_tmp(ngllx, nglly, ngllz, nspec)
+        complex(kind=8) :: glob_tmp(nglob)
+        integer                   :: i
+
+        if (direction.eq.0)then
+            ! local -> global
+            do i = 1, dim1
+                loc_tmp(:, :, :, :) = loc(i, :, :, :, :)
+                call map_local_global_complex_8(loc_tmp, glob_tmp, direction)
+                glob(i,:) = glob_tmp
+            enddo
+        elseif(direction.eq.1)then
+            ! global -> local
+            do i = 1, dim1
+                glob_tmp(:) = glob(i, :)
+                call map_local_global_complex_8(loc_tmp, glob_tmp, direction)
+                loc(i, :, :, :, :) = loc_tmp(:, :, :, :)
+            enddo
+        endif  
+    end subroutine map_complex_vector_8
 
 
 

@@ -7,7 +7,7 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose = 1
+integer, parameter :: verbose = 4
 
 ! Specfem mesh files: 
 character(len=250) :: datadir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced'
@@ -61,8 +61,8 @@ real(kind=CUSTOM_REAL), allocatable :: xi(:), wgll(:), dgll(:,:)
 ! Local mesh variables:
 integer, allocatable                   :: ibool(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: rho(:,:,:,:)
-complex(kind=CUSTOM_REAL), allocatable :: strain1(:,:,:,:,:)
-complex(kind=CUSTOM_REAL), allocatable :: disp1(:,:,:,:,:)
+complex(kind=SPLINE_REAL), allocatable :: strain1(:,:,:,:,:)
+complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:)
 
 real(kind=CUSTOM_REAL), allocatable    :: jac(:,:,:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: detjac(:,:,:,:)
@@ -71,7 +71,7 @@ real(kind=CUSTOM_REAL), allocatable    :: detjac(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: globalrho(:)
 real(kind=CUSTOM_REAL), allocatable    :: x_glob(:), y_glob(:), z_glob(:)
 real(kind=CUSTOM_REAL), allocatable    :: theta_glob(:), phi_glob(:)
-complex(kind=CUSTOM_REAL), allocatable :: globalstrain(:,:)
+complex(kind=SPLINE_REAL), allocatable :: globalstrain(:,:)
 complex(kind=CUSTOM_REAL), allocatable :: globaldisp(:,:)
 
 real(kind=CUSTOM_REAL), allocatable :: Rmat(:,:,:)

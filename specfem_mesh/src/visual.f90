@@ -119,6 +119,8 @@ subroutine create_ensight_file_prefix(iproc, region)
     endif
     write(en_fname,format_string)'reg',region,'proc', iproc
 
+    if(verbose.ge.2)write(*,'(/,a)')'Ensight prefix: '//trim(en_fname)
+
 end subroutine
 
 
@@ -138,7 +140,7 @@ subroutine write_complex_symtensor_to_ensight(symten, suffix, part)
 
     ! IO variables: 
     integer :: part
-    complex(kind=CUSTOM_REAL) :: symten(6, nglob)
+    complex(kind=SPLINE_REAL) :: symten(6, nglob)
     character(len=*) :: suffix
 
     ! Local 

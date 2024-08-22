@@ -2,7 +2,8 @@
 FC = gfortran
 
 # Compiler flags
-FFLAGS = -Wall -O2 -llapack -lblas -Wno-maybe-uninitialized
+FFLAGS = -Wall -O2 -llapack -lblas -Wpedantic
+
 
 # Directories
 SRC_DIR = src

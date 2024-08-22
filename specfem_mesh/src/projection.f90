@@ -6,6 +6,7 @@ subroutine get_mesh_radii()
     use params, only: ngllx, nglly, ngllz, nspec, RA, &
                       xstore, ystore, zstore, unique_r, n_unique_rad, rad_id,&
                       interp_id_r, rad_mineos, IC_ID, verbose
+    use allocation_module, only: allocate_if_unallocated
     implicit none 
     include "constants.h"
 
@@ -27,12 +28,11 @@ subroutine get_mesh_radii()
     ! Set tolerance for 'same radii' 
     tol = 1.0e-4
 
-
     ! Initial value
     unique_id = 1
 
     ! Allocate the array that will store the unique radius IDs: 
-    allocate(rad_id(ngllx, nglly, ngllz, nspec))
+    call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, rad_id)
 
     do ispec = 1, nspec
         do i = 1, ngllx
@@ -63,7 +63,6 @@ subroutine get_mesh_radii()
         enddo 
     enddo 
 
-    
     ! Allocate new unique radius array of the correct size
     ! It might be that the very last node tested in unique and so 
     ! unique_id is actually 1 too large -- test if last radius is 0 and if so cute 
@@ -101,18 +100,29 @@ subroutine get_mesh_radii()
     ! Find the knot id's of the unique radii 
     ! we will want to interpolate to 
     allocate(interp_id_r(n_unique_rad))
+    interp_id_r(:) = 0
     do i_unq = 1, n_unique_rad
         ! For each radius we want to find the last knot that it is larger than
         do i_knot = 1, IC_ID+1
-            if (unique_r(i_unq) .lt. rad_mineos(i_knot))then 
+            if (unique_r(i_unq) .le. rad_mineos(i_knot))then 
                 ! This should be the first time that the knot is above the
                 ! radius in question and so we want the i_knot - 1 to be stored
+                ! Note that in some cases the radius will equal a knot (e.g. the IC radius)
+                ! In this case set it equal to that knot with the assumption the spline interpolation
+                ! will hold at the the boundaries of each knot
                 interp_id_r(i_unq) = i_knot - 1 
                 exit 
             else
             endif
         enddo 
     enddo 
+
+
+    ! Check the interp_id_r 
+    if(minval(interp_id_r).le.0 .or. maxval(interp_id_r).gt.IC_ID)then
+        write(*,*)'Error in assigning values to interp_id_r'
+        stop
+    endif 
 
 
 
@@ -294,17 +304,21 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     integer          :: nord          ! n value of mode
     integer          :: l             ! l value (degree) of mode
     integer          :: m             ! m value (order)  of mode
-    complex(kind=CUSTOM_REAL) :: strain(6,ngllx, nglly, ngllz, nspec)
+    complex(kind=SPLINE_REAL) :: strain(6,ngllx, nglly, ngllz, nspec)
+
     ! Local variables: 
-    real(kind=4)  :: omega  ! normalized anglar frequency   
-    real(kind=4)  :: qval   ! normalized Q factor        
+    real(kind=SPLINE_REAL)  :: omega  ! normalized anglar frequency   
+    real(kind=SPLINE_REAL)  :: qval   ! normalized Q factor        
 
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
-    real(kind=CUSTOM_REAL)    :: theta, phi, du_r, u_r, & 
-                                 unq_r, dv_r, v_r,  & 
-                                 sinth, tanth, w_r, dw_r, & 
-                                 ff, dm0, dd1, dd2
+    real(kind=CUSTOM_REAL)    :: theta, phi
 
+    complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta
+
+
+    real(kind=SPLINE_REAL) :: sinth, tanth, unq_r, du_r, u_r, & 
+                              dv_r, v_r, w_r, dw_r, ff, &
+                              dm0, dd1, dd2
 
     integer :: ispec, i,j,k
     ! Mineos eigenfunction values:
@@ -315,13 +329,21 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
     real(kind=SPLINE_REAL)  :: xx_r, zz_r, mf, lf, ll1, tl14p, kr2
 
+
+    !write(*,*)'MARKER 31'
+
     ! Load the mode from the database
     call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv, .true.)
+
+    !write(*,*)'MARKER 32'
 
     ! Spline interpolation: 
     !   - Computes the value of u, v, du, dv at each of the unique radial values
     call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv)
     
+    !write(*,*)'MARKER 33'
+
+
     ! DT98 below D.1: k = sqrt(l(l+1))
     lf  = real(l, kind=SPLINE_REAL)
     mf  = real(m, kind=SPLINE_REAL)
@@ -329,6 +351,8 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     tl14p = ((SPLINE_TWO*lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2
     kr2 = ll1*((ll1*ll1 - SPLINE_TWO)**SPLINE_HALF)
 
+
+    !write(*,*)'MARKER 34'
 
     dm0 = delta_spline(m, 0)                       ! δ_{m0}
     dd1 = delta_spline(m, -1) - delta_spline(m, 1)   ! δ_{m -1} - δ_{m 1}
@@ -346,6 +370,8 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
         udot_spl = udot_spl / ll1
     endif 
 
+
+    !write(*,*)'MARKER 35'
 
     ! Compute x and z auxillary variables - DT98 D.20
     ! If spheroidal mode then u,v are non zero but w, wdot are 0
@@ -375,48 +401,53 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         xx_r  =       xx(rad_id(i,j,k,ispec))
 
                         ! r and theta at the node  
-                        unq_r = rstore(i,j,k,ispec)
-                        sinth = sinp(theta)
-                        tanth = tanp(theta)
+                        unq_r = real(rstore(i,j,k,ispec), kind=SPLINE_REAL)
+                        sinth = real(sinp(theta),         kind=SPLINE_REAL)
+                        tanth = real(tanp(theta),         kind=SPLINE_REAL)
 
                         if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                             ! Values at the pole 
                             ! D.28
-                            ff = (two*u_r - ll1*ll1*v_r)/unq_r    
+                            ff = (SPLINE_TWO*u_r - ll1*ll1*v_r)/unq_r    
                             ! E_rr: DT98 D.22
                             strain(1,i,j,k,ispec) = tl14p * du_r * dm0
                             ! E_tt: DT98 D.23
-                            strain(2,i,j,k,ispec) = half * tl14p * &
+                            strain(2,i,j,k,ispec) = SPLINE_HALF * tl14p * &
                                                     (ff*dm0 + & 
-                                                    kr2*TWO*v_r * & 
-                                                    dd2/(FOUR*unq_r))
+                                                    kr2*SPLINE_TWO*v_r * & 
+                                                    dd2/(SPLINE_FOUR*unq_r))
 
                             ! E_pp: DT98 D.24
-                            strain(3,i,j,k,ispec) = half * tl14p * &
+                            strain(3,i,j,k,ispec) = SPLINE_HALF * tl14p * &
                                                     (ff*dm0 - & 
-                                                    kr2*TWO*v_r * & 
-                                                    dd2/(FOUR*unq_r))
+                                                    kr2*SPLINE_TWO*v_r * & 
+                                                    dd2/(SPLINE_FOUR*unq_r))
 
                             ! E_rt: DT98 D.25
-                            strain(4,i,j,k,ispec) = tl14p * ll1 * xx_r * dd1/FOUR
+                            strain(4,i,j,k,ispec) = tl14p * ll1 * xx_r * dd1/SPLINE_FOUR
                             ! E_rp: DT98 D.26
-                            strain(5,i,j,k,ispec) = tl14p * ll1 * iONE * mf * xx_r/FOUR
+                            strain(5,i,j,k,ispec) = tl14p * ll1 * SPLINE_iONE * mf * xx_r/SPLINE_FOUR
                             ! E_tp: DT98 D.27
-                            strain(6,i,j,k,ispec) = tl14p * kr2 * iONE * mf * v_r * dd2/(EIGHT*unq_r)
+                            strain(6,i,j,k,ispec) = tl14p * kr2 * SPLINE_iONE * mf * v_r * dd2/(SPLINE_EIGHT*unq_r)
                         else 
+
+                            ! Convert to SPLINE_REAL precision
+                            sp_ylm         = cmplx(ylm, kind=SPLINE_REAL)
+                            spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+
                             ! Values away from the pole
                             ! E_rr: DT98 D.14
-                            strain(1,i,j,k,ispec) = ylm*du_r  
+                            strain(1,i,j,k,ispec) = sp_ylm*du_r  
                             ! E_tt: DT98 D.15
-                            strain(2,i,j,k,ispec) = (ylm*u_r - v_r*(dylm_theta/tanth -  ylm*(mf/sinth)**TWO + ll1*ll1*ylm))/unq_r
+                            strain(2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO + ll1*ll1*sp_ylm))/unq_r
                             ! E_pp: DT98 D.16
-                            strain(3,i,j,k,ispec) = (ylm*u_r + v_r*(dylm_theta/tanth -  ylm*(mf/sinth)**TWO))/unq_r
+                            strain(3,i,j,k,ispec) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO))/unq_r
                             ! E_rt: DT98 D.17
-                            strain(4,i,j,k,ispec) = HALF * xx_r * dylm_theta
+                            strain(4,i,j,k,ispec) = SPLINE_HALF * xx_r * spl_dylm_theta
                             ! E_rp: DT98 D.18
-                            strain(5,i,j,k,ispec) = HALF * iONE * mf * xx_r * ylm/sinth
+                            strain(5,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * xx_r * sp_ylm/sinth
                             ! E_tp: DT98 D.19
-                            strain(6,i,j,k,ispec) = iONE * mf * v_r * (dylm_theta - ylm/tanth) / (unq_r * sinth)
+                            strain(6,i,j,k,ispec) = SPLINE_HALF * mf * v_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r * sinth)
                         endif                      
 
                     enddo 
@@ -446,38 +477,43 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         zz_r  =       zz(rad_id(i,j,k,ispec))
 
                         ! r and theta at the node  
-                        unq_r = rstore(i,j,k,ispec)
-                        sinth = sinp(theta)
-                        tanth = tanp(theta)
+                        unq_r = real(rstore(i,j,k,ispec), kind=SPLINE_REAL)
+                        sinth = real(sinp(theta),         kind=SPLINE_REAL)
+                        tanth = real(tanp(theta),         kind=SPLINE_REAL)
 
                         if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                             ! Values at the pole 
                             ! E_rr: DT98 D.22
-                            strain(1,i,j,k,ispec) = (zero, zero)
+                            strain(1,i,j,k,ispec) = SPLINE_iZERO
                             ! E_tt: DT98 D.23
-                            strain(2,i,j,k,ispec) = half * tl14p * iONE * mf * w_r * dd2 * kr2/(four * unq_r)
+                            strain(2,i,j,k,ispec) = SPLINE_HALF * tl14p * SPLINE_iONE * mf * w_r * dd2 * kr2/(SPLINE_FOUR * unq_r)
                             ! E_pp: DT98 D.24
-                            strain(3,i,j,k,ispec) = - half * tl14p * iONE * mf * w_r * dd2 * kr2/(four * unq_r)
+                            strain(3,i,j,k,ispec) = -SPLINE_HALF * tl14p * SPLINE_iONE * mf * w_r * dd2 * kr2/(SPLINE_FOUR * unq_r)
                             ! E_rt: DT98 D.25
-                            strain(4,i,j,k,ispec) = tl14p * ll1 * iONE * mf * zz_r * dd1 / FOUR
+                            strain(4,i,j,k,ispec) = tl14p * ll1 * SPLINE_iONE * mf * zz_r * dd1 / SPLINE_FOUR
                             ! E_rp: DT98 D.26
-                            strain(5,i,j,k,ispec) = - tl14p * ll1 * zz_r * dd1 / FOUR
+                            strain(5,i,j,k,ispec) = - tl14p * ll1 * zz_r * dd1 / SPLINE_FOUR
                             ! E_tp: DT98 D.27
-                            strain(6,i,j,k,ispec) = - tl14p * kr2 * w_r * dd2 / (unq_r * FOUR)
+                            strain(6,i,j,k,ispec) = - tl14p * kr2 * w_r * dd2 / (unq_r * SPLINE_FOUR)
                         else
+
+                            ! Convert to SPLINE_REAL precision
+                            sp_ylm         = cmplx(ylm, kind=SPLINE_REAL)
+                            spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+
                             ! E_rr: DT98 D.14
-                            strain(1,i,j,k,ispec) = (zero, zero)
+                            strain(1,i,j,k,ispec) = SPLINE_iZERO
                             ! E_tt: DT98 D.15
-                            strain(2,i,j,k,ispec) = iONE * mf * w_r * (dylm_theta - ylm/tanth) / (unq_r*sinth)
+                            strain(2,i,j,k,ispec) = SPLINE_iONE * mf * w_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r*sinth)
                             ! E_pp: DT98 D.16
                             strain(3,i,j,k,ispec) = - strain(2,i,j,k,ispec)
                             ! E_rt: DT98 D.17
-                            strain(4,i,j,k,ispec) = HALF * iONE * mf * zz_r * ylm / sinth
+                            strain(4,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * zz_r * sp_ylm / sinth
                             ! E_rp: DT98 D.18
-                            strain(5,i,j,k,ispec) =  - HALF * zz_r * dylm_theta
+                            strain(5,i,j,k,ispec) =  - SPLINE_HALF * zz_r * spl_dylm_theta
                             ! E_tp: DT98 D.19
-                            strain(6,i,j,k,ispec) = (dylm_theta/tanth + & 
-                                                    (HALF*ll1*ll1 - (mf/sinth)**TWO)*ylm & 
+                            strain(6,i,j,k,ispec) = (spl_dylm_theta/tanth + & 
+                                                    (SPLINE_HALF*ll1*ll1 - (mf/sinth)**SPLINE_TWO)*sp_ylm & 
                                                     )* w_r / unq_r
                         endif 
                     enddo 
@@ -488,9 +524,9 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
         write(*,*)'Error: mode_type must be S or T'
         stop
     endif 
+   
 
-
-    if (maxval(real(strain(1,:,:,:,:))).gt. 100.0)then
+    if (maxval(abs(real(strain(1,:,:,:,:)))).gt. 100.0)then
         write(*,*)'ERROR: large strain max value:  ', maxval(real(strain(1,:,:,:,:)))
         stop 
     endif 
