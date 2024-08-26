@@ -47,5 +47,6 @@ complex(kind=SPLINE_REAL), parameter :: SPLINE_iONE   = (ZERO, ONE)
 real(kind=CUSTOM_REAL), parameter :: RHOAV     = 5514.3_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: GRAV      = 6.6723e-11
 real(kind=CUSTOM_REAL), parameter :: SCALE_R   = 6371000.0_CUSTOM_REAL
+real(kind=CUSTOM_REAL), parameter :: SCALE_T  =  (PI * GRAV * RHOAV)**(-HALF)
 real(kind=CUSTOM_REAL), parameter :: ACCENORM  = PI * GRAV * RHOAV * SCALE_R
 real(kind=CUSTOM_REAL), parameter :: MOMENORM  = PI * GRAV * (RHOAV ** 2) * (SCALE_R ** 5)

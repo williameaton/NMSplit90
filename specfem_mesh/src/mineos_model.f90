@@ -1,7 +1,7 @@
 subroutine process_mineos_model()
 
     use params, only: rad_mineos, NR, NL, ddir, model_fname, RA, radius, &
-                      verbose, IC_ID, CMB_ID
+                      verbose, IC_ID, CMB_ID, rho_mineos
 
     implicit none
     include "constants.h"
@@ -33,7 +33,7 @@ subroutine process_mineos_model()
     ! Setup model params based on this first read
     NL = NR
     RA = realjunk
-    allocate(radius(NR), rad_mineos(NR))
+    allocate(radius(NR), rad_mineos(NR), rho_mineos(NR))
 
     ! Warning if not radius 6371 km 
     if (RA.ne.SCALE_R .and. verbose.ge.1)then 
@@ -51,7 +51,8 @@ subroutine process_mineos_model()
         read(iomod,*,iostat=ios)  intjunk, radius(i), rho, vpv, vph, vsv, vsh
 
         rad_mineos(i) = radius(i) / SCALE_R
-        
+        rho_mineos(i) = rho / RHOAV
+
         ! Detect ICB 
         if(vsv_prev.gt.ZERO .and. vsv.eq.ZERO)then
             IC_ID = i - 1 

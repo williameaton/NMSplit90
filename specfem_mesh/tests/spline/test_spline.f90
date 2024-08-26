@@ -1,8 +1,8 @@
 program read_specfem_mesh
-    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r
+    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r, IC_ID
     use mesh_utils, only: read_proc_coordinates, load_ibool
-    use spline, only: interpolate_mode_eigenfunctions, write_mode_spline
-    
+    use spline, only: interpolate_mode_eigenfunctions, write_mode_spline, create_interpolation_radial_map
+    use allocation_module, only: allocate_if_unallocated
     implicit none
     include "constants.h"
 
@@ -25,7 +25,6 @@ program read_specfem_mesh
     mode_type = 'S' 
     n = 23
     l = 12
-    m = 7
 
     ! Read mineos model 
     call process_mineos_model()
@@ -45,9 +44,9 @@ program read_specfem_mesh
     ! Load the mode from the database and save it (.true.)
     call get_mode(mode_type, n, l, omega, qval, u, du, v, dv, .true.)
 
-    ! Spline interpolation: 
-    !   - Computes the value of u, v, du, dv at each of the unique radial values
-    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, unique_r, n_unique_rad, interp_id_r)
+    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, 1, IC_ID, &  
+                                         unique_r, n_unique_rad, interp_id_r)
+
 
 
     call write_mode_spline(n, mode_type, l, unique_r, n_unique_rad)

@@ -63,13 +63,13 @@ $(OBJ_DIR)/get_mode.o: $(SRC_DIR)/get_mode.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) 
 $(OBJ_DIR)/ylm_plm.o: $(SRC_DIR)/ylm_plm.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -J$(MOD_DIR) -c $< -o $@
 
-# Compile projection.f90 after params.mod is generated
-$(OBJ_DIR)/projection.o: $(SRC_DIR)/projection.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
-	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
-
 # Compile spline.f90 after params.mod is generated
 $(OBJ_DIR)/spline.o: $(SRC_DIR)/spline.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -J$(MOD_DIR)  -c $< -o $@
+
+# Compile projection.f90 after params.mod is generated
+$(OBJ_DIR)/projection.o: $(SRC_DIR)/projection.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
+	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
 
 # Compile mineos_model.f90 after params.mod is generated
 $(OBJ_DIR)/mineos_model.o: $(SRC_DIR)/mineos_model.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)

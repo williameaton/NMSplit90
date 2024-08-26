@@ -7,14 +7,15 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose = 4
+integer, parameter :: verbose = 1
+logical, parameter :: all_warnings = .false.
 
 ! Specfem mesh files: 
 character(len=250) :: datadir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced'
 
 
 
-! Mineos parameters: 
+! Mineos model parameters: 
 character(len=250), parameter  :: ddir = '/Users/eaton/Documents/Software/NMSplit90/databases/prem_ani_att_database/'
 character(len=60),  parameter  :: model_fname = 'model'
 integer                              :: NR
@@ -25,6 +26,7 @@ real(CUSTOM_REAL)              :: RA
 
 real(kind=CUSTOM_REAL), allocatable :: rad_mineos(:)  ! Non-dimensionalised
 real(kind=CUSTOM_REAL), allocatable :: radius(:)      ! Dimensionalised
+real(kind=CUSTOM_REAL), allocatable :: rho_mineos(:)  ! Density (non-dimensionalised by RHOAV)
 
 ! Radial discontinuities
 !   ndisc: number of discontinuities
@@ -48,6 +50,7 @@ real(kind=CUSTOM_REAL), allocatable :: unique_r(:)
 integer :: n_unique_rad
 integer, allocatable :: rad_id(:, :, :, :)  ! Points to the unique radius
 integer, allocatable :: interp_id_r(:)
+integer, allocatable :: interp_map(:)
 
 
 ! GLL values
@@ -73,7 +76,6 @@ real(kind=CUSTOM_REAL), allocatable    :: x_glob(:), y_glob(:), z_glob(:)
 real(kind=CUSTOM_REAL), allocatable    :: theta_glob(:), phi_glob(:)
 complex(kind=SPLINE_REAL), allocatable :: globalstrain(:,:)
 complex(kind=CUSTOM_REAL), allocatable :: globaldisp(:,:)
-
 real(kind=CUSTOM_REAL), allocatable :: Rmat(:,:,:)
 
 

@@ -60,8 +60,35 @@ module integrate
     end function  integrate_complex_mesh_scalar
 
 
+    real(kind=SPLINE_REAL) function integrate_r_traps(r, f, n)
+        ! integrates a radial function f(r) using a trapesoid method
 
+        implicit none
+        include "constants.h"
 
+        ! IO variables
+        integer :: n
+        real(kind=CUSTOM_REAL) r(n)
+        real(kind=SPLINE_REAL) f(n)
 
+        ! Local variables
+        integer :: i 
+        real(kind=SPLINE_REAL) sum, dr(n-1)
+        
+        if(n .lt. 2)then 
+            write(*,*)'Error: must be at least 2 points to integrate'
+        elseif(n.eq.2)then 
+            sum = real(r(2)-r(1),  kind=SPLINE_REAL) *  (f(1)+f(2))/SPLINE_TWO 
+        else
+            dr(:) = real(r(2:n)-r(1:n-1), kind=SPLINE_REAL)
+
+            sum = zero
+            do i = 1, n-1
+                sum = sum +  dr(i)*(f(i) + f(i+1))/SPLINE_TWO
+            enddo 
+        endif
+
+        integrate_r_traps = sum
+end function integrate_r_traps
 
 end module integrate 
