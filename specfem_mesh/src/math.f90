@@ -114,7 +114,7 @@ module math
     double precision function inv_cosine_double(x)
         implicit none 
         real(kind=8) :: x
-        inv_cosine_double = dcos(x)
+        inv_cosine_double = dacos(x)
     end function inv_cosine_double
 
 
