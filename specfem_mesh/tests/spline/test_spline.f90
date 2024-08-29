@@ -11,7 +11,7 @@ program read_specfem_mesh
     integer :: region                ! Region code
 
     ! Variables for splines/modes: 
-    real(kind=SPLINE_REAL)  :: omega  ! normalized anglar frequency   
+    real(kind=SPLINE_REAL)  :: om  ! normalized anglar frequency   
     real(kind=SPLINE_REAL)  :: qval   ! normalized Q factor        
     real(kind=SPLINE_REAL), allocatable :: u(:), du(:)
     real(kind=SPLINE_REAL), allocatable :: v(:), dv(:)
@@ -42,7 +42,7 @@ program read_specfem_mesh
 
 
     ! Load the mode from the database and save it (.true.)
-    call get_mode(mode_type, n, l, omega, qval, u, du, v, dv, .true.)
+    call get_mode(mode_type, n, l, om, qval, u, du, v, dv, .true.)
 
     call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, 1, IC_ID, &  
                                          unique_r, n_unique_rad, interp_id_r)

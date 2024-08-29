@@ -1,6 +1,6 @@
 
 program test_mode_norm
-    use params, only: NL, IC_ID, ndisc, rdisc, disc, rad_mineos, rho_mineos, u_spl, v_spl, interp_map
+    use params, only: NL, IC_ID, ndisc, rdisc, disc, rad_mineos, rho_mineos, u_spl, v_spl, interp_map, rho_spl
     use spline, only: create_interpolation_radial_map, interpolate_mode_eigenfunctions, write_mode_spline, interpolate_mineos_variable, quad_spline_interp_3
     use Integrate, only: integrate_r_traps
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
@@ -22,7 +22,7 @@ program test_mode_norm
     logical :: found
     real(kind=CUSTOM_REAL), allocatable :: radial_vals(:), r_lower, r_upper
 
-    real(SPLINE_REAL), allocatable :: rho_spl(:), integrand(:)
+    real(SPLINE_REAL), allocatable :: integrand(:)
     real(SPLINE_REAL) :: total_integral, sum,  precision
 
 

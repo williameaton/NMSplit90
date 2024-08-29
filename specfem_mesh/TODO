@@ -1,21 +1,28 @@
 Splitting functions
 - Elastic tensor 
-- Gauss integral 
+- Rotation matrix 2 ways: 
+  1) SEM method -- D.36 -- what we would use going forwards
+  2) D.68 -- theory-based method to benchmark case 1
+
+
+Toroidal modes: 
+  - Loaded & Normalised correctly (1)
+  - Strain being computed correctly
+  - Displacement being computed correctly
+  - Spline interpolation?
+
 
 Utilities
 - Rotate tensor XYZ --> RTP 
   --> we have RTP to XYZ so invert? 
-- Gauss integration - weights, jacobians from specfem etc
-
-
 
 Strain
 - Trace occassional error? 
 
-
 Testing
 - Check xyz -> rtp of coordinates 
+- Lagrange
+- Legendre
 
 
 Visual 
-- Allow output of single mode 

@@ -45,8 +45,9 @@ contains
     ! (1 - x^2)^0.5
     y = sqrtp(1-x**2)
     
+    ! Increase degree and order from P_0^0 to P_q^q until q = desired m 
     do q = 0, m-1
-        Plm = -(TWO*real(q, kind=CUSTOM_REAL)+ONE) * y * Plm
+        Plm = (TWO*real(q, kind=CUSTOM_REAL)+ONE) * y * Plm
     enddo 
 
     if (l.eq.m)then 
@@ -54,6 +55,10 @@ contains
         return
     endif
 
+
+    ! Use P_m^m to compute P_{l=m+1}^{m}
+    ! This is stored in Pmin 1
+    ! Pmin_2 is holding P_m^m 
     Pmin2 = Plm
     Pmin1 = (2*mf + 1)*x*Pmin2
 
@@ -113,7 +118,7 @@ contains
         integer :: l, m 
         real(kind=CUSTOM_REAL) :: theta
         ! Local: 
-        real(kind=CUSTOM_REAL) :: lf, mf
+        real(kind=CUSTOM_REAL) :: lf, mf, blm, abs_m, bl0, pith
 
         ! Convert l and m to floats for computation: 
         lf = real(l, kind=CUSTOM_REAL)
@@ -125,35 +130,50 @@ contains
         if (abs(m).gt.l)then
             xlm = zero
             return
-        endif 
+        endif        
 
-        
-
-        
+    
         ! Xlm has limiting behaviour at the poles: 
         ! It is 0 for any m != 0 terms 
         ! X_{l0}(theta = 0)  = (2l+1 / 4pi)**0.5     
         ! X_{l0}(theta = pi) = (-1)**l * (2l+1 / 4pi)**0.5     
+        abs_m = abs(mf)
+        bl0   = ((two*lf + one)/(four*PI))**half 
+        blm   = (((-1)**mf)/((TWO**abs_m)*gamma(abs_m+1))) * & 
+                bl0 * & 
+                (gamma(lf + abs_m + one)/gamma(lf - abs_m + one))**half
 
-        if (theta.gt.zero .and. theta.le.pole_tolerance) then 
-            ! theta approx 0 -- North Pole 
-            if (m.eq.0)then 
-                xlm = sqrtp((TWO*lf + ONE)/(FOUR*PI))
-            else
+
+        if(abs(theta).le.pole_tolerance) then 
+            ! theta close to 0 -- North Pole 
+            if (m.ge.-l .and. m.lt.0) then
+                xlm = ((-1)**mf) * blm * theta**abs_m
+            elseif (m.eq.0) then
+                xlm = bl0 * (one - lf*(lf+one)*theta*theta/four)
+            elseif (m.lt.l .and. m.gt.0) then
+                xlm = blm * (theta**mf)
+            else 
                 xlm = zero
-            endif 
-
+            endif
         elseif (abs(PI - theta) .le. pole_tolerance)then 
-            if (m.eq.0)then 
-                xlm = (lf**(-ONE))*sqrtp((TWO*lf + ONE)/(FOUR*PI))
-            else
+            ! theta close to pi -- South Pole 
+            pith = PI - theta
+            if (m.ge.-l .and. m.lt.0) then
+                xlm = ((-1)**lf) * blm * pith**abs_m
+            elseif (m.eq.0) then
+                xlm = ((-1)**lf) * bl0 * (one - lf*(lf+one)*pith*pith/four)
+            elseif (m.lt.l .and. m.gt.0) then
+                xlm = blm * (pith**mf) * (-1)**(lf+mf) 
+            else 
                 xlm = zero
-            endif 
-        else 
+            endif
+        elseif (theta.gt.pole_tolerance .and. theta.lt.(PI-pole_tolerance)) then 
             xlm = ((-ONE)**mf) *                         & 
-                ( (TWO*lf+ONE)*gamma(lf-mf+ONE)/        & 
-                    (FOUR*PI*gamma(lf+mf+ONE))  )**HALF       & 
-                *Plm(cosp(theta),l,m)      
+                ( ((TWO*lf)+ONE)*gamma(lf-mf+ONE)/         & 
+                    (FOUR*PI*gamma(lf+mf+ONE))  )**HALF  & 
+                *Plm(cosp(theta),l,m)   
+        else
+            write(*,*)'Error in Xlm: theta value is', theta
         endif
             
 
@@ -271,7 +291,9 @@ contains
         mf = real(m, kind=CUSTOM_REAL)
 
         ! Assign complex Ylm
-        ylm_complex = cmplx(cosp(mf*phi), sinp(mf*phi))*xlm(l,m,theta)
+        ylm_complex =  cmplx(cosp(mf*phi), sinp(mf*phi)) * xlm(l,m,theta)
+
+        
 
     end function ylm_complex
 
@@ -287,7 +309,8 @@ contains
         real(kind=CUSTOM_REAL) :: theta, phi
         complex(kind=CUSTOM_REAL) :: dylm_dphi, dylm_dth
         ! Local variables
-        real(kind=CUSTOM_REAL) :: lf, mf, dplm_dt
+        real(kind=CUSTOM_REAL) :: lf, mf, dxlm_dt
+
 
         ! Sanity checks on inputs: 
         if (theta.lt.0.0d0 .or. theta.gt.PI+PI_TOL)then 
@@ -321,11 +344,21 @@ contains
         !dxlm_dt = HALF*(  xlm(l,m+1,theta)*((lf-mf)*(lf+mf+1))**HALF   & 
         !                - xlm(l,m-1,theta)* ((lf+mf)*(lf-mf+1))**HALF  )
         !dylm_dth = cmplx(cos(mf*phi), sin(mf*phi)) * dxlm_dt
-        ! DT98 B.116
         ! Using the above option produces the wrong sign for dylm_dth when testing for Ylm with l = m
+        ! But they define their ylm with the -1
         ! https://math.stackexchange.com/questions/3256898/partial-derivatives-of-m-l-spherical-harmonics
-        dplm_dt = lf*Plm(cosp(theta),l,m)/tanp(theta) - (lf+mf)*Plm(cosp(theta),l-1,m)/sinp(theta)     
-        dylm_dth = cmplx(cosp(mf*phi), sinp(mf*phi)) * dplm_dt * ((-ONE)**mf)*((TWO*lf+ONE)*gamma(lf-mf+ONE)/(FOUR*PI*gamma(lf+mf+ONE)))**HALF
+
+        dxlm_dt = half * ( xlm(l, m+1, theta) * ((lf-mf)*(lf+mf+one))**half  - & 
+                           xlm(l, m-1, theta) * ((lf+mf)*(lf-mf+one))**half    )
+  
+
+        dylm_dth = cmplx(cosp(mf*phi), sinp(mf*phi)) * dxlm_dt
+
+        !write(*,*)'dylm_dth :', dylm_dth
+        ! Wolfram alpha solution but note their Ylm doesnt contain the (-1)**m 
+        !write(*,*)'dylm_dth :', m*ylm_complex(l,m,theta,phi)/(tan(theta)*(-one)**mf) + cmplx(cosp(-phi), sinp(-phi))* (ylm_complex(l,m+1,theta, phi)/((-one)**(mf+1))) *((lf-mf)*(lf+mf+one))**half
+
+
 
     end subroutine ylm_deriv
 

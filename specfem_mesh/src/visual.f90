@@ -1,3 +1,18 @@
+
+subroutine setup_ensight_for_proc(iproc, region, part)
+    
+    implicit none 
+    integer :: iproc, region, part
+
+    call create_ensight_file_prefix(iproc, region)
+    call create_proc_case_file()
+    call create_proc_geo_file(part)
+    return 
+end subroutine setup_ensight_for_proc
+
+
+
+
 subroutine create_proc_geo_file(part)
     use params, only: GEOUNIT, nglob, x_glob, y_glob, z_glob, nspec, & 
                       ngllx, nglly, ngllz, en_fname, intfmt, realfmt, en_dir, ibool
@@ -216,7 +231,7 @@ subroutine write_complex_vector_to_ensight(comvec, suffix, part)
 
     ! IO variables: 
     integer :: part
-    complex(kind=CUSTOM_REAL) :: comvec(3, nglob)
+    complex(kind=SPLINE_REAL) :: comvec(3, nglob)
     character(len=*) :: suffix
 
     ! Local 

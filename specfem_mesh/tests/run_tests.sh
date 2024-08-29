@@ -1,6 +1,10 @@
 #!/bin/bash
 
-
+# -------------------------------------------------------
+cd xlm 
+echo "Running test_xlm..."
+bash test_xlm.sh
+cd .. 
 # -------------------------------------------------------
 cd plm 
 echo "Running test_plm..."
@@ -29,6 +33,7 @@ echo "Running test_norm..."
 bash test_norm.sh
 cd .. 
 
+
 # -------------------------------------------------------
 # Run the pytests
 pytest
@@ -37,6 +42,7 @@ pytest
 # cleanup 
 export test_dir=$(pwd)
 source ./plm/cleanup.sh
+source ./xlm/cleanup.sh
 source ./ylm/cleanup.sh
 source ./integration/cleanup.sh
 source ./spline/cleanup.sh

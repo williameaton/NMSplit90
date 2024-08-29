@@ -8,7 +8,7 @@ include "precision.h"
 ! 2  == while coding
 ! 3  == while debugging
 integer, parameter :: verbose = 1
-logical, parameter :: all_warnings = .false.
+logical, parameter :: all_warnings = .true.
 
 ! Specfem mesh files: 
 character(len=250) :: datadir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced'
@@ -65,7 +65,7 @@ real(kind=CUSTOM_REAL), allocatable :: xi(:), wgll(:), dgll(:,:)
 integer, allocatable                   :: ibool(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: rho(:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: strain1(:,:,:,:,:)
-complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:)
+complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 
 real(kind=CUSTOM_REAL), allocatable    :: jac(:,:,:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: detjac(:,:,:,:)
@@ -79,12 +79,20 @@ complex(kind=CUSTOM_REAL), allocatable :: globaldisp(:,:)
 real(kind=CUSTOM_REAL), allocatable :: Rmat(:,:,:)
 
 
+! Matrices: 
+complex(kind=SPLINE_REAL), allocatable :: Wmat(:,:)
+
+
+
+
+
 ! Spline arrays: 
 real(kind=SPLINE_REAL), allocatable :: u_spl(:),    &
                                        udot_spl(:), &
                                        v_spl(:),    &
                                        vdot_spl(:), &
-                                       xx(:), zz(:)
+                                       xx(:), zz(:),&
+                                       rho_spl(:)
 
 
 

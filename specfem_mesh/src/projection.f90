@@ -24,7 +24,8 @@ subroutine get_mesh_radii()
     ! Maximum number of unique radii is this
     size_r =  size(rr)
     allocate(unique_r_tmp(size_r))
-    unique_r_tmp = ZERO
+    unique_r_tmp = -ONE
+
 
     ! Set tolerance for 'same radii' 
     tol = 1.0e-4
@@ -43,7 +44,7 @@ subroutine get_mesh_radii()
                     rgll = rr(i, j, k, ispec)
                     match = .false. 
 
-                    ! Loop over current unique radii: 
+                      ! Loop over current unique radii: 
                     do ur = 1, unique_id 
                         if (abs(unique_r_tmp(ur) - rgll) < tol)then 
                             ! already a 'unique' radius
@@ -58,16 +59,20 @@ subroutine get_mesh_radii()
                         rad_id(i,j,k,ispec)     = unique_id
                         unique_r_tmp(unique_id) = rgll
                         unique_id               = unique_id + 1
+                        !write(*,*)'unique_id ', unique_id
                     endif
                 enddo 
             enddo 
         enddo 
     enddo 
 
+
+
+
     ! Allocate new unique radius array of the correct size
     ! It might be that the very last node tested in unique and so 
-    ! unique_id is actually 1 too large -- test if last radius is 0 and if so cute 
-    if (unique_r_tmp(unique_id).eq.ZERO)then 
+    ! unique_id is actually 1 too large -- test if last radius is -1 and if so cut it 
+    if (unique_r_tmp(unique_id).eq.-ONE)then 
         n_unique_rad = unique_id - 1
     else
         n_unique_rad = unique_id
@@ -85,6 +90,18 @@ subroutine get_mesh_radii()
         write(*,'(a,f8.2,a)') '  -- matches radii within  :', tol*RA, ' metres'
         write(*,'(a,i8,a,i8)')'  -- number of unique radii:', n_unique_rad, ' out of ', size_r
     endif 
+
+    if(minval(rad_id).le.0 .or. maxval(rad_id).gt.n_unique_rad)then 
+        write(*,*)'Error with rad_id:' 
+        write(*,'(a,i8)')  '  -- min id       :', minval(rad_id)
+        write(*,'(a,i8)')  '  -- max id       :', maxval(rad_id)
+        write(*,'(a,i8)')  '  -- n_unique_rad :', n_unique_rad
+        stop
+    endif        
+
+
+
+
     ! Prints the difference between the original radius and the 'unique' radius it is pointed to 
     !do ispec = 1, nspec
     !    do i = 1, ngllx
@@ -109,10 +126,10 @@ end subroutine get_mesh_radii
 
 
 
-subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
-    use params, only:  NL, nspec, ngllx, & 
+subroutine compute_global_mode_displacement(mode_type, l, m, disp)
+    use params, only:  nspec, ngllx, & 
     nglly, ngllz, thetastore, phistore, rad_id,& 
-    u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r, IC_ID
+    u_spl, v_spl, udot_spl, vdot_spl
     use spline, only: interpolate_mode_eigenfunctions
     use ylm_plm, only: ylm_complex, ylm_deriv
     use mesh_utils, only: delta_spline
@@ -123,51 +140,32 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
 
     ! IO variables: 
     character(len=1) :: mode_type     ! mode type; S or T
-    integer          :: nord          ! n value of mode
     integer          :: l             ! l value (degree) of mode
     integer          :: m             ! m value (order)  of mode
-    complex(kind=CUSTOM_REAL) :: disp(3,ngllx, nglly, ngllz, nspec)
+    complex(kind=SPLINE_REAL) :: disp(3,ngllx, nglly, ngllz, nspec)
     
     ! Local variables: 
-    real(kind=4)  :: omega            ! normalized anglar frequency   
-    real(kind=4)  :: qval             ! normalized Q factor            
-    real(kind=SPLINE_REAL)  :: u(NL), du(NL)    ! must be 4 bytes
-    real(kind=SPLINE_REAL)  :: v(NL), dv(NL)    ! must be 4 bytes
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
-    real(kind=CUSTOM_REAL)    ::  theta, phi, u_r, v_r,w_r,&
-                                  dd1, dm0
+    real(kind=CUSTOM_REAL)    ::  theta, phi 
     integer :: i,j,k,ispec
 
-    real(kind=SPLINE_REAL)  ::  mf, lf, ll1, tl14p, mone_l, pref
+    real(kind=SPLINE_REAL)  ::  mf, lf, ll1, tl14p, mone_l, pref, u_r, v_r, w_r, dm0, dd1
+    complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta, sinth
 
+    disp = SPLINE_iZERO
 
-
-    ! Load the mode from the database
-    call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv, .true.)
-
-    ! Spline interpolation: 
-    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, 1, IC_ID, unique_r, n_unique_rad, interp_id_r)
-    
     ! DT98 below D.1: k = sqrt(l(l+1))
     lf  = real(l, kind=SPLINE_REAL)
     mf  = real(m, kind=SPLINE_REAL)
 
 
-    ll1 = sqrtp(lf*(lf+SPLINE_ONE))
-    tl14p = ((SPLINE_TWO*lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2
-    dm0 = delta_spline(m, 0)                      ! δ_{m0}
-    dd1 = delta_spline(m, -1) - delta_spline(m, 1)  ! δ_{m -1} - δ_{m 1}
-    mone_l = (-SPLINE_ONE)**lf
-    pref   = SPLINE_HALF * tl14p * ll1
+    ll1    = sqrtp(lf*(lf+SPLINE_ONE))                                              ! (l(l+1))^1/2
+    tl14p  = ((SPLINE_TWO*lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2
+    dm0    = delta_spline(m, 0)                                                     ! δ_{m0}
+    dd1    = delta_spline(m, -1) - delta_spline(m, 1)                               ! δ_{m -1} - δ_{m 1}
+    mone_l = (-SPLINE_ONE)**lf                                                      ! -1 ^l 
+    pref   = SPLINE_HALF * tl14p * ll1                                              ! 0.5 (2l+1/4π)^1/2  (l(l+1))^1/2
 
-
-    v_spl    = v_spl    / ll1
-    vdot_spl = vdot_spl / ll1
-    if(mode_type.eq.'T')then 
-        ! Code uses u and du to store w and dw
-        u_spl    = u_spl    / ll1
-        udot_spl = udot_spl / ll1
-    endif 
 
     if (mode_type.eq.'S')then 
         do ispec = 1, nspec
@@ -178,13 +176,14 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                         ! Get ylm and the partial derivatives
                         theta = real(thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
                         phi   = real(phistore(i,j,k,ispec),   kind=CUSTOM_REAL)
-                        ylm   = ylm_complex(l,m, theta, phi)
+                        ylm   = ylm_complex(l, m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
-                        
-                        ! u, v at at the radius of this node
-                        u_r   =    u_spl(rad_id(i,j,k,ispec))
-                        v_r   =    v_spl(rad_id(i,j,k,ispec))
 
+                        ! u, v at at the radius of this node
+                        u_r   =    u_spl(rad_id(i,j,k,ispec))/ ll1
+                        v_r   =    v_spl(rad_id(i,j,k,ispec))/ ll1
+
+                        sinth = real(sinp(theta), kind=SPLINE_REAL)
 
                         if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                             ! North pole 
@@ -193,23 +192,32 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                             ! S_theta (DT98 D.9)
                             disp(2,i,j,k,ispec) = pref * v_r * dd1
                             ! S_phi   (DT98 D.10)
-                            disp(3,i,j,k,ispec) = pref * iONE * mf * v_r * dd1
+                            disp(3,i,j,k,ispec) = pref * SPLINE_iONE * mf * v_r * dd1
+
+
+
                         elseif (abs(theta-PI).le.pole_tolerance) then
                             ! South pole
                             ! S_r     (DT98 D.11)
-                            disp(1,i,j,k,ispec) = mone_l * tl14p * u_r * dm0
+                            disp(1,i,j,k,ispec) =  mone_l * tl14p * u_r * dm0
                             ! S_theta (DT98 D.12)
-                            disp(2,i,j,k,ispec) = mone_l * pref * v_r * dd1
+                            disp(2,i,j,k,ispec) =  mone_l * pref * v_r * dd1
                             ! S_phi   (DT98 D.13)
-                            disp(3,i,j,k,ispec) = -mone_l * pref * iONE * mf * v_r * dd1
+                            disp(3,i,j,k,ispec) = -mone_l * pref * SPLINE_iONE * mf * v_r * dd1
                         else 
+
+                            ! Convert to SPLINE_REAL precision
+                            sp_ylm         = cmplx(ylm,        kind=SPLINE_REAL)
+                            spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+
                             ! S_r     (DT98 D.4)
-                            disp(1,i,j,k,ispec) = ylm*u_r  
+                            disp(1,i,j,k,ispec) = sp_ylm*u_r  
                             ! S_theta (DT98 D.5)
-                            disp(2,i,j,k,ispec) = v_r*dylm_theta
+                            disp(2,i,j,k,ispec) = v_r * spl_dylm_theta
                             ! S_phi   (DT98 D.6)
-                            disp(3,i,j,k,ispec) = iONE * mf * v_r * ylm / sinp(theta)
+                            disp(3,i,j,k,ispec) = SPLINE_iONE * mf * v_r * sp_ylm / sinth
                         endif 
+
                     enddo 
                 enddo 
             enddo 
@@ -222,7 +230,9 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                     
                         ! Get ylm and the partial derivatives, and 
                         ! w at the radius of this node
-                        w_r   = u_spl(rad_id(i,j,k,ispec))
+                        
+                        w_r   = u_spl(rad_id(i,j,k,ispec))/ll1
+
                         theta = real(thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
                         phi   = real(phistore(i,j,k,ispec), kind=CUSTOM_REAL)
                         ylm   = ylm_complex(l,m, theta, phi)
@@ -231,24 +241,31 @@ subroutine compute_global_mode_displacement(mode_type, nord, l, m, disp)
                         if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                             ! North pole 
                             ! S_theta (DT98 D.9)
-                            disp(2,i,j,k,ispec) = pref * iONE * mf * w_r * dd1
+                            disp(2,i,j,k,ispec) = pref * SPLINE_iONE * mf * w_r * dd1
                             ! S_phi   (DT98 D.10)
                             disp(3,i,j,k,ispec) = - pref * w_r * dd1
+                            
                         elseif (abs(theta-PI).le.pole_tolerance) then
                             ! South pole
                             ! S_theta (DT98 D.12)
-                            disp(2,i,j,k,ispec) = - mone_l * pref * iONE * mf * w_r * dd1
+                            disp(2,i,j,k,ispec) = - mone_l * pref * SPLINE_iONE * mf * w_r * dd1
+
                             ! S_phi   (DT98 D.13)
                             disp(3,i,j,k,ispec) = - mone_l * pref * w_r * dd1
                         else 
+
+                            ! Convert to SPLINE_REAL precision
+                            sp_ylm         = cmplx(ylm,        kind=SPLINE_REAL)
+                            spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+
                             ! S_theta (DT98 D.5)
-                            disp(2,i,j,k,ispec) = iONE * mf * w_r * ylm / sinp(theta)
+                            disp(2,i,j,k,ispec) = SPLINE_iONE * mf * w_r * sp_ylm / sinth
                             ! S_phi   (DT98 D.6)
-                            disp(3,i,j,k,ispec) = -w_r * dylm_theta 
+                            disp(3,i,j,k,ispec) = -w_r * spl_dylm_theta 
                         endif 
 
                         ! No radial displacement for toroidal modes
-                        disp(1,i,j,k,ispec) = (ZERO, ZERO) 
+                        disp(1,i,j,k,ispec) = SPLINE_iZERO
                     enddo 
                 enddo 
             enddo 
@@ -286,7 +303,7 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     complex(kind=SPLINE_REAL) :: strain(6,ngllx, nglly, ngllz, nspec)
 
     ! Local variables: 
-    real(kind=SPLINE_REAL)  :: omega  ! normalized anglar frequency   
+    real(kind=SPLINE_REAL)  :: om  ! normalized anglar frequency   
     real(kind=SPLINE_REAL)  :: qval   ! normalized Q factor        
 
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
@@ -310,11 +327,12 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
 
     ! Load the mode from the database
-    call get_mode(mode_type,nord,l,omega,qval,u,du,v,dv,.false.)
+    call get_mode(mode_type,nord,l,om,qval,u,du,v,dv,.false.)
 
     ! Spline interpolation: 
     !   - Computes the value of u, v, du, dv at each of the unique radial values
-    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, 1, IC_ID, unique_r, n_unique_rad, interp_id_r)
+    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, 1, IC_ID, & 
+                                         unique_r, n_unique_rad, interp_id_r)
 
 
     ! DT98 below D.1: k = sqrt(l(l+1))
@@ -333,14 +351,6 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     ! Convert eigenfunctions to auxillary form
     ! DT98 D.1: 
     !    u = U     v = V/k     w = W/k     p = P
-    v_spl    = v_spl    / ll1
-    vdot_spl = vdot_spl / ll1
-    if(mode_type.eq.'T')then 
-        ! Code uses u and du to store w and dw
-        !TODO: Do we want to move this inside the if statement below? 
-        u_spl    = u_spl    / ll1
-        udot_spl = udot_spl / ll1
-    endif 
 
     ! Compute x and z auxillary variables - DT98 D.20
     ! If spheroidal mode then u,v are non zero but w, wdot are 0
@@ -363,11 +373,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
                         
                         ! u, v, udot, vdo, x, at at the radius of this node
-                        u_r   =    u_spl(rad_id(i,j,k,ispec))
-                        v_r   =    v_spl(rad_id(i,j,k,ispec))
-                        du_r  = udot_spl(rad_id(i,j,k,ispec))
-                        dv_r  = vdot_spl(rad_id(i,j,k,ispec))
-                        xx_r  =       xx(rad_id(i,j,k,ispec))
+                        u_r   =    u_spl(rad_id(i,j,k,ispec))/ll1
+                        v_r   =    v_spl(rad_id(i,j,k,ispec))/ll1
+                        du_r  = udot_spl(rad_id(i,j,k,ispec))/ll1
+                        dv_r  = vdot_spl(rad_id(i,j,k,ispec))/ll1
+                        xx_r  =       xx(rad_id(i,j,k,ispec))/ll1
 
                         ! r and theta at the node  
                         unq_r = real(rstore(i,j,k,ispec), kind=SPLINE_REAL)
@@ -441,9 +451,9 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
 
                         ! w, wdot, z, at at the radius of this node
-                        w_r   =    u_spl(rad_id(i,j,k,ispec))
-                        dw_r  = udot_spl(rad_id(i,j,k,ispec))
-                        zz_r  =       zz(rad_id(i,j,k,ispec))
+                        w_r   =    u_spl(rad_id(i,j,k,ispec))/ll1
+                        dw_r  = udot_spl(rad_id(i,j,k,ispec))/ll1
+                        zz_r  =       zz(rad_id(i,j,k,ispec))/ll1
 
                         ! r and theta at the node  
                         unq_r = real(rstore(i,j,k,ispec), kind=SPLINE_REAL)

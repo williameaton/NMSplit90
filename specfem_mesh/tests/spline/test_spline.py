@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.interpolate as ci
-import pytest 
+#import pytest
 
 def test_spline():
 
@@ -44,10 +44,10 @@ def test_spline():
                 eig_interp_scipy = cs(spl_radii)
 
                 # Compute error between the interpolations:
-                err = 100*(spl_f90 - eig_interp_scipy)/eig_interp_scipy
+                err = spl_f90 - eig_interp_scipy
 
                 # Check small errors between Scipy and My spline
-                assert (abs(err)  < 0.5).all()
+                assert (abs(err)  < 5e-6).all()
 
                 # Plot the Scipy interpolated points
                 ax[0, eig_id - 1].plot(eig_interp_scipy, spl_radii, 'xr', markersize=1 )
@@ -62,3 +62,4 @@ def test_spline():
 
         plt.savefig('test_spline.pdf', format='pdf')
 
+test_spline()

@@ -382,61 +382,125 @@ module mesh_utils
         ! R = ( r_y  θ_y  φ_y ) 
         !     ( r_z  θ_z  φ_z )
 
-        use params, only :  x_glob, y_glob, z_glob, nglob, Rmat
+        use params, only :  x_glob, y_glob, z_glob, nglob, Rmat, verbose
         use allocation_module, only: allocate_if_unallocated
         use math, only: sinp, cosp, sqrtp
         implicit none 
         include "constants.h"
 
         real(kind=CUSTOM_REAL) :: x, y, z, r, theta, phi, ct, cp, st, sp, norm
-        integer :: iglob
+        integer :: iglob, p
 
         !TODO:  check allocations of x, y, z glob
+
+        if(verbose.ge.2) write(*,'(/,a)')'• Computing rotation matrix'
+
+
+        if(.not.allocated(x_glob))then 
+            write(*,*)'ERROR: X_glob not allocated. Stop.'
+            stop
+        endif 
+        if(.not.allocated(y_glob))then 
+            write(*,*)'ERROR: Y_glob not allocated. Stop.'
+            stop
+        endif 
+        if(.not.allocated(z_glob))then 
+            write(*,*)'ERROR: Z_glob not allocated. Stop.'
+            stop
+        endif 
+        
 
 
         call allocate_if_unallocated(3, 3, nglob, Rmat)
 
         do iglob = 1, nglob
-
             ! Get x, y, z coordinates: 
-            x = real(x_glob(iglob) * TWO, kind=CUSTOM_REAL)
-            y = real(y_glob(iglob) * TWO, kind=CUSTOM_REAL)
-            z = real(z_glob(iglob) * TWO, kind=CUSTOM_REAL)
+            x = real(x_glob(iglob), kind=CUSTOM_REAL)
+            y = real(y_glob(iglob), kind=CUSTOM_REAL)
+            z = real(z_glob(iglob), kind=CUSTOM_REAL)
 
             r = sqrtp(x ** 2 + y ** 2 + z ** 2)
 
-            ! Note that theta and phi here are not necessarily the same
-            ! as in DT98 i.e. theta here will be between -pi/2 and pi/2
-            theta = acosp(z/r)
-            phi   = atan2p(y,x)
+            if (r.eq.zero)then 
+                ! For now we will wont rotate it if the central GLL point
+                Rmat(:, :, iglob) = zero
+                do p = 1, 3
+                    Rmat(p, p, iglob) = one
+                enddo 
+            else
+                ! Note that theta and phi here are not necessarily the same
+                ! as in DT98 i.e. theta here will be between -pi/2 and pi/2
+                theta = acosp(z/r)
+                phi   = atan2p(y,x)
+                if (phi .lt. zero) phi = phi + TWO_PI
 
-            ct = real(cosp(theta), kind=CUSTOM_REAL)
-            cp = real(cosp(phi),   kind=CUSTOM_REAL)
-            st = real(sinp(theta), kind=CUSTOM_REAL)
-            sp = real(sinp(phi),   kind=CUSTOM_REAL)
+                ct = real(cosp(theta), kind=CUSTOM_REAL)
+                cp = real(cosp(phi),   kind=CUSTOM_REAL)
+                st = real(sinp(theta), kind=CUSTOM_REAL)
+                sp = real(sinp(phi),   kind=CUSTOM_REAL)
 
-            ! Radial vector
-            norm =((st*cp)**TWO + (st*sp)**TWO + ct**TWO)**half
-            Rmat(1, 1, iglob) = st*cp / norm
-            Rmat(2, 1, iglob) = st*sp / norm
-            Rmat(3, 1, iglob) = ct    / norm
+                ! Radial vector
+                !norm =((st*cp)**TWO + (st*sp)**TWO + ct**TWO)**half
+                Rmat(1, 1, iglob) = st*cp !/ norm
+                Rmat(2, 1, iglob) = st*sp !/ norm
+                Rmat(3, 1, iglob) = ct    !/ norm
 
-            ! Theta vector
-            norm =((ct*cp)**TWO + (ct*sp)**TWO + st**TWO)**half
-            Rmat(1, 2, iglob) = ct*cp / norm
-            Rmat(2, 2, iglob) = ct*sp / norm
-            Rmat(3, 2, iglob) = -st   / norm
+                ! Theta vector
+                !norm =((ct*cp)**TWO + (ct*sp)**TWO + st**TWO)**half
+                Rmat(1, 2, iglob) = ct*cp !/ norm
+                Rmat(2, 2, iglob) = ct*sp !/ norm
+                Rmat(3, 2, iglob) = -st   !/ norm
 
-            ! Phi vector
-            norm =(sp*sp + cp*cp)**half
-            Rmat(1, 3, iglob) = -sp / norm
-            Rmat(2, 3, iglob) =  cp / norm
-            Rmat(3, 3, iglob) = zero
+                ! Phi vector
+                !norm =(sp*sp + cp*cp)**half
+                Rmat(1, 3, iglob) = -sp !/ norm
+                Rmat(2, 3, iglob) =  cp !/ norm
+                Rmat(3, 3, iglob) = zero
+            endif
         enddo 
 
     end subroutine compute_rotation_matrix
 
 
+    subroutine setup_global_coordinate_arrays()
+        use params, only: nglob, x_glob, y_glob, z_glob, xstore, ystore, zstore
+        use allocation_module, only: allocate_if_unallocated
+        implicit none 
+
+        call allocate_if_unallocated(nglob, x_glob)
+        call allocate_if_unallocated(nglob, y_glob)
+        call allocate_if_unallocated(nglob, z_glob)
+        call map_local_global(xstore, x_glob, 0)
+        call map_local_global(ystore, y_glob, 0)
+        call map_local_global(zstore, z_glob, 0)
+    
+    end subroutine setup_global_coordinate_arrays
+
+
+
+
+    subroutine rotate_complex_vector_rtp_to_xyz(vector)
+        use params, only: Rmat, nspec, ngllx, nglly, ngllz, ibool
+        implicit none  
+
+        complex(kind=SPLINE_REAL) :: vector(3, ngllx, nglly, ngllz, nspec)
+
+        integer :: i,j,k,ispec
+
+
+        do ispec = 1, nspec
+            do i = 1, ngllx
+                do j = 1, nglly
+                    do k = 1, ngllz
+                        vector(:, i,j,k,ispec) = matmul(cmplx(Rmat(:,:,ibool(i,j,k,ispec)), kind=SPLINE_REAL), & 
+                                                        vector(:,i,j,k,ispec))
+                    enddo
+                enddo
+            enddo 
+        enddo
+        
+
+    end subroutine rotate_complex_vector_rtp_to_xyz
 
 
 
@@ -449,8 +513,15 @@ module mesh_utils
         call deallocate_if_allocated(xstore)
         call deallocate_if_allocated(ystore)
         call deallocate_if_allocated(zstore)
+        call deallocate_if_allocated(x_glob)
+        call deallocate_if_allocated(y_glob)
+        call deallocate_if_allocated(z_glob)
         call deallocate_if_allocated(ibool)
         call deallocate_if_allocated(strain1)
+        call deallocate_if_allocated(globalstrain)
+
+        call deallocate_if_allocated(disp1)
+        call deallocate_if_allocated(disp2)
         call deallocate_if_allocated(rad_id)
         call deallocate_if_allocated(unique_r)
         call deallocate_if_allocated(rstore)
@@ -460,13 +531,11 @@ module mesh_utils
         call deallocate_if_allocated(udot_spl)
         call deallocate_if_allocated(v_spl)
         call deallocate_if_allocated(vdot_spl)
+        call deallocate_if_allocated(rho_spl)
         call deallocate_if_allocated(interp_id_r)
-        call deallocate_if_allocated(globalstrain)
         call deallocate_if_allocated(xx)
         call deallocate_if_allocated(zz)
-        call deallocate_if_allocated(x_glob)
-        call deallocate_if_allocated(y_glob)
-        call deallocate_if_allocated(z_glob)
+
     end subroutine cleanup_for_mode
     
     
@@ -695,6 +764,11 @@ module mesh_utils
             write(*,*)'     --> min. value: ', minval(zstore)
             write(*,*)'     --> max. value: ', maxval(zstore)
         endif 
+
+        
+        deallocate(xstore_dp)
+        deallocate(ystore_dp)
+        deallocate(zstore_dp)
     
         return 
     end subroutine read_proc_coordinates

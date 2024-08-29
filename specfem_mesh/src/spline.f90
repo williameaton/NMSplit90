@@ -402,14 +402,30 @@ module spline
     integer :: npoints
     character(len=*), optional :: name
 
-
     ! Local :
     integer :: i
     character(len=30) :: eigstring
+    character(len=2)  :: nfmt, lfmt
+    character(len=13)  :: fmtstring
 
 
     if (len_trim(name) .eq. 0)then
-      write(eigstring,'(a,i2,a, i2, a)') 'spline_', n, mode_type, l, '.txt'
+      if(n.ge.0 .and. n.lt.10)then
+        nfmt = 'i1'
+      elseif(n.ge.10 .and. n.lt.100)then
+        nfmt = 'i2'
+      else
+        write(*,*)'Format not set for n = ', n
+      endif
+      if(l.ge.0 .and. l.lt.10)then
+        lfmt = 'i1'
+      elseif(l.ge.10 .and. l.lt.100)then
+        lfmt = 'i2'
+      else
+        write(*,*)'Format not set for l = ', l
+      endif
+      write(fmtstring, '(a)') '(a,' // nfmt // ',a,' // lfmt // ',a)'
+      write(eigstring,fmtstring) 'spline_', n, mode_type, l, '.txt'
     else 
       write(eigstring,'(a)')name
     endif 
@@ -428,8 +444,37 @@ module spline
         endif 
     enddo 
     close(1)
-
   end subroutine write_mode_spline
+
+
+
+
+
+  subroutine write_scalar_spline(rad_arr, spline, npoints, eigstring)
+    ! Output the spline values: 
+    use params, only: verbose
+    implicit none 
+
+    ! IO variables: 
+    real(kind=CUSTOM_REAL) :: rad_arr(npoints)
+    real(kind=SPLINE_REAL) :: spline(npoints)
+    integer :: npoints
+    character(len=*) :: eigstring
+
+    integer :: i 
+
+    if (verbose.ge.3)then
+      write(*,'(/,a)')'Saving spline to '//trim(eigstring)
+    endif 
+    
+
+    open(1,file=trim(eigstring))
+    do i =1, npoints
+        write(1,*)rad_arr(i), spline(i)
+    enddo 
+    close(1)
+  end subroutine write_scalar_spline
+
 
 
 

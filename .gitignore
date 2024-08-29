@@ -10,7 +10,11 @@
 # Some directories
 *DATABASES_MPI*
 specfem_mesh/ensight/*
+specfem_mesh/plot_modes/*.txt
+specfem_mesh/plot_modes/modes/*.txt
 databases/*
+databases/*
+get_mode/*
 
 
 # Executables: 
