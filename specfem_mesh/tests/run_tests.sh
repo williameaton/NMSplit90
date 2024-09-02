@@ -1,5 +1,12 @@
 #!/bin/bash
 
+
+
+# -------------------------------------------------------
+cd rotation_matrix 
+echo "Running rotation matrix tests..."
+bash test_rotation.sh
+cd .. 
 # -------------------------------------------------------
 cd xlm 
 echo "Running test_xlm..."
@@ -41,6 +48,7 @@ pytest
 # -------------------------------------------------------
 # cleanup 
 export test_dir=$(pwd)
+source ./rotation_matrix/cleanup.sh
 source ./plm/cleanup.sh
 source ./xlm/cleanup.sh
 source ./ylm/cleanup.sh

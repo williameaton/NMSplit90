@@ -46,7 +46,7 @@ program semi_analytical_W_matrix
     ! Now we can load the mode: 
     ! Choose a mode: 
     type = 'S'
-    l      = 9
+    l      = 2
     n      = 4
     region = 3
 
@@ -72,14 +72,14 @@ program semi_analytical_W_matrix
         radial_vals(j) = (r_lower +  (real(j-1)/real(npoints-1))*(r_upper-r_lower))/scale_R
     enddo 
 
-    call get_mode(type, n, l, wcom, qmod, u, du, v, dv, .true.)
+    call get_mode(type, n, l, wcom, qmod, u, du, v, dv, .false.)
 
 
     ! Interpolate
     call create_interpolation_radial_map(radial_vals, interp_map, npoints, knot_lower, knot_upper)
     call interpolate_mode_eigenfunctions(type, u, v, du, dv, knot_lower, knot_upper, &  
                                         radial_vals, npoints, interp_map)
-    call write_mode_spline(n, type, l, radial_vals, npoints)
+    !call write_mode_spline(n, type, l, radial_vals, npoints)
 
 
     ! We also need the density
@@ -87,7 +87,7 @@ program semi_analytical_W_matrix
     allocate(rho_spl(npoints))
     call interpolate_mineos_variable(real(rho_mineos, kind=SPLINE_REAL), knot_lower, knot_upper, & 
                                     radial_vals, npoints, rho_spl, interp_map)
-    call write_scalar_spline(radial_vals, rho_spl, npoints, 'spline_rho.txt')
+    !call write_scalar_spline(radial_vals, rho_spl, npoints, 'spline_rho.txt')
 
 
     lf = real(l, kind=SPLINE_REAL)
@@ -116,7 +116,7 @@ program semi_analytical_W_matrix
     do m1 = -l, l 
         Wmat(m1+l+1,m1+l+1) = real(m1, kind=SPLINE_REAL)*OMEGA*sum
 
-        ! If you want it in the form D.180
+        ! If you want it in the form D.180 but may need different vals? 
         !Wmat(l+1+m1, l+1-m1) = spline_ione * real(m1, kind=SPLINE_REAL) * OMEGA * sum
     enddo 
 

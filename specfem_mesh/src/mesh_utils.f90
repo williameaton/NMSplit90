@@ -364,6 +364,15 @@ module mesh_utils
                         ! 0 <= theta <= pi                        
                         thetastore(i,j,k,ispec) = PI_OVER_TWO -  atan2(zstore(i,j,k,ispec), (xstore(i,j,k,ispec)**TWO + ystore(i,j,k,ispec)**TWO)**HALF) 
 
+                        !if (rstore(i,j,k,ispec) .eq. zero)then 
+                        !    thetastore(i,j,k,ispec) = zero
+                        !    phistore(i,j,k,ispec) = zero
+                        !else 
+                        !    thetastore(i,j,k,ispec) = acosp(zstore(i,j,k,ispec)/rstore(i,j,k,ispec))
+                        !    phistore(i,j,k,ispec)   = atan2p(ystore(i,j,k,ispec),xstore(i,j,k,ispec))
+                        !    if (phistore(i,j,k,ispec)  .lt. zero) phistore(i,j,k,ispec)  = phistore(i,j,k,ispec)  + TWO_PI
+                        !endif 
+
                     enddo 
                 enddo 
             enddo

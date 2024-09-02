@@ -49,7 +49,7 @@ program test_W_matrix
     ! Now we can load the mode: 
     ! Choose a mode: 
     type = 'S'
-    l      = 9
+    l      = 2
     n      = 4
     region = 3
     nproc  = 6
@@ -79,17 +79,12 @@ program test_W_matrix
         allocate(rho_spl(n_unique_rad))
         call interpolate_mineos_variable(real(rho_mineos, kind=SPLINE_REAL), 1, IC_ID, & 
                                         unique_r, n_unique_rad, rho_spl, interp_id_r)
-        !call write_scalar_spline(unique_r, rho_spl, n_unique_rad, 'sem_spline_rho.txt')
-
         
 
         ! Load the eigenfunctions 
-        call get_mode(type, n, l, wcom, qmod, u, du, v, dv, .true.)
+        call get_mode(type, n, l, wcom, qmod, u, du, v, dv, .false.)
         call interpolate_mode_eigenfunctions(type, u, v, du, dv, 1, IC_ID, &  
                                             unique_r, n_unique_rad, interp_id_r)
-
-
-        !call setup_ensight_for_proc(iproc, region, 1)
 
         allocate(disp1(3, ngllx, nglly, ngllz, nspec) )
         allocate(disp2(3, ngllx, nglly, ngllz, nspec) )
@@ -134,6 +129,7 @@ program test_W_matrix
                     do i = 1, ngllx
                         do j = 1, nglly
                             do k = 1, ngllz
+
                                 val = rho_spl(rad_id(i,j,k,ispec)) * & 
                                 (- conjg(disp1(1,i,j,k,ispec))*disp2(2,i,j,k,ispec) +  & 
                                    conjg(disp1(2,i,j,k,ispec))*disp2(1,i,j,k,ispec)) * & 
@@ -159,7 +155,6 @@ program test_W_matrix
 
     write(out_name, '(a,i1,a)')'Wmat_', l, '.txt'
     call save_W_matrix(l, trim(out_name))
-
 
 
 end program test_W_matrix

@@ -149,8 +149,8 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
     real(kind=CUSTOM_REAL)    ::  theta, phi 
     integer :: i,j,k,ispec
 
-    real(kind=SPLINE_REAL)  ::  mf, lf, ll1, tl14p, mone_l, pref, u_r, v_r, w_r, dm0, dd1
-    complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta, sinth
+    real(kind=SPLINE_REAL)  ::  mf, lf, ll1, tl14p, mone_l, pref, u_r, v_r, w_r, dm0, dd1, sinth
+    complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta
 
     disp = SPLINE_iZERO
 
@@ -180,8 +180,8 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
 
                         ! u, v at at the radius of this node
-                        u_r   =    u_spl(rad_id(i,j,k,ispec))/ ll1
-                        v_r   =    v_spl(rad_id(i,j,k,ispec))/ ll1
+                        u_r   =    u_spl(rad_id(i,j,k,ispec))
+                        v_r   =    v_spl(rad_id(i,j,k,ispec)) / ll1
 
                         sinth = real(sinp(theta), kind=SPLINE_REAL)
 
@@ -195,7 +195,6 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
                             disp(3,i,j,k,ispec) = pref * SPLINE_iONE * mf * v_r * dd1
 
 
-
                         elseif (abs(theta-PI).le.pole_tolerance) then
                             ! South pole
                             ! S_r     (DT98 D.11)
@@ -205,7 +204,6 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
                             ! S_phi   (DT98 D.13)
                             disp(3,i,j,k,ispec) = -mone_l * pref * SPLINE_iONE * mf * v_r * dd1
                         else 
-
                             ! Convert to SPLINE_REAL precision
                             sp_ylm         = cmplx(ylm,        kind=SPLINE_REAL)
                             spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
