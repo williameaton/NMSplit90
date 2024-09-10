@@ -7,6 +7,7 @@ from wetools.plotting import save_figs_to_single_pdf
 
 plot_SEM = True
 
+ddir = "./matrices/"
 t = 'S'
 ells = [3]
 ns = [6]
@@ -24,14 +25,14 @@ for imode in range(nmodes):
     l = ells[imode]
     n = ns[imode]
 
-    rad = np.loadtxt(f'radial_{n}{t}{l}.txt')[:2 * l + 1, :]
+    rad = np.loadtxt(f'{ddir}/radial_{n}{t}{l}.txt')[:2 * l + 1, :]
     rad = np.diag(rad)
 
     m = np.arange(-l, l + 1)
     ax.plot(m, rad)
 
     if plot_SEM:
-        sem = np.loadtxt(f'sem_{n}{t}{l}.txt')[:2 * l + 1, :]
+        sem = np.loadtxt(f'{ddir}/sem_{n}{t}{l}.txt')[:2 * l + 1, :]
         sem = np.diag(sem)
         ax.plot(m, sem)
         ratio = sem / rad

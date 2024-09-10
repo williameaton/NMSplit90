@@ -5,7 +5,11 @@ program test_wj3
 
     real(kind=CUSTOM_REAL) :: out
 
-    out = thrj(22, 2, 20, 0, 0, 0)
+    open(unit=1,file='w3j.txt', &
+        status='unknown',form='formatted',action='write')
 
-    write(*,*)out
+    out = thrj(22, 2, 20, 0, 0, 0)
+    write(1,*)out
+
+
 end program

@@ -3,7 +3,7 @@
 src_dir="../../src"
 
 # Compile the SEM executable
-gfortran -llapack -lblas -I../../src/ ./test_wj3.f90 \
+gfortran -llapack -lblas -I../../src/ ./test_Vani.f90 \
     ${src_dir}/params.f90           \
     ${src_dir}/math.f90             \
     ${src_dir}/mineos_model.f90     \
@@ -18,6 +18,7 @@ gfortran -llapack -lblas -I../../src/ ./test_wj3.f90 \
     ${src_dir}/V_ani_matrix.f90  \
     ${src_dir}/gll.f90  \
     ${src_dir}/output.f90              \
-    -o test_wj3
+    -o test_Vani
 
-./test_wj3
+./test_Vani
+

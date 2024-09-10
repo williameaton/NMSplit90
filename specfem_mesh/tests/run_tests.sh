@@ -1,7 +1,11 @@
 #!/bin/bash
 
 
-
+# -------------------------------------------------------
+cd v_ani_matrix
+echo "Running v ani matrix test..."
+bash test_vani.sh
+cd .. 
 # -------------------------------------------------------
 cd rotation_matrix 
 echo "Running rotation matrix tests..."
@@ -49,6 +53,7 @@ pytest
 # cleanup 
 export test_dir=$(pwd)
 source ./rotation_matrix/cleanup.sh
+source ./v_ani_matrix/cleanup.sh
 source ./plm/cleanup.sh
 source ./xlm/cleanup.sh
 source ./ylm/cleanup.sh

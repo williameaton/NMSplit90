@@ -2,8 +2,8 @@
 
 src_dir="../../src"
 
-# Compile the test executable
-gfortran -llapack -lblas -I../../src/ ./test_ylm_integration.f90 \
+# Compile the SEM executable
+gfortran -llapack -lblas -I../../src/ ./E_from_Srtp.f90 \
     ${src_dir}/params.f90           \
     ${src_dir}/math.f90             \
     ${src_dir}/mineos_model.f90     \
@@ -13,10 +13,10 @@ gfortran -llapack -lblas -I../../src/ ./test_ylm_integration.f90 \
     ${src_dir}/projection.f90       \
     ${src_dir}/spline.f90           \
     ${src_dir}/integrate.f90        \
-    ${src_dir}/gll.f90              \
-    ${src_dir}/output.f90           \
+    ${src_dir}/visual.f90        \
     ${src_dir}/ylm_plm.f90          \
-    -o test_ylm_integration
+    ${src_dir}/gll.f90  \
+    ${src_dir}/output.f90              \
+    -o E_from_Srtp
 
-# Run
-./test_ylm_integration
+./E_from_Srtp

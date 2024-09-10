@@ -14,6 +14,7 @@ gfortran -llapack -lblas -I../../src/ ./test_1_integration.f90 \
     ${src_dir}/spline.f90           \
     ${src_dir}/integrate.f90        \
     ${src_dir}/gll.f90              \
+    ${src_dir}/output.f90              \
     ${src_dir}/ylm_plm.f90          \
     -o test_1_integration
 

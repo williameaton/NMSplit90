@@ -1,5 +1,5 @@
-program read_specfem_mesh
-    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r, IC_ID
+program test_spline
+    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r, IC_ID, interp_map
     use mesh_utils, only: read_proc_coordinates, load_ibool
     use spline, only: interpolate_mode_eigenfunctions, write_mode_spline, create_interpolation_radial_map
     use allocation_module, only: allocate_if_unallocated
@@ -44,11 +44,19 @@ program read_specfem_mesh
     ! Load the mode from the database and save it (.true.)
     call get_mode(mode_type, n, l, om, qval, u, du, v, dv, .true.)
 
+
+    call allocate_if_unallocated(n_unique_rad, u_spl)
+    call allocate_if_unallocated(n_unique_rad, v_spl)
+    call allocate_if_unallocated(n_unique_rad, udot_spl)
+    call allocate_if_unallocated(n_unique_rad, vdot_spl)
+
+
+
+    allocate(interp_map(n_unique_rad))
+    call create_interpolation_radial_map(unique_r, interp_map, n_unique_rad, 1, IC_ID)
     call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, 1, IC_ID, &  
-                                         unique_r, n_unique_rad, interp_id_r)
-
-
-
+                                        unique_r, n_unique_rad, interp_id_r, & 
+                                        u_spl, v_spl, udot_spl, vdot_spl)
     call write_mode_spline(n, mode_type, l, unique_r, n_unique_rad)
 
     end program

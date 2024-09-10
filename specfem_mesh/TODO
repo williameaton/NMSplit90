@@ -1,3 +1,8 @@
+Anisotropy: 
+- Write faster version for the M C M^T given that 
+  C in natural coordinates is 6 x 6 but only the upper left 3 x 3 will be 0
+  because we are not dealing with shear (L = N = 0)
+
 Splitting functions
 - Elastic tensor 
 - Rotation matrix 2 ways: 
@@ -12,17 +17,12 @@ Toroidal modes:
   - Spline interpolation?
 
 
-Utilities
-- Rotate tensor XYZ --> RTP 
-  --> we have RTP to XYZ so invert? 
-
-Strain
-- Trace occassional error? 
-
 Testing
-- Check xyz -> rtp of coordinates 
-- Lagrange
-- Legendre
+- Fully setup Wj3 
+- Fully setup bond_matrix 
+
 
 
 Visual 
+- IMPORTANT: Strain is now stored in voigt ordering -- check ordering in ensight save 
+  as it may thing 4 -> 12 (XY) rather than 23 (YZ) etc 

@@ -25,11 +25,11 @@ program test_Vani_matrix
     ! Choose modes: 
     n1      = 6
     type_1 = 'S'
-    l1      = 3
+    l1      = 2
 
     n2      = 6
     type_2 = 'S'
-    l2      = 3
+    l2      = 2
 
     A =  0.4d0
     C = -0.2d0
@@ -70,8 +70,7 @@ program test_Vani_matrix
         call cleanup_for_mode()
     enddo 
 
-
-    write(out_name, '(a,i1,a,i1,a)')'sem_', n1, type_1, l1, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./matrices/sem_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
 

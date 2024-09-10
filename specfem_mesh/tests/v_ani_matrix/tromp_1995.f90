@@ -92,7 +92,7 @@ program tromp_1995
 
     ! Choose a mode: 
     type   = 'S'
-    l      = 3
+    l      = 2
     n1     = 6
         
     ! Read mineos model 
@@ -166,11 +166,10 @@ program tromp_1995
         enddo 
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'radial_', n1, type, l, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./matrices/radial_', n1, type, l, '.txt'
     call save_Vani_matrix(l, out_name)
 
 end program tromp_1995
-
 
 
 

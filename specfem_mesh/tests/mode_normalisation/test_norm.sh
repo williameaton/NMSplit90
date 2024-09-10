@@ -11,6 +11,7 @@ gfortran -llapack -lblas -I../../src/ ./test_mode_normalisation.f90 \
     ${src_dir}/get_mode.f90         \
     ${src_dir}/allocation.f90       \
     ${src_dir}/projection.f90       \
+    ${src_dir}/output.f90           \
     ${src_dir}/spline.f90           \
     ${src_dir}/integrate.f90        \
     ${src_dir}/ylm_plm.f90          \

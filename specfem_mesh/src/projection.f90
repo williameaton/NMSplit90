@@ -436,12 +436,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, usp, vsp, udotsp, vdot
                             endif        
                         endif !unique r
 
-
-
+                        
                         do h = 1, 6
                             if (abs(strain(h,i,j,k,ispec)).gt. 100.0)then
                                 strain(h,i,j,k,ispec) = SPLINE_ZERO
-                                write(*,*)'Setting strain values at pi to 0,'
+                                if(all_warnings)write(*,*)'Setting strain values at pi to 0,'
                                 !stop 
                             endif 
                         enddo 

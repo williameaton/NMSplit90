@@ -95,6 +95,21 @@ $(OBJ_DIR)/split_mesh.o: $(SRC_DIR)/split_mesh.f90 $(OBJ_DIR)/params.o | $(OBJ_D
 $(OBJ_DIR)/integrate_mesh.o: $(SRC_DIR)/integrate_mesh.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
 
+
+# Compile integrate_mesh.f90 after params.mod is generated
+$(OBJ_DIR)/V_ani_matrix.o: $(SRC_DIR)/V_ani_matrix.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
+	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
+
+# Compile integrate_mesh.f90 after params.mod is generated
+$(OBJ_DIR)/W_matrix.o: $(SRC_DIR)/W_matrix.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
+	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
+
+# Compile integrate_mesh.f90 after params.mod is generated
+$(OBJ_DIR)/output.o: $(SRC_DIR)/output.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
+	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@
+
+
+
 # Ensure the obj and mod directories exist
 $(OBJ_DIR) $(MOD_DIR):
 	mkdir -p $@
