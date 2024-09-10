@@ -22,3 +22,6 @@ gfortran -llapack -lblas -I../../src/ ./test_stored_Wmat.f90 \
 
 echo "  -- computing SEM rotation matrix with stored displacements" 
 ./test_stored_Wmat
+
+echo "  -- computing mode rotation matrix for comparison with stored..." 
+./rotation_semi_analytical

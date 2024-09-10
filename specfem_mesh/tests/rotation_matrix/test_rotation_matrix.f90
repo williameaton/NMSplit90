@@ -49,11 +49,11 @@ program test_W_matrix
     ! Now we can load the mode: 
     ! Choose a mode: 
     type_1 = 'S'
-    l1      = 4
+    l1      = 2
     n1      = 0
 
     type_2 = 'S'
-    l2      = 4
+    l2      = 2
     n2      = 0
 
 
@@ -88,7 +88,7 @@ program test_W_matrix
         call get_mesh_radii()
         call compute_rotation_matrix()
 
-        call compute_W_matrix(type_1, l1, n1, type_2, l2, n2, .false., iproc)
+        call compute_W_matrix(type_1, l1, n1, type_2, l2, n2, .true., iproc)
 
         call cleanup_for_mode()
     enddo 

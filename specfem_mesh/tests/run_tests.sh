@@ -10,6 +10,7 @@ cd ..
 cd rotation_matrix 
 echo "Running rotation matrix tests..."
 bash test_rotation.sh
+bash test_fast_Wmat.sh
 cd .. 
 # -------------------------------------------------------
 cd xlm 

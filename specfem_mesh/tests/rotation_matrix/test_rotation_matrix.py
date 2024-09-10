@@ -1,8 +1,7 @@
 #import pytest
 import numpy as np
 
-
-def test_rotation_matrix():
+def t_rotation_matrix(pref):
     ddir = './rotation_matrix/'
 
     n1   = 0
@@ -16,7 +15,7 @@ def test_rotation_matrix():
     # Load the matrix for the mode solution:
     Wmode = np.loadtxt(f"{ddir}/semi_analytical_{n1}{t1}{l1}_{n2}{t2}{l2}.txt")
     # Load the matrix for the SEM solution:
-    Wsem = np.loadtxt(f"{ddir}/Wmat_{n1}{t1}{l1}_{n2}{t2}{l2}.txt")
+    Wsem = np.loadtxt(f"{ddir}/Wmat_{pref}{n1}{t1}{l1}_{n2}{t2}{l2}.txt")
 
     n_mode = np.shape(Wmode)
     n_sem  = np.shape(Wsem)
@@ -44,3 +43,10 @@ def test_rotation_matrix():
                 diff_perc = abs(100 * (Wsem[row, col] - Wmode[row, col])/Wmode[row, col])
                 assert diff_perc < 0.1
 
+def test_rotation_matrix():
+    # Test for the case where W fname is Wmat_0S2...
+    t_rotation_matrix('')
+
+def test_stored_rotation_matrix():
+    # Test for the case where W fname is Wmat_stored_0S2...
+    t_rotation_matrix('stored_')

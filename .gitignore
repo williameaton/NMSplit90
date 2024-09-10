@@ -17,6 +17,13 @@ databases/*
 get_mode/*
 
 
+# Test files: 
+specfem_mesh/tests/*/*.txt
+specfem_mesh/tests/*/*/*.txt
+specfem_mesh/tests/*.pdf
+specfem_mesh/tests/spline/*.pdf
+specfem_mesh/tests/v_ani_matrix/*.pdf
+
 # Executables: 
 integrate_mesh
 read_mesh

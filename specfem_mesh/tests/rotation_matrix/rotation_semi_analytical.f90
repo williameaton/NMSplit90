@@ -58,11 +58,11 @@ program semi_analytical_W_matrix
     ! Now we can load the mode: 
     ! Choose a mode: 
     type_1 = 'S'
-    l1      = 4
+    l1      = 2
     n1      = 0
 
     type_2 = 'S'
-    l2      = 4
+    l2      = 2
     n2      = 0
 
 
@@ -96,11 +96,7 @@ program semi_analytical_W_matrix
 
     call create_interpolation_radial_map(radial_vals, interp_map, npoints, knot_lower, knot_upper)
 
-    ! Get the first mode: 
-    write(*,*)'get 1st mode: ', n1, type_1, l1
-
-
-
+    ! Get the first mode:
     call get_mode(type_1, n1, l1, wcom, qmod, u1, du1, v1, dv1, .false.)
 
 
@@ -110,8 +106,6 @@ program semi_analytical_W_matrix
                                         u_spl_1, v_spl_1, du_spl_1, dv_spl_1)
 
     ! Second mode: 
-    write(*,*)'get 2nd mode', n2, type_2, l2
-
     call get_mode(type_2, n2, l2, wcom, qmod, u2, du2, v2, dv2, .false.)
     allocate(u_spl_2(npoints), v_spl_2(npoints), du_spl_2(npoints), dv_spl_2(npoints))
     call interpolate_mode_eigenfunctions(type_2, u2, v2, du2, dv2, knot_lower, knot_upper, &  
@@ -196,11 +190,6 @@ program semi_analytical_W_matrix
 
     ! Now we need to integrate for rho Ws r^2 
     int_Wa =  integrate_r_traps(radial_vals, W_a, npoints)
-
-
-    write(*,*)'integral of W_s: ', int_Ws
-    write(*,*)'integral of W_a: ', int_Wa
-
 
 
     ! Only non zero if m1 = m2 

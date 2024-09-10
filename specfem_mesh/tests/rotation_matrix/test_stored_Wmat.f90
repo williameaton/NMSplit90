@@ -48,11 +48,11 @@ program test_W_matrix_stored
     ! Now we can load the mode: 
     ! Choose a mode: 
     type_1 = 'S'
-    l1      = 4
+    l1      = 2
     n1      = 0
 
     type_2 = 'S'
-    l2      = 4
+    l2      = 2
     n2      = 0
 
 
