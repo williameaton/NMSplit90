@@ -501,16 +501,72 @@ module mesh_utils
             do i = 1, ngllx
                 do j = 1, nglly
                     do k = 1, ngllz
-                        vector(:, i,j,k,ispec) = matmul(cmplx(Rmat(:,:,ibool(i,j,k,ispec)), kind=SPLINE_REAL), & 
+                        vector(:, i,j,k,ispec) = matmul(real(Rmat(:,:,ibool(i,j,k,ispec)), kind=SPLINE_REAL), & 
                                                         vector(:,i,j,k,ispec))
                     enddo
                 enddo
             enddo 
         enddo
-        
 
     end subroutine rotate_complex_vector_rtp_to_xyz
 
+
+
+
+    subroutine rotate_complex_sym_matrix_rtp_to_xyz(symmat)
+        ! Assumes the matrix is symmetric 3 x 3 in voigt ordering for matrix M
+        ! 1  =  M_rr     4  =  M_tp
+        ! 2  =  M_tt     5  =  M_rp
+        ! 3  =  M_pp     6  =  M_rt
+
+        use params, only: Rmat, nspec, ngllx, nglly, ngllz, ibool
+        implicit none 
+
+        complex(kind=SPLINE_REAL) :: symmat(6, ngllx, nglly, ngllz, nspec), M(3,3)
+        real(kind=SPLINE_REAL) ::  R(3,3)
+
+        integer :: i, j, k, ispec
+
+        do ispec = 1, nspec
+            do i = 1, ngllx
+                do j = 1, nglly
+                    do k = 1, ngllz
+
+                        R = real(Rmat(:,:,ibool(i,j,k,ispec)), kind=SPLINE_REAL)
+
+                        ! Build back to 3 x 3
+                        M(1,1) = symmat(1, i, j, k, ispec)
+                        M(2,2) = symmat(2, i, j, k, ispec)
+                        M(3,3) = symmat(3, i, j, k, ispec)
+
+                        M(2,3) = symmat(4, i, j, k, ispec)
+                        M(3,2) = symmat(4, i, j, k, ispec)
+
+                        M(1,3) = symmat(5, i, j, k, ispec)
+                        M(3,1) = symmat(5, i, j, k, ispec)
+
+                        M(1,2) = symmat(6, i, j, k, ispec)
+                        M(2,1) = symmat(6, i, j, k, ispec)
+
+                        M = matmul(matmul(R, M), transpose(R))
+
+                        ! Store back in symmat
+                        symmat(1, i, j, k, ispec) = M(1,1) ! xx
+                        symmat(2, i, j, k, ispec) = M(2,2) ! yy
+                        symmat(3, i, j, k, ispec) = M(3,3) ! zz
+                        symmat(4, i, j, k, ispec) = M(2,3) ! yz
+                        symmat(5, i, j, k, ispec) = M(1,3) ! xz
+                        symmat(6, i, j, k, ispec) = M(1,2) ! xy
+
+                        
+
+                    enddo
+                enddo
+            enddo 
+        enddo
+
+
+    end subroutine rotate_complex_sym_matrix_rtp_to_xyz
 
 
 
@@ -544,6 +600,12 @@ module mesh_utils
         call deallocate_if_allocated(interp_id_r)
         call deallocate_if_allocated(xx)
         call deallocate_if_allocated(zz)
+
+        call deallocate_if_allocated(detjac)
+        call deallocate_if_allocated(jacinv)
+        call deallocate_if_allocated(jac)
+
+
 
     end subroutine cleanup_for_mode
     
@@ -585,14 +647,15 @@ module mesh_utils
     
     subroutine compute_jacobian()
         use params, only: jac, detjac, nspec, ngllx, nglly, ngllz, & 
-                          xstore, ystore, zstore, dgll,verbose
+                          xstore, ystore, zstore, dgll,verbose, jacinv
         use allocation_module, only: allocate_if_unallocated
+        use math, only: mat_inv
         implicit none 
         include "constants.h"
 
         ! Local variables: 
         integer :: i, j, s, t, n, p, ispec
-        real(kind=CUSTOM_REAL) :: val, jl(3,3)
+        real(kind=CUSTOM_REAL) :: val, jl(3,3), tmp(3,3)
         real(kind=CUSTOM_REAL), dimension(:,:,:,:), pointer :: cc
 
 
@@ -601,6 +664,7 @@ module mesh_utils
         endif 
 
         call allocate_if_unallocated(3, 3, ngllx, nglly, ngllz, nspec, jac)
+        call allocate_if_unallocated(3, 3, ngllx, nglly, ngllz, nspec, jacinv)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, detjac)
 
         detjac = zero 
@@ -647,11 +711,10 @@ module mesh_utils
                                               jl(1,2) * ( jl(2,1)*jl(3,3) - jl(2,3)*jl(3,1))  + & 
                                               jl(1,3) * ( jl(2,1)*jl(3,2) - jl(2,2)*jl(3,1)) 
                         
-                        !write(*,*) jl(1,1), jl(1,2), jl(1,3)
-                        !write(*,*) jl(2,1), jl(2,2), jl(2,3)
-                        !write(*,*) jl(3,1), jl(3,2), jl(3,3)
-                        !write(*,*) detjac(s,t,n,ispec)
-                        !write(*,*)
+                        ! Compute the inverse jacobian: 
+                        ! J^{-1}ij = del Xi_i/del x_j
+                        jacinv(:,:,s,t,n,ispec) = mat_inv(jl)
+
                     enddo ! n 
                 enddo !t
             enddo ! s

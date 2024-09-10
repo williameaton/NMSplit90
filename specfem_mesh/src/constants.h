@@ -22,6 +22,7 @@ real(kind=CUSTOM_REAL), parameter :: SIX   = 6.0000000_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: SEVEN = 7.0000000_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: EIGHT = 8.0000000_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: NINE  = 9.0000000_CUSTOM_REAL
+real(kind=CUSTOM_REAL), parameter :: TEN   = 10.0000000_CUSTOM_REAL
 
 ! Numbers with spline (eigenfunction) precision:
 real(kind=SPLINE_REAL), parameter :: SPLINE_PI = 3.141592653589793_SPLINE_REAL
@@ -36,6 +37,7 @@ real(kind=SPLINE_REAL), parameter :: SPLINE_SIX   = 6.0000000_SPLINE_REAL
 real(kind=SPLINE_REAL), parameter :: SPLINE_SEVEN = 7.0000000_SPLINE_REAL
 real(kind=SPLINE_REAL), parameter :: SPLINE_EIGHT = 8.0000000_SPLINE_REAL
 real(kind=SPLINE_REAL), parameter :: SPLINE_NINE  = 9.0000000_SPLINE_REAL
+real(kind=SPLINE_REAL), parameter :: SPLINE_TEN  =  10.0000000_SPLINE_REAL
 
 ! Imaginary i: 
 complex(kind=CUSTOM_REAL), parameter :: iZERO  = (ZERO, ZERO)

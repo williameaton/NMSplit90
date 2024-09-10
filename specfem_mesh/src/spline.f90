@@ -6,9 +6,45 @@ module spline
   contains 
 
 
-  subroutine interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, min_knot, max_knot, new_rad, nout, interp_map)
-    use params, only: u_spl, v_spl, udot_spl, vdot_spl, & 
-                      IC_ID, rad_mineos, NL
+
+  subroutine load_rho_spline(rvals, spline, length, iproc)
+    use params, only: datadir
+    implicit none 
+    integer :: length, iproc
+    real(kind=CUSTOM_REAL) :: rvals(length)
+    real(kind=SPLINE_REAL) :: spline(length)
+
+    ! Local 
+    integer :: stored_len
+    character(len=250) :: fname 
+
+    call create_rhospline_fname(iproc, fname)
+
+    open(1, file=trim(datadir)//'/store/rho/'//trim(fname), form='unformatted')
+
+    ! Read the data from the binary file
+    read(1) stored_len
+
+    if(stored_len.ne.length)then 
+      write(*,*)'Error: the length parsed to load_rho_spline was different from that stored in the binary you are trying to load: '
+      write(*,*)'length parsed: ', length
+      write(*,*)'stored value : ', stored_len
+      stop 
+    endif
+
+    read(1)rvals
+    read(1)spline
+    close(1)
+  end subroutine load_rho_spline
+
+
+
+
+
+  subroutine interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, min_knot, max_knot, & 
+                                             new_rad, nout, interp_map, & 
+                                             u_spline, v_spline, du_spline, dv_spline)
+    use params, only: IC_ID, rad_mineos, NL
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     implicit none
 
@@ -19,64 +55,56 @@ module spline
     real(kind=SPLINE_REAL)            :: v(NL), dv(NL)
     real(kind=CUSTOM_REAL)            :: new_rad(nout)
     integer                           :: interp_map(nout)
+    real(kind=SPLINE_REAL) :: u_spline(nout), v_spline(nout), du_spline(nout), dv_spline(nout)
 
     integer :: nin 
-
-    ! Interpolate u, du (or w, dw if toroidal)
-    call deallocate_if_allocated(u_spl)
-    call deallocate_if_allocated(udot_spl)
-    call allocate_if_unallocated(nout, u_spl)
-    call allocate_if_unallocated(nout, udot_spl)
 
     ! Length of the input array 
     nin = max_knot-min_knot+1
 
-    u_spl    = SPLINE_ZERO
-    udot_spl = SPLINE_ZERO
+    u_spline  = SPLINE_ZERO
+    du_spline = SPLINE_ZERO
  
     ! If only 1 or 2 points to 'interpolate' then just return them 
     select case (nout)
     case(1)
-      u_spl(1) = u(min_knot)
+      u_spline(1) = u(min_knot)
     case(2)
-      u_spl(1) = u(min_knot)
-      u_spl(2) = u(max_knot)
+      u_spline(1) = u(min_knot)
+      u_spline(2) = u(max_knot)
     case default
 
       call cubic_spline_interp(nin, rad_mineos(min_knot:max_knot), u(min_knot:max_knot), & 
-                              nout, new_rad, u_spl, interp_map, min_knot)
+                              nout, new_rad, u_spline, interp_map, min_knot)
+
+
 
       call cubic_spline_interp(nin, rad_mineos(min_knot:max_knot), du(min_knot:max_knot), & 
-                              nout, new_rad, udot_spl, interp_map, min_knot)
-                            
+                              nout, new_rad, du_spline, interp_map, min_knot) 
+
     end select
+
+
+
 
     ! Interpolate v, dv if spheroidal
     if(mode_type.eq.'S')then 
-      call deallocate_if_allocated(v_spl)
-      call deallocate_if_allocated(vdot_spl)
-      call allocate_if_unallocated(nout, v_spl)
-      call allocate_if_unallocated(nout, vdot_spl)
-
-      v_spl    = SPLINE_ZERO
-      vdot_spl = SPLINE_ZERO
+      v_spline    = SPLINE_ZERO
+      dv_spline   = SPLINE_ZERO
       
       select case (nout)
       case(1)
-        v_spl(1) = v(min_knot)
+        v_spline(1) = v(min_knot)
       case(2)
-        v_spl(1) = v(min_knot)
-        v_spl(2) = v(max_knot)
+        v_spline(1) = v(min_knot)
+        v_spline(2) = v(max_knot)
       case default
         call cubic_spline_interp(nin, rad_mineos(min_knot:max_knot), v(min_knot:max_knot), & 
-        nout, new_rad, v_spl, interp_map, min_knot)
+        nout, new_rad, v_spline, interp_map, min_knot)
 
         call cubic_spline_interp(nin, rad_mineos(min_knot:max_knot), dv(min_knot:max_knot), & 
-        nout, new_rad, vdot_spl, interp_map, min_knot)
-
-
+        nout, new_rad, dv_spline, interp_map, min_knot)
       end select
-
     endif 
 
   end subroutine interpolate_mode_eigenfunctions
@@ -86,6 +114,9 @@ module spline
 
 
 
+
+
+  
 
 
   subroutine interpolate_mineos_variable(in_variable, min_knot, max_knot, new_rad, nout, spl_out, interp_map)
@@ -314,6 +345,7 @@ module spline
     enddo
 
 
+
     xs     =  real(x(:),kind=SPLINE_REAL)
     dxs(:) = real(dx(:),kind=SPLINE_REAL)
     slope(:) = dy(:)/dxs
@@ -386,6 +418,8 @@ module spline
             interp(i) = interp(i) +  c(m+1,j- min_knot +1)*(real(outradial(i) - rad_mineos(j), kind=SPLINE_REAL))**(real(k-m, kind=SPLINE_REAL)) 
         enddo
     enddo 
+
+
   end subroutine cubic_spline_interp
 
 

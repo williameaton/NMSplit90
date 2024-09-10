@@ -126,10 +126,9 @@ end subroutine get_mesh_radii
 
 
 
-subroutine compute_global_mode_displacement(mode_type, l, m, disp)
+subroutine compute_global_mode_displacement(mode_type, l, m, u_spline, v_spline, n_spl, disp)
     use params, only:  nspec, ngllx, & 
-    nglly, ngllz, thetastore, phistore, rad_id,& 
-    u_spl, v_spl, udot_spl, vdot_spl
+    nglly, ngllz, thetastore, phistore, rad_id
     use spline, only: interpolate_mode_eigenfunctions
     use ylm_plm, only: ylm_complex, ylm_deriv
     use mesh_utils, only: delta_spline
@@ -142,8 +141,11 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
     character(len=1) :: mode_type     ! mode type; S or T
     integer          :: l             ! l value (degree) of mode
     integer          :: m             ! m value (order)  of mode
+    integer          :: n_spl         ! length of spline
     complex(kind=SPLINE_REAL) :: disp(3,ngllx, nglly, ngllz, nspec)
     
+    real(kind=SPLINE_REAL) :: u_spline(n_spl),  v_spline(n_spl)
+
     ! Local variables: 
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
     real(kind=CUSTOM_REAL)    ::  theta, phi 
@@ -180,8 +182,8 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
 
                         ! u, v at at the radius of this node
-                        u_r   =    u_spl(rad_id(i,j,k,ispec))
-                        v_r   =    v_spl(rad_id(i,j,k,ispec)) / ll1
+                        u_r   =    u_spline(rad_id(i,j,k,ispec))
+                        v_r   =    v_spline(rad_id(i,j,k,ispec)) / ll1
 
                         sinth = real(sinp(theta), kind=SPLINE_REAL)
 
@@ -190,7 +192,7 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
                             ! S_r     (DT98 D.8)
                             disp(1,i,j,k,ispec) = tl14p * u_r * dm0
                             ! S_theta (DT98 D.9)
-                            disp(2,i,j,k,ispec) = pref * v_r * dd1
+                            disp(2,i,j,k,ispec) =  pref * v_r * dd1
                             ! S_phi   (DT98 D.10)
                             disp(3,i,j,k,ispec) = pref * SPLINE_iONE * mf * v_r * dd1
 
@@ -229,7 +231,7 @@ subroutine compute_global_mode_displacement(mode_type, l, m, disp)
                         ! Get ylm and the partial derivatives, and 
                         ! w at the radius of this node
                         
-                        w_r   = u_spl(rad_id(i,j,k,ispec))/ll1
+                        w_r   = u_spline(rad_id(i,j,k,ispec))/ll1
 
                         theta = real(thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
                         phi   = real(phistore(i,j,k,ispec), kind=CUSTOM_REAL)
@@ -280,15 +282,22 @@ end subroutine compute_global_mode_displacement
 
 
 
-subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
-    use params, only: NL, n_unique_rad, nspec, ngllx, & 
-                      nglly, ngllz, thetastore, phistore, rad_id, rstore,& 
-                      unique_r, u_spl, v_spl, udot_spl, vdot_spl, xx, zz,& 
-                      interp_id_r, IC_ID
+subroutine compute_gll_mode_strain(mode_type, nord, l, m, usp, vsp, udotsp, vdotsp, spl_len, strain)
+    ! Strain ordering is as follows: 
+    ! 1  =  E_rr     4  =  E_tp
+    ! 2  =  E_tt     5  =  E_rp
+    ! 3  =  E_pp     6  =  E_rt
+    ! Note that this is differnet from what I would usually do as an order (e.g. that of a moment tensor)
+    ! This is voigt notation convention
+
+    use params, only: nspec, ngllx, unique_r, & 
+                      nglly, ngllz, thetastore, phistore, & 
+                      rad_id, rstore, all_warnings
     use ylm_plm, only: ylm_complex, ylm_deriv
     use spline, only: interpolate_mode_eigenfunctions
     use mesh_utils, only: delta_spline
     use math, only: sinp, tanp, sqrtp
+    use allocation_module, only: allocate_if_unallocated
 
     implicit none
     include "constants.h"
@@ -298,51 +307,40 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     integer          :: nord          ! n value of mode
     integer          :: l             ! l value (degree) of mode
     integer          :: m             ! m value (order)  of mode
+    integer          :: spl_len       ! length of splined eigenfunctions
+    
+    ! Spline-interpolated eigenfunctions
+    real(kind=SPLINE_REAL)    :: usp(spl_len)
+    real(kind=SPLINE_REAL)    :: vsp(spl_len)
+    real(kind=SPLINE_REAL)    :: udotsp(spl_len)
+    real(kind=SPLINE_REAL)    :: vdotsp(spl_len)
     complex(kind=SPLINE_REAL) :: strain(6,ngllx, nglly, ngllz, nspec)
 
     ! Local variables: 
-    real(kind=SPLINE_REAL)  :: om  ! normalized anglar frequency   
-    real(kind=SPLINE_REAL)  :: qval   ! normalized Q factor        
-
     complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
     real(kind=CUSTOM_REAL)    :: theta, phi
-
     complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta
 
+    real(kind=SPLINE_REAL)    :: sinth, tanth, unq_r, du_r, u_r, & 
+                                 dv_r, v_r, w_r, dw_r, ff, &
+                                 dm0, dd1, dd2
 
-    real(kind=SPLINE_REAL) :: sinth, tanth, unq_r, du_r, u_r, & 
-                              dv_r, v_r, w_r, dw_r, ff, &
-                              dm0, dd1, dd2
-
-    integer :: ispec, i,j,k
-    ! Mineos eigenfunction values:
-    ! Note that these NEED to be 4-byte because that is the mineos
-    ! output format 
-    real(kind=SPLINE_REAL)            :: u(NL), du(NL)
-    real(kind=SPLINE_REAL)            :: v(NL), dv(NL)
-
+    ! Auxillary eigenfunction variables if needed
+    real(kind=SPLINE_REAL), allocatable :: xx(:), zz(:)
+    
+    ! GLL level variables
     real(kind=SPLINE_REAL)  :: xx_r, zz_r, mf, lf, ll1, tl14p, kr2
+    integer :: rid 
+    ! Loop variables 
+    integer :: ispec, i,j,k, h
 
-
-    ! Load the mode from the database
-    call get_mode(mode_type,nord,l,om,qval,u,du,v,dv,.false.)
-
-    ! Spline interpolation: 
-    !   - Computes the value of u, v, du, dv at each of the unique radial values
-    call interpolate_mode_eigenfunctions(mode_type, u, v, du, dv, 1, IC_ID, & 
-                                         unique_r, n_unique_rad, interp_id_r)
-
-
-    ! DT98 below D.1: k = sqrt(l(l+1))
-    lf  = real(l, kind=SPLINE_REAL)
-    mf  = real(m, kind=SPLINE_REAL)
-    ll1 = sqrtp(lf*(lf+SPLINE_ONE))
+    lf  = real(l, kind=SPLINE_REAL)           ! float l 
+    mf  = real(m, kind=SPLINE_REAL)           ! float m
+    ll1 = (lf*(lf+SPLINE_ONE))**SPLINE_HALF   ! float of k = √(l(l+1))
     tl14p = ((SPLINE_TWO*lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2
-    kr2 = ll1*((ll1*ll1 - SPLINE_TWO)**SPLINE_HALF)
+    kr2 = ll1*((ll1*ll1 - SPLINE_TWO)**SPLINE_HALF)      
 
-
-
-    dm0 = delta_spline(m, 0)                       ! δ_{m0}
+    dm0 = delta_spline(m, 0)                         ! δ_{m0}
     dd1 = delta_spline(m, -1) - delta_spline(m, 1)   ! δ_{m -1} - δ_{m 1}
     dd2 = delta_spline(m, -2) + delta_spline(m, 2)   ! δ_{m -2} + δ_{m 2}
 
@@ -356,8 +354,8 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
     ! If toroidal mode then u,v are zero but w, wdot are not
     !   --> x should be 0
     if (mode_type.eq.'S')then 
-        allocate(xx(n_unique_rad))
-        xx = udot_spl + (u_spl - v_spl)/real(unique_r, kind=SPLINE_REAL)
+        allocate(xx(spl_len))
+        xx = vdotsp/ll1 + (usp - vsp/ll1)/real(unique_r, kind=SPLINE_REAL)
 
         ! Loop over each GLL point: 
         do ispec = 1, nspec
@@ -367,65 +365,76 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         ! Get ylm and the partial derivatives
                         theta = thetastore(i,j,k,ispec)
                         phi   = phistore(i,j,k,ispec)
-                        ylm   = ylm_complex(l,m, theta, phi)
+                        ylm   = ylm_complex(l, m, theta, phi)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
                         
                         ! u, v, udot, vdo, x, at at the radius of this node
-                        u_r   =    u_spl(rad_id(i,j,k,ispec))/ll1
-                        v_r   =    v_spl(rad_id(i,j,k,ispec))/ll1
-                        du_r  = udot_spl(rad_id(i,j,k,ispec))/ll1
-                        dv_r  = vdot_spl(rad_id(i,j,k,ispec))/ll1
-                        xx_r  =       xx(rad_id(i,j,k,ispec))/ll1
+                        rid   = rad_id(i,j,k,ispec)
+                        u_r   = usp(rid)
+                        du_r  = udotsp(rid)
+                        
+                        v_r   = vsp(rid)/ll1
+                        xx_r  = xx(rid)
 
                         ! r and theta at the node  
                         unq_r = real(rstore(i,j,k,ispec), kind=SPLINE_REAL)
                         sinth = real(sinp(theta),         kind=SPLINE_REAL)
                         tanth = real(tanp(theta),         kind=SPLINE_REAL)
 
-                        if (theta.ge.zero .and. theta.le.pole_tolerance) then 
-                            ! Values at the pole 
-                            ! D.28
-                            ff = (SPLINE_TWO*u_r - ll1*ll1*v_r)/unq_r    
-                            ! E_rr: DT98 D.22
-                            strain(1,i,j,k,ispec) = tl14p * du_r * dm0
-                            ! E_tt: DT98 D.23
-                            strain(2,i,j,k,ispec) = SPLINE_HALF * tl14p * &
-                                                    (ff*dm0 + & 
-                                                    kr2*SPLINE_TWO*v_r * & 
-                                                    dd2/(SPLINE_FOUR*unq_r))
 
-                            ! E_pp: DT98 D.24
-                            strain(3,i,j,k,ispec) = SPLINE_HALF * tl14p * &
-                                                    (ff*dm0 - & 
-                                                    kr2*SPLINE_TWO*v_r * & 
-                                                    dd2/(SPLINE_FOUR*unq_r))
+                        if(unq_r.eq.0)then 
+                            if(all_warnings) write(*,*)'Warning: setting strain at centre to 0 artificially'
 
-                            ! E_rt: DT98 D.25
-                            strain(4,i,j,k,ispec) = tl14p * ll1 * xx_r * dd1/SPLINE_FOUR
-                            ! E_rp: DT98 D.26
-                            strain(5,i,j,k,ispec) = tl14p * ll1 * SPLINE_iONE * mf * xx_r/SPLINE_FOUR
-                            ! E_tp: DT98 D.27
-                            strain(6,i,j,k,ispec) = tl14p * kr2 * SPLINE_iONE * mf * v_r * dd2/(SPLINE_EIGHT*unq_r)
-                        else 
+                            strain(:,i,j,k,ispec) = SPLINE_iZERO
+                        else
 
-                            ! Convert to SPLINE_REAL precision
-                            sp_ylm         = cmplx(ylm, kind=SPLINE_REAL)
-                            spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+                            if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                                ! Values at the pole 
+                                ! D.28
+                                ff = (SPLINE_TWO*u_r - ll1*ll1*v_r)/unq_r    
+                                
+                                ! E_rr: DT98 D.22
+                                strain(1,i,j,k,ispec) = tl14p * du_r * dm0
 
-                            ! Values away from the pole
-                            ! E_rr: DT98 D.14
-                            strain(1,i,j,k,ispec) = sp_ylm*du_r  
-                            ! E_tt: DT98 D.15
-                            strain(2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO + ll1*ll1*sp_ylm))/unq_r
-                            ! E_pp: DT98 D.16
-                            strain(3,i,j,k,ispec) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO))/unq_r
-                            ! E_rt: DT98 D.17
-                            strain(4,i,j,k,ispec) = SPLINE_HALF * xx_r * spl_dylm_theta
-                            ! E_rp: DT98 D.18
-                            strain(5,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * xx_r * sp_ylm/sinth
-                            ! E_tp: DT98 D.19
-                            strain(6,i,j,k,ispec) = SPLINE_HALF * mf * v_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r * sinth)
-                        endif                      
+                                ! E_tt: DT98 D.23
+                                strain(2,i,j,k,ispec) = SPLINE_HALF * tl14p * &
+                                                        (ff*dm0 + & 
+                                                        kr2*SPLINE_TWO*v_r * & 
+                                                        dd2/(SPLINE_FOUR*unq_r))
+
+                                ! E_pp: DT98 D.24
+                                strain(3,i,j,k,ispec) = SPLINE_HALF * tl14p * &
+                                                        (ff*dm0 - & 
+                                                        kr2*SPLINE_TWO*v_r * & 
+                                                        dd2/(SPLINE_FOUR*unq_r))
+
+                                ! E_rt: DT98 D.25
+                                strain(6,i,j,k,ispec) = tl14p * ll1 * xx_r * dd1/SPLINE_FOUR
+                                ! E_rp: DT98 D.26
+                                strain(5,i,j,k,ispec) = tl14p * ll1 * SPLINE_iONE * mf * xx_r/SPLINE_FOUR
+                                ! E_tp: DT98 D.27
+                                strain(4,i,j,k,ispec) = tl14p * kr2 * SPLINE_iONE * mf * v_r * dd2/(SPLINE_EIGHT*unq_r)
+                            else 
+
+                                ! Convert to SPLINE_REAL precision
+                                sp_ylm         = cmplx(ylm, kind=SPLINE_REAL)
+                                spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+
+                                ! Values away from the pole
+                                ! E_rr: DT98 D.14
+                                strain(1,i,j,k,ispec) = sp_ylm*du_r  
+                                ! E_tt: DT98 D.15
+                                strain(2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO + ll1*ll1*sp_ylm))/unq_r
+                                ! E_pp: DT98 D.16
+                                strain(3,i,j,k,ispec) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO))/unq_r
+                                ! E_rt: DT98 D.17
+                                strain(6,i,j,k,ispec) = SPLINE_HALF * xx_r * spl_dylm_theta
+                                ! E_rp: DT98 D.18
+                                strain(5,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * xx_r * sp_ylm/sinth
+                                ! E_tp: DT98 D.19
+                                strain(4,i,j,k,ispec) = SPLINE_iONE * mf * v_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r * sinth)
+                            endif        
+                        endif !unique r
 
                     enddo 
                 enddo 
@@ -434,8 +443,8 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
 
     elseif (mode_type.eq.'T')then 
         ! I believe that get_mode stores w, wdot in the u and du terms
-        allocate(zz(n_unique_rad))
-        zz = udot_spl - u_spl/real(unique_r, kind=SPLINE_REAL)
+        allocate(zz(spl_len))
+        zz = (udotsp - usp/real(unique_r, kind=SPLINE_REAL))/ll1
 
         ! Loop over each GLL point: 
         do ispec = 1, nspec
@@ -449,9 +458,10 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                         call ylm_deriv(l, m, theta, phi, dylm_theta, dylm_phi)
 
                         ! w, wdot, z, at at the radius of this node
-                        w_r   =    u_spl(rad_id(i,j,k,ispec))/ll1
-                        dw_r  = udot_spl(rad_id(i,j,k,ispec))/ll1
-                        zz_r  =       zz(rad_id(i,j,k,ispec))/ll1
+                        rid   = rad_id(i,j,k,ispec)
+                        w_r   = usp(rid)/ll1
+                        dw_r  = udotsp(rid)/ll1
+                        zz_r  = zz(rid) ! No division as divided above
 
                         ! r and theta at the node  
                         unq_r = real(rstore(i,j,k,ispec), kind=SPLINE_REAL)
@@ -467,11 +477,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                             ! E_pp: DT98 D.24
                             strain(3,i,j,k,ispec) = -SPLINE_HALF * tl14p * SPLINE_iONE * mf * w_r * dd2 * kr2/(SPLINE_FOUR * unq_r)
                             ! E_rt: DT98 D.25
-                            strain(4,i,j,k,ispec) = tl14p * ll1 * SPLINE_iONE * mf * zz_r * dd1 / SPLINE_FOUR
+                            strain(6,i,j,k,ispec) = tl14p * ll1 * SPLINE_iONE * mf * zz_r * dd1 / SPLINE_FOUR
                             ! E_rp: DT98 D.26
                             strain(5,i,j,k,ispec) = - tl14p * ll1 * zz_r * dd1 / SPLINE_FOUR
                             ! E_tp: DT98 D.27
-                            strain(6,i,j,k,ispec) = - tl14p * kr2 * w_r * dd2 / (unq_r * SPLINE_FOUR)
+                            strain(4,i,j,k,ispec) = - tl14p * kr2 * w_r * dd2 / (unq_r * SPLINE_FOUR)
                         else
 
                             ! Convert to SPLINE_REAL precision
@@ -485,11 +495,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
                             ! E_pp: DT98 D.16
                             strain(3,i,j,k,ispec) = - strain(2,i,j,k,ispec)
                             ! E_rt: DT98 D.17
-                            strain(4,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * zz_r * sp_ylm / sinth
+                            strain(6,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * zz_r * sp_ylm / sinth
                             ! E_rp: DT98 D.18
                             strain(5,i,j,k,ispec) =  - SPLINE_HALF * zz_r * spl_dylm_theta
                             ! E_tp: DT98 D.19
-                            strain(6,i,j,k,ispec) = (spl_dylm_theta/tanth + & 
+                            strain(4,i,j,k,ispec) = (spl_dylm_theta/tanth + & 
                                                     (SPLINE_HALF*ll1*ll1 - (mf/sinth)**SPLINE_TWO)*sp_ylm & 
                                                     )* w_r / unq_r
                         endif 
@@ -501,13 +511,73 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, strain)
         write(*,*)'Error: mode_type must be S or T'
         stop
     endif 
-   
 
-    if (maxval(abs(real(strain(1,:,:,:,:)))).gt. 100.0)then
-        write(*,*)'ERROR: large strain max value:  ', maxval(real(strain(1,:,:,:,:)))
-        stop 
-    endif 
 
 end subroutine compute_gll_mode_strain
 
 
+
+
+subroutine gll_strain_from_disp(disp, strain)
+    ! Uses xyz displacement (d) to compute strain 
+    use params, only: ngllx, nglly, ngllz, nspec, dgll, jacinv
+    implicit none 
+    include "constants.h"
+
+    complex(SPLINE_REAL) :: disp(3, ngllx, nglly, ngllz, nspec)
+    complex(SPLINE_REAL) :: strain(6, ngllx, nglly, ngllz, nspec)
+
+    ! Local: 
+    integer :: ispec, i, j, k, p, q, g, h
+    complex(SPLINE_REAL) :: sum_c(3), strn_tmp(3,3)
+
+    strain = SPLINE_iZERO
+
+
+        ! Compute gradient of the displacement
+    do ispec = 1, nspec
+        do i = 1, ngllx 
+            do j = 1, nglly
+                do k = 1, ngllz
+
+                    ! Loop over strain elementsa
+                    do p = 1, 3
+                        do q = 1, 3
+
+                            sum_c(1) = SPLINE_iZERO
+                            sum_c(2) = SPLINE_iZERO
+                            sum_c(3) = SPLINE_iZERO
+
+                            do g = 1, ngllx
+                                sum_c(1) = sum_c(1) + disp(q, g, j, k, ispec) * real(dgll(g, i), kind=SPLINE_REAL)
+                                sum_c(2) = sum_c(2) + disp(q, i, g, k, ispec) * real(dgll(g, j), kind=SPLINE_REAL)
+                                sum_c(3) = sum_c(3) + disp(q, i, j, g, ispec) * real(dgll(g, k), kind=SPLINE_REAL)
+                            enddo 
+
+                            strn_tmp(q,p) = sum_c(1) * jacinv(1,p,i,j,k,ispec) +   &  
+                                            sum_c(2) * jacinv(2,p,i,j,k,ispec) +   & 
+                                            sum_c(3) * jacinv(3,p,i,j,k,ispec) 
+                        enddo !q
+                    enddo !p
+
+                    ! Symmetric part of tensor
+                    strn_tmp(:,:) =  SPLINE_HALF * (strn_tmp + transpose(strn_tmp) )
+
+                    ! Save in voigt notation 
+                    do h = 1, 3
+                        strain(h, i, j, k, ispec) = strn_tmp(h,h)
+                    enddo 
+                    strain(4, i, j, k, ispec) = strn_tmp(2,3)
+                    strain(5, i, j, k, ispec) = strn_tmp(1,3)
+                    strain(6, i, j, k, ispec) = strn_tmp(1,2)
+
+
+                enddo 
+            enddo 
+        enddo 
+    enddo
+
+
+
+
+end subroutine gll_strain_from_disp

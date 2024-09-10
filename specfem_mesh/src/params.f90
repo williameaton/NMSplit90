@@ -8,7 +8,7 @@ include "precision.h"
 ! 2  == while coding
 ! 3  == while debugging
 integer, parameter :: verbose = 1
-logical, parameter :: all_warnings = .true.
+logical, parameter :: all_warnings = .false.
 
 ! Specfem mesh files: 
 character(len=250) :: datadir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced'
@@ -64,11 +64,12 @@ real(kind=CUSTOM_REAL), allocatable :: xi(:), wgll(:), dgll(:,:)
 ! Local mesh variables:
 integer, allocatable                   :: ibool(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: rho(:,:,:,:)
-complex(kind=SPLINE_REAL), allocatable :: strain1(:,:,:,:,:)
+complex(kind=SPLINE_REAL), allocatable :: strain1(:,:,:,:,:), strain2(:,:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 
 real(kind=CUSTOM_REAL), allocatable    :: jac(:,:,:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: detjac(:,:,:,:)
+real(kind=CUSTOM_REAL), allocatable    :: jacinv(:,:,:,:,:,:)
 
 ! Global mesh variables 
 real(kind=CUSTOM_REAL), allocatable    :: globalrho(:)
@@ -81,7 +82,14 @@ real(kind=CUSTOM_REAL), allocatable :: Rmat(:,:,:)
 
 ! Matrices: 
 complex(kind=SPLINE_REAL), allocatable :: Wmat(:,:)
+complex(kind=SPLINE_REAL), allocatable :: Vani(:,:)
 
+! Angles of rotation for VTI 
+real(kind=CUSTOM_REAL), allocatable    :: eta1(:,:,:,:)
+real(kind=CUSTOM_REAL), allocatable    :: eta2(:,:,:,:)
+
+! Perturbed elastic tensor in xyz at each GLL (6 x 6) voigt notation
+real(kind=SPLINE_REAL), allocatable    :: Cxyz(:,:,:,:,:,:)
 
 
 

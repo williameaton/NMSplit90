@@ -48,9 +48,9 @@ do iproc = 0, 5
         ! Compute strain tensor for mode
         allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 
                 globalstrain(6, nglob))
-        call compute_gll_mode_strain('S', n, l, m, strain1)
+        !call compute_gll_mode_strain('S', n, l, m, strain1)
 
-        call map_complex_vector(6, strain1, globalstrain, 0)
+        !call map_complex_vector(6, strain1, globalstrain, 0)
 
         ! needed for ensight geo file
         call allocate_if_unallocated(nglob, x_glob)

@@ -15,8 +15,9 @@ gfortran -llapack -lblas -I../../src/ ./rotation_semi_analytical.f90 \
     ${src_dir}/integrate.f90        \
     ${src_dir}/visual.f90           \
     ${src_dir}/ylm_plm.f90          \
-    ${src_dir}/rotation_matrix.f90  \
+    ${src_dir}/W_matrix.f90  \
     ${src_dir}/gll.f90              \
+    ${src_dir}/output.f90           \
     -o rotation_semi_analytical
 
 

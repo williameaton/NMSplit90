@@ -1,6 +1,6 @@
 
 program test_mode_norm
-    use params, only: NL, IC_ID, ndisc, rdisc, disc, rad_mineos, rho_mineos, u_spl, v_spl, interp_map, rho_spl
+    use params, only: NL, IC_ID, ndisc, rdisc, disc, rad_mineos, rho_mineos, u_spl, v_spl,udot_spl, vdot_spl, interp_map, rho_spl
     use spline, only: create_interpolation_radial_map, interpolate_mode_eigenfunctions, write_mode_spline, interpolate_mineos_variable, quad_spline_interp_3
     use Integrate, only: integrate_r_traps
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
@@ -79,9 +79,19 @@ program test_mode_norm
                 enddo 
 
                 ! Interpolate
+                call deallocate_if_allocated(u_spl)
+                call allocate_if_unallocated(npoints, u_spl)
+                call deallocate_if_allocated(udot_spl)
+                call allocate_if_unallocated(npoints, udot_spl)
+                call deallocate_if_allocated(v_spl)
+                call allocate_if_unallocated(npoints, v_spl)
+                call deallocate_if_allocated(vdot_spl)
+                call allocate_if_unallocated(npoints, vdot_spl)
+
                 call create_interpolation_radial_map(radial_vals, interp_map, npoints, knot_lower, knot_upper)
                 call interpolate_mode_eigenfunctions(type, u, v, du, dv, knot_lower, knot_upper, &  
-                                                    radial_vals, npoints, interp_map)
+                                                    radial_vals, npoints, interp_map, & 
+                                                    u_spl, v_spl, udot_spl, vdot_spl)
 
                 ! write with custom name
                 if (i .lt.10)then

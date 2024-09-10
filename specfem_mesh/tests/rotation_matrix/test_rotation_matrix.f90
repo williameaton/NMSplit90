@@ -19,8 +19,8 @@ program test_W_matrix
     implicit none
     include "constants.h"
 
-    integer :: i, j, k, l, n , ispec, lentrim, iproc, region, m1, m2, knot_lower, knot_upper, component
-    character(len=1)   :: char, type
+    integer :: i, j, k, l1, n1, l2, n2 , ispec, lentrim, iproc, region, m1, m2, knot_lower, knot_upper, component
+    character(len=1)   :: char, type_1, type_2
     character(len=10)  :: mode
     character(len=250) :: arg, ensight_nm
     character(len=30)  :: out_name
@@ -29,37 +29,50 @@ program test_W_matrix
     character(len=4), parameter :: fmti3 = "(i3)"
     character(len=4) :: fmt_n, fmt_l
     real(SPLINE_REAL) :: wcom, qmod
-    real(SPLINE_REAL), allocatable :: u(:), v(:), du(:), dv(:)
-    integer :: npoints, tl1, nproc
+    integer :: npoints, tl1, tl2, nproc
     real(kind=CUSTOM_REAL), allocatable :: radial_vals(:), r_lower, r_upper
 
     real(SPLINE_REAL), allocatable :: integrand(:)
     complex(SPLINE_REAL), allocatable :: W_s(:)
     complex(SPLINE_REAL), allocatable :: disp1_glob(:,:)
     real(SPLINE_REAL) :: total_integral,  precision,  lf, kf
-    complex(SPLINE_REAL) :: sum, val
 
+    ! Timing: 
+    integer :: start_clock, end_clock, count_rate
+    real(8) :: elapsed_time
 
 
     ! Read mineos model 
     call process_mineos_model()
-    allocate(u(NL), v(NL), du(NL), dv(NL))
 
 
     ! Now we can load the mode: 
     ! Choose a mode: 
-    type = 'S'
-    l      = 2
-    n      = 4
+    type_1 = 'S'
+    l1      = 4
+    n1      = 0
+
+    type_2 = 'S'
+    l2      = 4
+    n2      = 0
+
+
     region = 3
     nproc  = 6
 
     ! Setup W matrix
-    tl1 = 2*l + 1
+    tl1 = 2*l1 + 1
+    tl2 = 2*l2 + 1
+
     ! The matrix should be 2l + 1 from -m to m 
     call deallocate_if_allocated(Wmat)
-    call allocate_if_unallocated(tl1, tl1, Wmat)
+    call allocate_if_unallocated(tl1, tl2, Wmat)
     Wmat = SPLINE_iZERO
+
+
+    ! Start clock count
+    call system_clock(count_rate=count_rate)
+    call system_clock(start_clock)
 
 
     do iproc = 0, nproc-1
@@ -75,86 +88,29 @@ program test_W_matrix
         call get_mesh_radii()
         call compute_rotation_matrix()
 
-        ! Get density at each radius 
-        allocate(rho_spl(n_unique_rad))
-        call interpolate_mineos_variable(real(rho_mineos, kind=SPLINE_REAL), 1, IC_ID, & 
-                                        unique_r, n_unique_rad, rho_spl, interp_id_r)
-        
-
-        ! Load the eigenfunctions 
-        call get_mode(type, n, l, wcom, qmod, u, du, v, dv, .false.)
-        call interpolate_mode_eigenfunctions(type, u, v, du, dv, 1, IC_ID, &  
-                                            unique_r, n_unique_rad, interp_id_r)
-
-        allocate(disp1(3, ngllx, nglly, ngllz, nspec) )
-        allocate(disp2(3, ngllx, nglly, ngllz, nspec) )
-
-
-        ! Since we are self coupling spheroidal currently we would only need the 
-        ! diagonals 
-        ! NOT TRUE FOR OTHER CASES
-        do m1 = -l,  l
-            m2 = m1
-
-                call compute_global_mode_displacement(type, l, m1, disp1)
-                call rotate_complex_vector_rtp_to_xyz(disp1)
-
-                ! Save to ensight
-                !if (m1.lt.0)then 
-                !    write(ensight_nm, '(a,i2)')'disp1_', m1
-                !else 
-                !    write(ensigh t_nm, '(a,i1)')'disp1_', m1
-                !endif 
-                !allocate(disp1_glob(3, nglob))
-                !call map_complex_vector(3, disp1, disp1_glob, 0)
-                !call write_complex_vector_to_ensight(disp1_glob, trim(ensight_nm), 1)
-                !deallocate(disp1_glob)
-
-
-                !if(m1.eq.m2)then 
-                disp2(:,:,:,:,:) = disp1(:,:,:,:,:)
-                !else
-                !    call compute_global_mode_displacement(type, l, m2, disp2)
-                !    call rotate_complex_vector_rtp_to_xyz(disp2)
-                !endif
-
-                sum = SPLINE_iZERO
-                ! Compute D.36 integral
-                ! Note that \Omega should only be non-zero in the z-direction
-                ! Hence the integrand should be 
-                ! rho \tilde{s}^*  \dot (-i\Omega S_y, i\Omega s_x, 0)
-                ! Note also that naturally the global mode displacement
-                ! is computed in r, theta, phi and needs to be converted
-                do ispec = 1, nspec 
-                    do i = 1, ngllx
-                        do j = 1, nglly
-                            do k = 1, ngllz
-
-                                val = rho_spl(rad_id(i,j,k,ispec)) * & 
-                                (- conjg(disp1(1,i,j,k,ispec))*disp2(2,i,j,k,ispec) +  & 
-                                   conjg(disp1(2,i,j,k,ispec))*disp2(1,i,j,k,ispec)) * & 
-                                  detjac(i,j,k,ispec) * wgll(i) * wgll(j) * wgll(k)    
-                                  
-                                  sum = sum + val
-
-                            enddo 
-                        enddo
-                    enddo
-                enddo
-
-                Wmat(m1+l+1, m2+l+1) = Wmat(m1+l+1, m2+l+1) + sum
-        enddo ! m1 
+        call compute_W_matrix(type_1, l1, n1, type_2, l2, n2, .false., iproc)
 
         call cleanup_for_mode()
-
     enddo 
 
 
     ! Constants so multiply after
     Wmat = Wmat * OMEGA * iONE
 
-    write(out_name, '(a,i1,a)')'Wmat_', l, '.txt'
-    call save_W_matrix(l, trim(out_name))
+    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'Wmat_', n1, type_1, l1, '_', n2, type_2, l2, '.txt'
+    call save_W_matrix(l1, l2, trim(out_name))
+
+
+
+
+    ! Compute run time
+    call system_clock(end_clock)
+    ! Calculate the elapsed time in seconds
+    elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+    ! Print the elapsed time
+    write(*,*) 'Wall clock time taken for full SEM:', elapsed_time, 'seconds'
+
+
 
 
 end program test_W_matrix
