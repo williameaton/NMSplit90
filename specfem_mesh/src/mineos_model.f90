@@ -1,15 +1,18 @@
-subroutine process_mineos_model()
+subroutine process_mineos_model(save_model)
 
     use params, only: rad_mineos, NR, NL, ddir, model_fname, RA, radius, &
-                      verbose, IC_ID, CMB_ID, rho_mineos
+                      verbose, IC_ID, CMB_ID, rho_mineos, vp
 
     implicit none
     include "constants.h"
 
+    ! IO :
+    logical :: save_model
+
     ! Local variables: 
     character(len=200) :: model_file
-    integer :: iomod, ios, intjunk, i 
-    real(kind=CUSTOM_REAL) :: realjunk, rho, vpv, vph, vsv, vsh, vsv_prev
+    integer            :: iomod, ios, intjunk, i 
+    real(kind=CUSTOM_REAL) :: realjunk, rho,  vph, vsv, vsh, vsv_prev
 
     iomod = 1
 
@@ -33,7 +36,7 @@ subroutine process_mineos_model()
     ! Setup model params based on this first read
     NL = NR
     RA = realjunk
-    allocate(radius(NR), rad_mineos(NR), rho_mineos(NR))
+    allocate(radius(NR), rad_mineos(NR), rho_mineos(NR), vp(NR))
 
     ! Warning if not radius 6371 km 
     if (RA.ne.SCALE_R .and. verbose.ge.1)then 
@@ -48,7 +51,7 @@ subroutine process_mineos_model()
 
     vsv_prev = 99.99_CUSTOM_REAL
     do i = 1 , NR
-        read(iomod,*,iostat=ios)  intjunk, radius(i), rho, vpv, vph, vsv, vsh
+        read(iomod,*,iostat=ios)  intjunk, radius(i), rho, vp(i), vph, vsv, vsh
 
         rad_mineos(i) = radius(i) / SCALE_R
         rho_mineos(i) = rho / RHOAV
@@ -66,12 +69,21 @@ subroutine process_mineos_model()
     enddo
     close(iomod)
 
-
+    ! Non dimensionalise the Vp: 
+    vp = vp * (SCALE_T/SCALE_R)
 
     ! Find the discontinuities
-    call find_disc
+    call find_disc()
 
     if(verbose.ge.2) write(*,'(a,/)')'--> finished reading model file.'
+
+
+    ! Saving model if needed
+    if(save_model)then 
+        call save_mineos_model()
+    endif 
+
+
 end subroutine process_mineos_model
 
 

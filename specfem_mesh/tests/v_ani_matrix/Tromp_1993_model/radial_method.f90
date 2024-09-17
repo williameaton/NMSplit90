@@ -1,11 +1,11 @@
 
-program tromp_1995
+program radial_method
     use params, only: NL, IC_ID, ndisc, rdisc, disc, disp1, disp2, & 
                      rad_mineos, rho_mineos, u_spl, v_spl, interp_map, & 
                      interp_id_r, unique_r, n_unique_rad, ngllx, nglly, &
                      ngllz, nspec, Vani, rad_id, wgll, detjac, rho_spl, & 
-                     nglob, realfmt, u_spl, v_spl, udot_spl, vdot_spl,  & 
-                     Arad, Crad, Lrad, Nrad, Frad
+                     nglob, realfmt, u_spl, v_spl, udot_spl, vdot_spl, & 
+                     Arad, Crad, Lrad, Nrad, Frad, vp, vp_spl, A0
     use spline, only: create_interpolation_radial_map, interpolate_mode_eigenfunctions,& 
      write_mode_spline, interpolate_mineos_variable, write_scalar_spline
     use Integrate, only: integrate_r_traps
@@ -47,68 +47,24 @@ program tromp_1995
 
     real(kind=CUSTOM_REAL) :: dA, dC, dL, dN, dF, thirty, twone
 
-   ! Timing: 
-    integer :: start_clock, end_clock, count_rate
-    real(8) :: elapsed_time
+    character(len=250) ::  aclnf_dir
 
-
-    ! Start clock count
-    call system_clock(count_rate=count_rate)
-    call system_clock(start_clock)
-
+    aclnf_dir = '/Users/eaton/Documents/Software/NMSplit90/& 
+                specfem_mesh/tests/v_ani_matrix/Tromp_1993_model/ACLNF/radial'
 
 
     thirty = three * ten 
     twone =  three * seven 
 
-    ! lam(1) = 1
-    !dA =  two/(three*ten)
-    !dC =  two/(three*ten)
-    !dL =  0.0d0
-    !dN =  0.0d0
-    !dF =  two/(three*ten)
-
-    ! lam(2) = 1
-    !dA =  four/thirty
-    !dC =  four/thirty
-    !dL =  two/thirty
-    !dN =  two/thirty
-    !dF =  zero
-
-    ! lam(3) = 1
-    !dA =  -two/twone
-    !dC =  four/twone
-    !dL =  zero
-    !dN =  zero
-    !dF =  one/twone
-
-    ! lam(4) = 1
-    !dA =  -four/twone
-    !dC =  eight/twone
-    !dL =  one/twone
-    !dN =  -two/twone
-    !dF =  zero
-
-    ! lam(5) = 1
-    !dA =  three/(seven*five)
-    !dC =  eight/(seven*five)
-    !dL =  -four/(seven*five)
-    !dN =    one/(seven*five)
-    !dF =  -four/(seven*five)
-
-    dA = 0.4d0
-    dC = -0.2d0
-    dL = 0.3d0
-    dN = -0.5d0
-    dF = 0.1d0
-
     ! Choose a mode: 
-    n1     = 6
+    n1     = 9
     type   = 'S'
-    l      = 10
+    l      = 3
+
+    write(*,*)SCALE_T
         
     ! Read mineos model 
-    call process_mineos_model(.false.)
+    call process_mineos_model()
     allocate(u1(NL), v1(NL), du1(NL), dv1(NL))
 
 
@@ -132,11 +88,20 @@ program tromp_1995
         radial_vals(j) = (r_lower +  (real(j-1)/real(npoints-1))*(r_upper-r_lower))/scale_R
     enddo 
 
+    ! CAN USE THIS TO SAVE THE RADIUS
+    !write(*,*)'Max radius: ', maxval(radial_vals)
+    !open(1, file='ACLNF/radial/r_for_radmethod', form='formatted')
+    !do i = 1, npoints
+    !    write(1,*)radial_vals(i)
+    !enddo 
+    !close(1)
+    
     call create_interpolation_radial_map(radial_vals, interp_map, npoints, knot_lower, knot_upper)
 
     ! Get the first mode: 
     call get_mode(type, n1, l, wcom, qmod, u1, du1, v1, dv1, .false.)
 
+    write(*,*)'wcom = ', wcom
 
     allocate(u_spl_1(npoints), v_spl_1(npoints), du_spl_1(npoints), dv_spl_1(npoints))
     call interpolate_mode_eigenfunctions(type, u1, v1, du1, dv1, knot_lower, knot_upper, &  
@@ -158,16 +123,29 @@ program tromp_1995
     endif
     
 
-    allocate(Arad(npoints))
-    allocate(Crad(npoints))
-    allocate(Lrad(npoints))
-    allocate(Nrad(npoints))
-    allocate(Frad(npoints))
-    Arad(:) = dA
-    Crad(:) = dC
-    Lrad(:) = dL
-    Nrad(:) = dN
-    Frad(:) = dF
+
+    call load_ACLNF_from_files(aclnf_dir, 0, npoints)
+
+
+    ! Interpolate the vp and rho to the relevant points 
+    allocate(rho_spl(npoints))
+    call interpolate_mineos_variable(real(rho_mineos, kind=SPLINE_REAL), knot_lower, knot_upper, & 
+                                    radial_vals, npoints, rho_spl, interp_map)
+    allocate(vp_spl(npoints))
+    call interpolate_mineos_variable(real(vp, kind=SPLINE_REAL), knot_lower, knot_upper, & 
+                                    radial_vals, npoints, vp_spl, interp_map)
+    call deallocate_if_allocated(A0)
+    allocate(A0(npoints))
+
+    ! kappa + 4*mu 
+    A0 = (vp_spl*vp_spl)*rho_spl
+
+    Arad = Arad * A0 
+    Crad = Crad * A0 
+    Lrad = Lrad * A0 
+    Nrad = Nrad * A0 
+    Frad = Frad * A0 
+
 
 
     do m = -l, l
@@ -190,21 +168,10 @@ program tromp_1995
         enddo 
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'./time_trial/radial_', n1, type, l, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./matrices/radial_', n1, type, l, '.txt'
     call save_Vani_matrix(l, out_name)
 
-
-        ! Compute run time
-    call system_clock(end_clock)
-    ! Calculate the elapsed time in seconds
-    elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-    ! Print the elapsed time
-    write(*,*) 'Wall clock time taken for test_radial_Vani_matrix:', elapsed_time, 'seconds'
-
-
-
-
-end program tromp_1995
+end program radial_method
 
 
 

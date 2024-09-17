@@ -1,5 +1,5 @@
 
-program test_constant_Vani_matrix
+program test_fast_Vani_matrix
     use params, only: Vani
     use spline, only: 
     use Integrate, only: 
@@ -8,13 +8,13 @@ program test_constant_Vani_matrix
                           compute_rtp_from_xyz, load_ibool, read_proc_coordinates, & 
                           setup_global_coordinate_arrays
     use gll, only: setup_gll
-    use v_ani, only: compute_Vani_matrix, save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF
-
+    use v_ani, only: compute_Vani_matrix_stored_selfcoupling, save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF
+    
     implicit none
     include "constants.h"
 
     real(kind=CUSTOM_REAL) :: A, C, L, N, F
-    integer :: iproc, i,j,k,ispec, l1, l2, n1, n2, nproc, region, tl1, tl2, h, b
+    integer :: iproc, i,j,k,ispec, l1, l2, n1, m1,m2, n2, nproc, region, tl1, tl2, h, b
     character ::  type_1, type_2
     character(len=250) :: out_name
     real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
@@ -32,18 +32,13 @@ program test_constant_Vani_matrix
 
 
 
-
     ! Read mineos model 
-    call process_mineos_model(.true.)
+    call load_mineos_radial_info()
 
     ! Choose modes: 
     n1      = 6
     type_1 = 'S'
     l1      = 5
-
-    n2      = 6
-    type_2 = 'S'
-    l2      = 5
 
     A =  0.4d0
     C = -0.2d0
@@ -54,13 +49,9 @@ program test_constant_Vani_matrix
     region = 3
     nproc  = 6
 
-
     ! Setup Vani matrix
     tl1 = 2*l1 + 1
-    tl2 = 2*l2 + 1
-
-    ! The matrix should be 2l + 1 from -m to m 
-    call allocate_if_unallocated(tl1, tl2, Vani)
+    allocate(Vani(tl1, tl1))
     Vani = SPLINE_iZERO
 
     do iproc = 0, nproc-1
@@ -76,15 +67,24 @@ program test_constant_Vani_matrix
         call compute_rtp_from_xyz()
         call get_mesh_radii()
         call compute_rotation_matrix()
-
         call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
 
-        call compute_Vani_matrix(type_1, l1, n1, type_2, l2, n2, .true., iproc)
+        call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iproc)
 
         call cleanup_for_mode()
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'./time_trial/sem_', n1, type_1, l1, '.txt'
+
+    ! Symmetry D.153
+    !do m1 = -l1+1, l1
+     !   do m2 = -m1+1, l1 
+     !       write(*,*)m1, m2, Vani(-m1+l1+1, -m2+l1+1), (-SPLINE_ONE)**real(m1+m2, kind=SPLINE_REAL)
+     !        Vani(m1+l1+1, m2+l1+1) =  (-SPLINE_ONE)**real(m1+m2, kind=SPLINE_REAL) * conjg(Vani(-m1+l1+1, -m2+l1+1))
+     !    enddo 
+     !enddo 
+
+
+    write(out_name, '(a,i1,a,i1,a)')'./symmetry/sem_fast_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
 
@@ -94,8 +94,9 @@ program test_constant_Vani_matrix
     ! Calculate the elapsed time in seconds
     elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
     ! Print the elapsed time
-    write(*,*) 'Wall clock time taken for test_constant_Vani_matrix:', elapsed_time, 'seconds'
+    write(*,*) 'Wall clock time taken for test_fast_Vani_matrix:', elapsed_time, 'seconds'
 
 
 
-end program test_constant_Vani_matrix
+
+end program test_fast_Vani_matrix

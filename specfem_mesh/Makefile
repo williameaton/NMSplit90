@@ -83,6 +83,12 @@ $(OBJ_DIR)/visual.o: $(SRC_DIR)/visual.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MO
 $(OBJ_DIR)/integrate.o: $(SRC_DIR)/integrate.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -J$(MOD_DIR) -c $< -o $@
 
+# Compile elastic_tensor.f90 after params.mod is generated
+$(OBJ_DIR)/elastic_tensor.o: $(SRC_DIR)/elastic_tensor.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
+	$(FC) $(FFLAGS) -I$(MOD_DIR) -J$(MOD_DIR) -c $< -o $@
+
+
+
 # Compile read_mesh.f90 after params.mod is generated
 $(OBJ_DIR)/read_mesh.o: $(SRC_DIR)/read_mesh.f90 $(OBJ_DIR)/params.o | $(OBJ_DIR) $(MOD_DIR)
 	$(FC) $(FFLAGS) -I$(MOD_DIR) -c $< -o $@

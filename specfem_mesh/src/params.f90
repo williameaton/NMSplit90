@@ -7,13 +7,11 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose = 1
+integer, parameter :: verbose = 0
 logical, parameter :: all_warnings = .false.
 
 ! Specfem mesh files: 
-character(len=250) :: datadir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced'
-
-
+character(len=250) :: datadir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/DATABASES_MPI/NEX112/sliced'
 
 ! Mineos model parameters: 
 character(len=250), parameter  :: ddir = '/Users/eaton/Documents/Software/NMSplit90/databases/prem_ani_att_database/'
@@ -27,6 +25,8 @@ real(CUSTOM_REAL)              :: RA
 real(kind=CUSTOM_REAL), allocatable :: rad_mineos(:)  ! Non-dimensionalised
 real(kind=CUSTOM_REAL), allocatable :: radius(:)      ! Dimensionalised
 real(kind=CUSTOM_REAL), allocatable :: rho_mineos(:)  ! Density (non-dimensionalised by RHOAV)
+real(kind=CUSTOM_REAL), allocatable :: vp(:)         ! Non Dimensionalised
+
 
 ! Radial discontinuities
 !   ndisc: number of discontinuities
@@ -65,6 +65,7 @@ real(kind=CUSTOM_REAL), allocatable :: xi(:), wgll(:), dgll(:,:)
 integer, allocatable                   :: ibool(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: rho(:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: strain1(:,:,:,:,:), strain2(:,:,:,:,:)
+complex(kind=SPLINE_REAL), allocatable :: strains(:,:,:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 
 real(kind=CUSTOM_REAL), allocatable    :: jac(:,:,:,:,:,:)
@@ -90,9 +91,8 @@ real(kind=CUSTOM_REAL), allocatable    :: eta2(:,:,:,:)
 
 ! Perturbed elastic tensor in xyz at each GLL (6 x 6) voigt notation
 real(kind=SPLINE_REAL), allocatable    :: Cxyz(:,:,:,:,:,:)
-
-
-
+real(kind=CUSTOM_REAL), allocatable    :: Arad(:), Crad(:), Lrad(:), & 
+                                          Nrad(:), Frad(:)
 
 ! Spline arrays: 
 real(kind=SPLINE_REAL), allocatable :: u_spl(:),    &
@@ -100,7 +100,9 @@ real(kind=SPLINE_REAL), allocatable :: u_spl(:),    &
                                        v_spl(:),    &
                                        vdot_spl(:), &
                                        xx(:), zz(:),&
-                                       rho_spl(:)
+                                       rho_spl(:),  &  
+                                       vp_spl(:),   & 
+                                       A0(:)
 
 
 

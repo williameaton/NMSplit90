@@ -170,9 +170,74 @@ contains
 
     end subroutine print_bond_matrix
 
+    subroutine setup_Cnatural(Mat, A, C, L, N, F)
+        ! Sets VTI matrix given A, C, L, N, F
+        implicit none 
+        real(kind=CUSTOM_REAL) :: Mat(6,6)
+        real(kind=CUSTOM_REAL) :: A, C, L, N, F
+
+        Mat(:,:) = zero
+        Mat(1,1) = A 
+        Mat(2,2) = A 
+        Mat(3,3) = C 
+        Mat(4,4) = L 
+        Mat(5,5) = L 
+        Mat(6,6) = N 
+
+        Mat(1,2) = A - two*N
+        Mat(2,1) = A - two*N
+
+        Mat(1,3) = F
+        Mat(3,1) = F
+        Mat(2,3) = F
+        Mat(3,2) = F
+    end subroutine setup_Cnatural
 
 
-    subroutine compute_Cxyz_at_gll(A, C, L, N, F)
+
+    subroutine compute_Cxyz_at_gll_radialACLNF(n1, n2, radmap)
+        ! Nlen is the length of the array of unique A,C,L,N,F values
+        ! probably = unique_r
+        ! radmap is the map from the GLL to the unique radius
+        use params, only: ngllx, nglly, ngllz, nspec, Cxyz, Arad, Crad, Lrad, Nrad, Frad
+        use allocation_module, only: deallocate_if_allocated
+        implicit none 
+        include "constants.h"
+
+        real(kind=CUSTOM_REAL) :: n1, n2
+        real(kind=CUSTOM_REAL) :: M(6,6), Cnat(6,6)
+        integer :: i, j, k, ispec, radmap(ngllx, nglly, ngllz, nspec), r_id
+
+        call deallocate_if_allocated(Cxyz)
+        allocate(Cxyz(6, 6, ngllx, nglly, ngllz, nspec))
+
+
+        ! Compute rotation matrix per GLL in xyz
+        do ispec = 1, nspec 
+            do i = 1, ngllx
+                do j = 1, nglly 
+                    do k = 1, ngllz 
+
+                        ! Get C matrix in natural orientation for this gll
+                        r_id = radmap(i,j,k,ispec)
+                        call setup_Cnatural(Cnat, Arad(r_id), Crad(r_id), Lrad(r_id), &
+                                             Nrad(r_id), Frad(r_id))
+
+                        call compute_bond_matrix_explicit(n1, n2, M)
+
+                        Cxyz(:,:,i,j,k,ispec) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
+
+                    enddo
+                enddo
+            enddo   
+        enddo
+
+
+    end subroutine compute_Cxyz_at_gll_radialACLNF
+
+
+
+    subroutine compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, n1, n2)
         use params, only: ngllx, nglly, ngllz, nspec, Cxyz
         use allocation_module, only: deallocate_if_allocated
         implicit none 
@@ -186,27 +251,8 @@ contains
         call deallocate_if_allocated(Cxyz)
         allocate(Cxyz(6, 6, ngllx, nglly, ngllz, nspec))
 
-
-        write(*,*)'Warning: setting eta1 and eta2 to 0 for all GLL'
-        n1 = zero
-        n2 = zero
-
         ! Transversly isotropic matrix 
-        Cnat(:,:) = zero
-        Cnat(1,1) = A 
-        Cnat(2,2) = A 
-        Cnat(3,3) = C 
-        Cnat(4,4) = L 
-        Cnat(5,5) = L 
-        Cnat(6,6) = N 
-
-        Cnat(1,2) = A - two*N
-        Cnat(2,1) = A - two*N
-
-        Cnat(1,3) = F
-        Cnat(3,1) = F
-        Cnat(2,3) = F
-        Cnat(3,2) = F
+        call setup_Cnatural(Cnat, A, C, L, N, F)
 
         ! Compute rotation matrix per GLL in xyz
         do ispec = 1, nspec 
@@ -222,7 +268,7 @@ contains
             enddo   
         enddo
 
-    end subroutine compute_Cxyz_at_gll
+    end subroutine compute_Cxyz_at_gll_constantACLNF
 
 
 
@@ -355,11 +401,150 @@ contains
                         enddo
                     enddo
                     Vani(m1+l1+1, m2+l2+1) = Vani(m1+l1+1, m2+l2+1) + sum
+
+                    write(*,*)' done m2 ', m2
                 enddo ! m2 
             endif 
+            write(*,*)' done m1 ', m1
+
         enddo ! m1
 
     end subroutine compute_Vani_matrix
+
+
+
+
+    subroutine compute_Vani_matrix_stored_selfcoupling(t1, l1, n1, iproc)
+        ! A specific case of compute_Vani_matrix used for fast self coupling computation
+        ! by loading stored strain values for modes
+        use params, only: strains, ngllx, nglly, ngllz, nspec, detjac, wgll, Cxyz, Vani
+        use allocation_module, only: deallocate_if_allocated
+        implicit none 
+        include "constants.h"
+
+        ! IO variables
+        integer           :: l1, n1
+        character         :: t1
+        integer, optional :: iproc
+
+        ! Local variables 
+        integer :: m1, m2, im, i, j, k, ispec, p, q
+        complex(SPLINE_REAL) :: sum, cont
+
+        integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+               
+        ! Allocate the strain for this proc. 
+        call deallocate_if_allocated(strains)
+        allocate(strains(6, ngllx, nglly, ngllz, nspec, 2*l1+1))
+
+        ! Load all strains once and for all for each m value
+        ! m is an integer from -l to +l
+        ! In this case l is some integer between 1 and ~20
+        do im =  -l1, l1 
+            call load_mode_strain_binary(n1, t1, l1, im, strains(:,:,:,:,:,l1+im+1), iproc)
+        enddo 
+
+        ! Loop over row (m1) and column (m2) of matrix
+        do m1 = -l1, l1 
+            do m2 = -l1, l1 !-m1
+                    sum = SPLINE_iZERO
+                    do ispec = 1, nspec 
+                        do i = 1, ngllx
+                            do j = 1, nglly
+                                do k = 1, ngllz
+
+                                    ! Contraction of strain with elastic tensor
+                                    ! E_ij c_ijkl E_k^*
+                                    cont = SPLINE_iZERO
+                                    do p = 1, 9
+                                        do q = 1, 9
+                                            cont = cont +                                          &
+                                                   (conjg(strains(Vcont(p),i,j,k,ispec,m1+l1+1)) * & 
+                                                    Cxyz(Vcont(p),Vcont(q),i,j,k,ispec)          * & 
+                                                    strains(Vcont(q),i,j,k,ispec,m2+l1+1) ) 
+                                        enddo ! q
+                                    enddo ! p 
+
+                                    ! TODO: create 3D wgll array of wgll(i)*wgll(j)*wgll(k)
+                                    ! Multiply by GLL weights and determinant of Jacobian
+                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i)      & 
+                                                  * wgll(j) * wgll(k), kind=SPLINE_REAL)  &
+                                                  * cont 
+                                enddo ! k
+                            enddo ! j
+                        enddo ! i
+                    enddo ! ispec
+
+                    ! Add contribution to V_ani matrix
+                    Vani(m1+l1+1, m2+l1+1) = Vani(m1+l1+1, m2+l1+1) + sum
+            enddo !m2
+        enddo !m1 
+
+    end subroutine compute_Vani_matrix_stored_selfcoupling
+
+
+
+    subroutine compute_Vani_matrix_stored(t1, l1, n1, t2, l2, n2, iproc)
+        ! A specific case of compute_Vani_matrix used for fast computation
+        ! by loading stored strain values for modes
+        use params, only: strain1, ngllx, nglly, ngllz, nspec, &   
+                          strain2, detjac, wgll, Cxyz, Vani
+        use allocation_module, only: deallocate_if_allocated
+        implicit none 
+        include "constants.h"
+
+        ! IO variables
+        integer   :: l1, n1, l2, n2
+        character :: t1, t2
+        integer, optional :: iproc
+
+        ! Local variables 
+        integer :: m1, m2
+        integer :: i, j, k, ispec, p, q
+        complex(SPLINE_REAL) :: sum, cont
+
+        integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+               
+        ! Allocate the strain for this proc. 
+        call deallocate_if_allocated(strain1)
+        call deallocate_if_allocated(strain2)
+        allocate(strain1(6, ngllx, nglly, ngllz, nspec))
+        allocate(strain2(6, ngllx, nglly, ngllz, nspec))
+
+        do m1 = -l1, l1 
+            call load_mode_strain_binary(n1, t1, l1, m1, strain1, iproc)
+            do m2 = -l2, l2
+                call load_mode_strain_binary(n2, t2, l2, m2, strain2, iproc)
+                    sum = SPLINE_iZERO
+                    do ispec = 1, nspec 
+                        do i = 1, ngllx
+                            do j = 1, nglly
+                                do k = 1, ngllz
+                                    cont = SPLINE_iZERO
+                                    do p = 1, 9
+                                        do q = 1, 9
+                                            cont = cont + ( conjg(strain1(Vcont(p),i,j,k,ispec)) * & 
+                                                            Cxyz(Vcont(p),Vcont(q),i,j,k,ispec)  * & 
+                                                            strain2(Vcont(q),i,j,k,ispec) ) 
+                                        enddo
+                                    enddo 
+                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i) & 
+                                                       * wgll(j) * wgll(k), kind=SPLINE_REAL) * cont 
+                                enddo 
+                            enddo
+                        enddo
+                    enddo
+                    Vani(m1+l1+1, m2+l2+1) = Vani(m1+l1+1, m2+l2+1) + sum
+            enddo !m2
+        enddo !m1 
+
+    end subroutine compute_Vani_matrix_stored
+
+
+
+
 
 
 
@@ -621,8 +806,8 @@ real(kind=SPLINE_REAL) function integrate_GNIr2(s, l, N, I, u, du, v, dv, nlen, 
     use integrate, only: integrate_r_traps
     implicit none 
     include 'constants.h'
-    integer :: N, I, nlen, s, l, coeff_ind, w1, w2, w3
-    real(kind=CUSTOM_REAL) :: dA, dC, dL, dN, dF
+    integer :: N, I, nlen, s, l, coeff_ind, w1, w2, w3, h
+    real(kind=CUSTOM_REAL) :: dA(nlen), dC(nlen), dL(nlen), dN(nlen), dF(nlen)
     real(kind=CUSTOM_REAL) :: rvals(nlen)
     real(kind=SPLINE_REAL) :: u(nlen), v(nlen), du(nlen), dv(nlen), lf, kf, om2, om0, om2sq, om0sq
     real(kind=SPLINE_REAL) :: gam(nlen), r(nlen), r2(nlen), coeff, xi(nlen), chi(nlen), phi(nlen), integrand(nlen)
@@ -789,11 +974,11 @@ real(kind=SPLINE_REAL) function integrate_GNIr2(s, l, N, I, u, du, v, dv, nlen, 
             stop
     end select 
 
+    do h = 1, nlen
+        integrand(h) =  real(gammaD1_coeff(coeff_ind, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
+    enddo 
 
-    coeff = real(gammaD1_coeff(coeff_ind, s, dA, dC, dL, dN, dF), kind=SPLINE_REAL)
-
-    integrand = gam * coeff * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL)
-
+    integrand = integrand * gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL)
     integrate_GNIr2 =  integrate_r_traps(rvals, integrand, nlen)
 
     return

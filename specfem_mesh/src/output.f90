@@ -114,8 +114,6 @@ subroutine create_rhospline_fname(iproc, fname)
 end subroutine create_rhospline_fname
 
 
-
-
 subroutine save_rhospline_binary(rvals, spline, length, iproc)
     use params, only: datadir
     implicit none
@@ -137,6 +135,97 @@ subroutine save_rhospline_binary(rvals, spline, length, iproc)
     close(1)
 
 end subroutine save_rhospline_binary
+
+
+subroutine save_mineos_model()
+    use params, only: NR, IC_ID, CMB_ID, rad_mineos, radius, rho_mineos, & 
+    vp, disc, rdisc, ndisc, datadir
+    implicit none 
+    integer :: iproc
+
+    ! Radius and knot info
+    open(1, file=trim(datadir)//'/store/mineos_model/radial_data', form='unformatted')
+    write(1)NR
+    write(1)IC_ID
+    write(1)CMB_ID
+    write(1)rad_mineos
+    write(1)radius
+    close(1)
+
+    ! Density
+    open(1, file=trim(datadir)//'/store/mineos_model/rho_mineos', form='unformatted')
+    write(1)rho_mineos
+    close(1)
+
+    ! Vp 
+    open(1, file=trim(datadir)//'/store/mineos_model/vp_mineos', form='unformatted')
+    write(1)vp
+    close(1)
+
+    ! Discontinuity info
+    open(1, file=trim(datadir)//'/store/mineos_model/disc', form='unformatted')
+    write(1)ndisc
+    write(1)rdisc
+    write(1)disc
+    close(1)
+
+end subroutine save_mineos_model
+
+
+subroutine load_mineos_radial_info()
+    use params, only: NR, IC_ID, CMB_ID, rad_mineos, radius, datadir
+    implicit none 
+
+    open(1, file=trim(datadir)//'/store/mineos_model/radial_data', form='unformatted')
+    read(1)NR
+    read(1)IC_ID
+    read(1)CMB_ID
+
+    allocate(radius(NR), rad_mineos(NR))
+
+    read(1)rad_mineos
+    read(1)radius
+    close(1)
+
+end subroutine load_mineos_radial_info
+
+
+subroutine load_mineos_density()
+    use params, only: vp, datadir, NR
+    implicit none 
+
+    allocate(vp(NR))
+
+    open(1, file=trim(datadir)//'/store/mineos_model/rho_mineos', form='unformatted')
+    read(1)vp
+    close(1)
+end subroutine load_mineos_density
+
+
+subroutine load_mineos_vp()
+    use params, only: rho_mineos, datadir, NR
+    implicit none 
+
+    allocate(rho_mineos(NR))
+
+    open(1, file=trim(datadir)//'/store/mineos_model/vp_mineos', form='unformatted')
+    read(1)rho_mineos
+    close(1)
+end subroutine load_mineos_vp
+
+
+
+subroutine load_mineos_discontinuities()
+    use params, only: ndisc, rdisc, disc, datadir
+    implicit none 
+    open(1, file=trim(datadir)//'/store/mineos_model/disc', form='unformatted')
+    read(1)ndisc
+    read(1)rdisc
+    read(1)disc
+    close(1)
+end subroutine load_mineos_discontinuities
+
+
 
 
 subroutine save_mode_strain_binary(n, type, l, m, strain, iproc)
@@ -165,7 +254,7 @@ subroutine load_mode_strain_binary(n, type, l, m, strain, iproc)
     implicit none 
     include "constants.h"
 
-    integer :: n, l, m, iproc
+    integer :: n, l, m, iproc, ios
     character :: type 
     complex(kind=SPLINE_REAL) :: strain(6, ngllx, nglly, ngllz, nspec)
 
@@ -173,7 +262,11 @@ subroutine load_mode_strain_binary(n, type, l, m, strain, iproc)
     
     call create_mode_binary_fname(n, type, l, m, iproc, binname)
 
-    open(1, file=trim(datadir)//'/store/strain/'//trim(binname), form='unformatted')
+    open(1, file=trim(datadir)//'/store/strain/'//trim(binname), form='unformatted', iostat=ios)
+    if(ios.ne.0)then
+        write(*,*)'Could not open mode', trim(binname)
+        stop
+    endif 
     read(1)strain
     close(1)
 

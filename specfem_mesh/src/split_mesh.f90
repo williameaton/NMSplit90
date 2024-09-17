@@ -52,7 +52,7 @@ program split_mesh
                     do j = 1, nglly 
                         do k = 1, ngllz 
                             elmtsum(ispec) = elmtsum(ispec) + & 
-                                            xstore(i,j,k,ispec) + ystore(i,j,k,ispec) + zstore(i,j,k,ispec)& 
+                                             xstore(i,j,k,ispec) + ystore(i,j,k,ispec) + zstore(i,j,k,ispec)& 
                                            + rstore(i,j,k,ispec) + thetastore(i,j,k,ispec)/PI
                         enddo 
                     enddo 
@@ -179,6 +179,9 @@ program split_mesh
 
             IOUT = 1
 
+            write(*,*)iproc 
+
+            
             write(proc_fmtname,'(a,i0.6,a,i1,a)')trim(datadir)//'/sliced/'//'/proc',iproc,'_'//'reg',region,'_'
 
             open(unit=IOUT,file=trim(proc_fmtname)//'xstore.bin', &

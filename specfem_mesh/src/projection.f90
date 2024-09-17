@@ -5,18 +5,25 @@ subroutine get_mesh_radii()
     ! 
     use params, only: ngllx, nglly, ngllz, nspec, RA, &
                       xstore, ystore, zstore, unique_r, n_unique_rad, rad_id,&
-                      interp_id_r, IC_ID, verbose
+                      interp_id_r, IC_ID, verbose, datadir
     use allocation_module, only: allocate_if_unallocated
     use spline, only: create_interpolation_radial_map
     implicit none 
     include "constants.h"
 
+    integer :: iproc
+
     ! Local variables: 
+    character(len=6) :: proc_str 
+    logical :: local_store_unq_radii
+    integer :: local_iproc
     real(kind=CUSTOM_REAL) :: rr(ngllx, nglly, ngllz, nspec) , tol, rgll
     real(kind=CUSTOM_REAL), allocatable :: unique_r_tmp(:)
     integer :: i, j, k, ispec, size_r, unique_id, ur
     
     logical :: match
+
+
 
     ! Compute radii
     rr  = (xstore**TWO + ystore**TWO + zstore**TWO)**HALF
@@ -68,7 +75,6 @@ subroutine get_mesh_radii()
 
 
 
-
     ! Allocate new unique radius array of the correct size
     ! It might be that the very last node tested in unique and so 
     ! unique_id is actually 1 too large -- test if last radius is -1 and if so cut it 
@@ -100,19 +106,16 @@ subroutine get_mesh_radii()
     endif        
 
 
+    !write(*,*)'Max radius: ', maxval(unique_r)
+    !call buffer_int(proc_str, iproc)
+    !open(1, file=trim(datadir)//'/store/unique_r/unq_r'//trim(proc_str), form='formatted')
+    !do i = 1, n_unique_rad
+    !    write(1,*)unique_r(i)
+    !enddo 
+    !close(1)
 
 
-    ! Prints the difference between the original radius and the 'unique' radius it is pointed to 
-    !do ispec = 1, nspec
-    !    do i = 1, ngllx
-    !        do j = 1, nglly
-    !            do k = 1, ngllz
-    !                if (abs(rr(i, j, k, ispec)- unique_r(rad_id(i,j,k,ispec))) > tol)&
-    !                write(*,*) rr(i, j, k, ispec)- unique_r(rad_id(i,j,k,ispec)) 
-    !            enddo 
-    !        enddo 
-    !    enddo 
-    !enddo
+    
 
 
     allocate(interp_id_r(n_unique_rad))

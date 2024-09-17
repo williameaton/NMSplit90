@@ -153,7 +153,7 @@ module spline
 
 
   subroutine create_interpolation_radial_map(radial_arr, map_arr, arr_len, min_knot_id, max_knot_id)
-    use params, only: rad_mineos
+    use params, only: rad_mineos, verbose
     implicit none 
 
     ! IO variables
@@ -162,6 +162,10 @@ module spline
 
     ! Local variables
     integer :: i_unq, i_knot
+
+    if(verbose.ge.2)write(*,*)'Creating interpolation map'
+
+
 
     ! Find the knot id's of the radii just below the points we will want to interpolate to 
     map_arr(:) = 0

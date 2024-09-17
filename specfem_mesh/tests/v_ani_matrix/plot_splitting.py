@@ -7,9 +7,10 @@ from wetools.plotting import save_figs_to_single_pdf
 
 plot_SEM = True
 
-ddir = "./matrices/"
+mdir = './Tromp_1993_model'
+ddir = "/matrices/"
 t = 'S'
-ells = [3]
+ells = [2]
 ns = [6]
 
 nmodes = len(ells)
@@ -25,14 +26,14 @@ for imode in range(nmodes):
     l = ells[imode]
     n = ns[imode]
 
-    rad = np.loadtxt(f'{ddir}/radial_{n}{t}{l}.txt')[:2 * l + 1, :]
+    rad = np.loadtxt(f'{mdir}/{ddir}/radial_{n}{t}{l}.txt')[:2 * l + 1, :]
     rad = np.diag(rad)
 
     m = np.arange(-l, l + 1)
     ax.plot(m, rad)
 
     if plot_SEM:
-        sem = np.loadtxt(f'{ddir}/sem_{n}{t}{l}.txt')[:2 * l + 1, :]
+        sem = np.loadtxt(f'{mdir}/{ddir}/sem_{n}{t}{l}.txt')[:2 * l + 1, :]
         sem = np.diag(sem)
         ax.plot(m, sem)
         ratio = sem / rad
@@ -47,4 +48,5 @@ for imode in range(nmodes):
 
     figures.append(fig)
 
-save_figs_to_single_pdf(figures, f'modes_{n}{t}{l}.pdf')
+#save_figs_to_single_pdf(figures, f'modes_{n}{t}{l}.pdf')
+save_figs_to_single_pdf(figures, f'{mdir}/{n}{t}{l}_Tromp_model.pdf')
