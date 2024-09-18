@@ -278,8 +278,8 @@ contains
         ! Computes V^{ani}_{kk'} between l and l'
         ! This assumes that the Cxyz matrix has already been computed for each GLL point 
         use params, only: NL, IC_ID, n_unique_rad, unique_r, interp_id_r, strain1, ngllx, & 
-                        nglly, ngllz, nspec, strain2, detjac, wgll, ngllx, nglly, ngllz, & 
-                        nspec, Cxyz, Vani
+                        nglly, ngllz, nspec, strain2, ngllx, nglly, ngllz, & 
+                        nspec, Cxyz, Vani, wglljac
         use allocation_module, only: deallocate_if_allocated
         use spline, only: interpolate_mode_eigenfunctions
         use mesh_utils, only: rotate_complex_sym_matrix_rtp_to_xyz
@@ -363,8 +363,7 @@ contains
                                                         strain1(Vcont(q),i,j,k,ispec) ) 
                                     enddo
                                 enddo 
-                                sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i) & 
-                                              * wgll(j) * wgll(k), kind=SPLINE_REAL) * cont 
+                                sum = sum  +  wglljac(i,j,k,ispec) * cont 
                             enddo 
                         enddo
                     enddo
@@ -394,8 +393,7 @@ contains
                                                             strain2(Vcont(q),i,j,k,ispec) ) 
                                         enddo
                                     enddo 
-                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i) * & 
-                                                   wgll(j) * wgll(k), kind=SPLINE_REAL) * cont 
+                                    sum = sum  +  wglljac(i,j,k,ispec) * cont 
                                 enddo 
                             enddo
                         enddo
@@ -417,7 +415,7 @@ contains
     subroutine compute_Vani_matrix_stored_selfcoupling(t1, l1, n1, iproc)
         ! A specific case of compute_Vani_matrix used for fast self coupling computation
         ! by loading stored strain values for modes
-        use params, only: strains, ngllx, nglly, ngllz, nspec, detjac, wgll, Cxyz, Vani
+        use params, only: strains, ngllx, nglly, ngllz, nspec, wglljac, Cxyz, Vani
         use allocation_module, only: deallocate_if_allocated
         implicit none 
         include "constants.h"
@@ -445,6 +443,7 @@ contains
             call load_mode_strain_binary(n1, t1, l1, im, strains(:,:,:,:,:,l1+im+1), iproc)
         enddo 
 
+
         ! Loop over row (m1) and column (m2) of matrix
         do m1 = -l1, l1 
             do m2 = -l1, l1 !-m1
@@ -465,12 +464,8 @@ contains
                                                     strains(Vcont(q),i,j,k,ispec,m2+l1+1) ) 
                                         enddo ! q
                                     enddo ! p 
-
-                                    ! TODO: create 3D wgll array of wgll(i)*wgll(j)*wgll(k)
-                                    ! Multiply by GLL weights and determinant of Jacobian
-                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i)      & 
-                                                  * wgll(j) * wgll(k), kind=SPLINE_REAL)  &
-                                                  * cont 
+                    
+                                    sum = sum  +  wglljac(i,j,k,ispec) * cont 
                                 enddo ! k
                             enddo ! j
                         enddo ! i
@@ -485,11 +480,67 @@ contains
 
 
 
+
+    subroutine cuda_Vani_matrix_stored_selfcoupling(t1, l1, n1, iproc)
+        !use omp_lib
+        use params, only: strains, ngllx, nglly, ngllz, nspec, wglljac, Cxyz, Vani
+        use allocation_module, only: deallocate_if_allocated
+        use vani_kernel, only: compute_vani_sc_cuda
+        implicit none 
+        include "constants.h"
+
+        ! IO variables
+        integer           :: l1, n1
+        character         :: t1
+        integer, optional :: iproc
+
+        ! Local variables 
+        integer :: m1, m2, im, i, j, k, ispec, p, q
+        complex(SPLINE_REAL) :: sum, cont
+
+        integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+        ! Timing: 
+        integer ::  loop_begin, loop_end, load_begin, load_end, count_rate
+        real(8) :: elapsed_time
+    
+               
+        ! Allocate the strain for this proc. 
+        call deallocate_if_allocated(strains)
+        allocate(strains(6, ngllx, nglly, ngllz, nspec, 2*l1+1))
+
+        ! Load all strains once and for all for each m value
+
+        do im =  -l1, l1 
+            call load_mode_strain_binary(n1, t1, l1, im, strains(:,:,:,:,:,l1+im+1), iproc)
+        enddo 
+
+        call compute_vani_sc_cuda(l1)
+
+ 
+    end subroutine cuda_Vani_matrix_stored_selfcoupling
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     subroutine compute_Vani_matrix_stored(t1, l1, n1, t2, l2, n2, iproc)
         ! A specific case of compute_Vani_matrix used for fast computation
         ! by loading stored strain values for modes
         use params, only: strain1, ngllx, nglly, ngllz, nspec, &   
-                          strain2, detjac, wgll, Cxyz, Vani
+                          strain2, wglljac, Cxyz, Vani
         use allocation_module, only: deallocate_if_allocated
         implicit none 
         include "constants.h"
@@ -530,8 +581,7 @@ contains
                                                             strain2(Vcont(q),i,j,k,ispec) ) 
                                         enddo
                                     enddo 
-                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i) & 
-                                                       * wgll(j) * wgll(k), kind=SPLINE_REAL) * cont 
+                                    sum = sum  +  wglljac(i,j,k,ispec) * cont 
                                 enddo 
                             enddo
                         enddo

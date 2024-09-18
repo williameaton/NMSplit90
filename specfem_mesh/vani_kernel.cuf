@@ -1,0 +1,115 @@
+module vani_kernel 
+
+    use cudafor
+    contains 
+
+
+    ! Subroutine on host that drives vknl
+    subroutine compute_vani_sc_cuda(l)
+        use params, only: ngllx, nspec, wglljac, strains, Cxyz, vani
+        implicit none 
+        ! IO variables
+        integer :: l, i, j, k, ispec, tl1
+
+        ! Local host variables
+        real :: Vloc_r(2*l+1 , 2*l+1), Vloc_i(2*l+1 , 2*l+1)
+
+        ! Local device variables
+        real,    device, dimension(ngllx, ngllx, ngllx, nspec)       :: d_wglljac
+        real,    device, dimension(6, 6, ngllx, ngllx, ngllx, nspec) :: d_Cxyz
+        real,    device, dimension(2*l+1, 2*l+1)                     :: d_vani_real, d_vani_imag
+        complex, device, dimension(6, ngllx, ngllx, ngllx, nspec, 2*l+1) :: d_strains
+        real, device, dimension(4,4) :: a
+
+        ! Currently not connected to constants.h
+        complex(kind=4), parameter :: izero = (0.0, 0.0)
+        complex(kind=4), parameter :: ione  = (0.0, 1.0)
+
+        ! Copy to the device: 
+        Vloc_r = 0.0_4
+        d_vani_real = Vloc_r   ! Zero these
+        d_vani_imag = Vloc_r   ! Zero these
+        d_strains   = strains
+        d_wglljac   = wglljac
+        d_Cxyz      = Cxyz
+
+
+
+        tl1 = 2*l + 1
+        write(*,*)'tl1 = ', tl1
+
+        ! Launching m1 x m2 x nspec blocks so that each block 
+        ! deals with one m1, m2 combination for a single element
+        call buildup<<<dim3(tl1,tl1,nspec), dim3(ngllx,ngllx,ngllx)>>> & 
+             (l, tl1, ngllx, nspec, d_wglljac, d_strains, d_Cxyz, d_vani_real, d_vani_imag)
+
+        Vloc_r = d_vani_real
+
+
+        
+        Vloc_i = d_vani_imag
+
+        ! Add the real and imaginary components to the global Vani
+        vani = vani + Vloc_r + ione*Vloc_i
+
+
+        do i = 1, 2*l+1
+            write(*,*)vani(i,:)
+        enddo
+
+    end subroutine compute_vani_sc_cuda
+
+
+
+    attributes(global) subroutine buildup(l1, tl1, ngll, nspec, d_wglljac, & 
+                                          d_strains, d_Cxyz, d_Vani_r, d_Vani_i)
+        integer, value                                      :: l1, ngll, nspec, tl1
+        real, dimension(ngll, ngll, ngll, nspec)         :: d_wglljac
+        real, dimension(6,6, ngll, ngll, ngll, nspec)    :: d_Cxyz
+        complex, dimension(6, ngll, ngll, ngll, nspec, tl1) :: d_strains
+        real(kind=4), dimension(tl1, tl1)                   :: d_Vani_r, d_Vani_i
+
+        ! internal variables
+        integer         :: i, j, k, ispec, m1, m2, p, q, istat
+        complex(kind=4) :: cont
+        real(kind=4)    :: trash
+        integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+        i = threadidx%x 
+        j = threadidx%y
+        k = threadidx%z
+
+        m1    = blockidx%x 
+        m2    = blockidx%y 
+        ispec = blockidx%z
+
+        cont = (0.0, 0.0) 
+        
+        do p = 1, 9
+            do q =1, 9
+                cont = cont  +  conjg(d_strains(Vcont(p), i, j, k, ispec, m1)) * &
+                                d_Cxyz(Vcont(p), Vcont(q),i, j, k, ispec)      * & 
+                                d_strains(Vcont(q), i, j, k, ispec, m2)        * & 
+                                d_wglljac(i,j,k,ispec)
+                enddo 
+        enddo 
+
+        ! Extract the real and imaginary parts: 
+        ! atomic add not available for complex. 
+        trash = atomicadd(d_Vani_r(m1, m2),  real(cont,kind=4))
+        trash = atomicadd(d_Vani_i(m1, m2),  aimag(cont))
+
+        
+        end subroutine buildup
+
+
+
+
+
+
+
+
+
+
+
+end module vani_kernel

@@ -141,7 +141,6 @@ subroutine save_mineos_model()
     use params, only: NR, IC_ID, CMB_ID, rad_mineos, radius, rho_mineos, & 
     vp, disc, rdisc, ndisc, datadir
     implicit none 
-    integer :: iproc
 
     ! Radius and knot info
     open(1, file=trim(datadir)//'/store/mineos_model/radial_data', form='unformatted')

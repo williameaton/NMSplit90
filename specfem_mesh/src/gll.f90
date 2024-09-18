@@ -30,6 +30,34 @@ module gll
     end function lagrange
     ! ------------------------------------------------------------------
 
+    subroutine compute_wglljac()
+        use params, only: wgll, detjac, ngllx, nglly, ngllz, nspec, & 
+                          wglljac
+        use allocation_module, only: deallocate_if_allocated
+        implicit none
+        integer :: i, j, k, ispec
+
+        call deallocate_if_allocated(wglljac)
+        allocate(wglljac(ngllx,nglly,ngllz,nspec))
+
+        do ispec = 1, nspec
+            do i = 1, ngllx
+                do j = 1, nglly
+                    do k = 1, ngllz 
+                        wglljac(i,j,k,ispec) =real(wgll(i) * & 
+                                                   wgll(j) * & 
+                                                   wgll(k) * & 
+                                                   detjac(i,j,k,ispec), & 
+                                                   kind=SPLINE_REAL)
+                    enddo 
+                enddo
+            enddo 
+        enddo 
+
+
+    end subroutine compute_wglljac
+
+
 
     subroutine setup_gll()
         use params, only: xi, wgll, ngllx, nglly, ngllz, verbose

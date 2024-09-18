@@ -1,13 +1,12 @@
 
 program compute_vani_splitting
     use params, only: Vani
-    use integrate, only: 
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use mesh_utils, only: cleanup_for_mode, compute_jacobian, compute_rotation_matrix, & 
                           compute_rtp_from_xyz, load_ibool, read_proc_coordinates, & 
                           setup_global_coordinate_arrays
-    use gll, only: setup_gll
-    use v_ani, only: compute_Vani_matrix_stored_selfcoupling, save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF
+    use gll, only: setup_gll, compute_wglljac
+    use v_ani, only: cuda_Vani_matrix_stored_selfcoupling, save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF
     
     implicit none
     include "constants.h"
@@ -19,7 +18,7 @@ program compute_vani_splitting
     real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
 
    ! Timing: 
-    integer :: start_clock, end_clock, count_rate
+    integer :: start_clock, end_clock, count_rate, mid1, mid2
     real(8) :: elapsed_time
 
     ! Start clock count
@@ -57,13 +56,22 @@ program compute_vani_splitting
         call setup_gll()
         call compute_jacobian()
 
+        call compute_wglljac()
+
         call setup_global_coordinate_arrays()
         call compute_rtp_from_xyz()
         call get_mesh_radii()
         call compute_rotation_matrix()
         call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
 
-        call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iproc)
+        call system_clock(mid1)
+
+        call cuda_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iproc)
+
+        call system_clock(mid2)
+        elapsed_time = real(mid2 - mid1, kind=8) / real(count_rate, kind=8)
+        write(*,*)'Time for vani: ', elapsed_time
+
 
         call cleanup_for_mode()
     enddo 
@@ -78,7 +86,7 @@ program compute_vani_splitting
      !enddo 
 
 
-    write(out_name, '(a,i1,a,i1,a)')'./symmetry/sem_fast_', n1, type_1, l1, '.txt'
+    write(out_name, '(a,i1,a,i2,a)') './sem_fast_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
 

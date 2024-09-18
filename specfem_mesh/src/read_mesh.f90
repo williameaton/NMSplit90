@@ -2,7 +2,7 @@ program read_specfem_mesh
 use params 
 use allocation_module
 use mesh_utils
-use gll 
+use gll, only: setup_gll
 use ylm_plm
 
 implicit none 
@@ -22,18 +22,13 @@ n = 10
 l = 5
 m = 2
 
-
-
-
 ! Read mineos model 
-call process_mineos_model()
+call process_mineos_model(.true.)
 
 do iproc = 0, 5
 
         ! Read the mesh info and coordinates
         call read_proc_coordinates(iproc, region)
-
-        ! Load ibool variable: 
         call load_ibool(iproc, region)
 
         call setup_gll()
