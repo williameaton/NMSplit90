@@ -427,9 +427,11 @@ subroutine compute_gll_mode_strain(mode_type, nord, l, m, usp, vsp, udotsp, vdot
                                 ! E_rr: DT98 D.14
                                 strain(1,i,j,k,ispec) = sp_ylm*du_r  
                                 ! E_tt: DT98 D.15
-                                strain(2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO + ll1*ll1*sp_ylm))/unq_r
+                                strain(2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  &
+                                                        sp_ylm*(mf/sinth)**SPLINE_TWO + ll1*ll1*sp_ylm))/unq_r
                                 ! E_pp: DT98 D.16
-                                strain(3,i,j,k,ispec) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  sp_ylm*(mf/sinth)**SPLINE_TWO))/unq_r
+                                strain(3,i,j,k,ispec) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  &
+                                                         sp_ylm*(mf/sinth)**SPLINE_TWO))/unq_r
                                 ! E_rt: DT98 D.17
                                 strain(6,i,j,k,ispec) = SPLINE_HALF * xx_r * spl_dylm_theta
                                 ! E_rp: DT98 D.18

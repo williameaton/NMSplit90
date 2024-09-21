@@ -42,7 +42,7 @@ program test_spline
 
 
     ! Load the mode from the database and save it (.true.)
-    call get_mode(mode_type, n, l, om, qval, u, du, v, dv, .true.)
+    call get_mode(mode_type, n, l, om, qval, u, du, v, dv, .true., './spline/')
 
 
     call allocate_if_unallocated(n_unique_rad, u_spl)

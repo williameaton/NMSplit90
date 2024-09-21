@@ -66,7 +66,7 @@ program integrate_mesh_1
         call cleanup_for_mode()
     enddo 
 
-    open(unit=1,file='test_1_int.txt', &
+    open(unit=1,file='integration/test_1_int.txt', &
         status='unknown',form='formatted',action='write')
     ! Code value: 
     write(1,*)totalint_1
@@ -74,7 +74,7 @@ program integrate_mesh_1
     write(1,*)(FOUR/THREE)*PI*((1221.5d0/6371.d0)**THREE)
 
 
-    open(unit=2,file='test_r_int.txt', &
+    open(unit=2,file='integration/test_r_int.txt', &
     status='unknown',form='formatted',action='write')
     ! Code value: 
     write(2,*)totalint_r

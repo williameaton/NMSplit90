@@ -1,7 +1,12 @@
 
 program test_mode_norm
-    use params, only: NL, IC_ID, ndisc, rdisc, disc, rad_mineos, rho_mineos, u_spl, v_spl,udot_spl, vdot_spl, interp_map, rho_spl
-    use spline, only: create_interpolation_radial_map, interpolate_mode_eigenfunctions, write_mode_spline, interpolate_mineos_variable, quad_spline_interp_3
+    use params, only: NL, IC_ID, ndisc, rdisc, disc, rad_mineos, & 
+                      rho_mineos, u_spl, v_spl,udot_spl, vdot_spl, & 
+                      interp_map, rho_spl
+    use spline, only: create_interpolation_radial_map, & 
+                      interpolate_mode_eigenfunctions, & 
+                      write_mode_spline, interpolate_mineos_variable,& 
+                      quad_spline_interp_3
     use Integrate, only: integrate_r_traps
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     implicit none
@@ -11,7 +16,7 @@ program test_mode_norm
     character(len=1)   :: char, type
     character(len=10)  :: mode
     character(len=250) :: arg
-    character(len=30)  :: out_name
+    character(len=80)  :: out_name
     character(len=4), parameter :: fmti1 = "(i1)"
     character(len=4), parameter :: fmti2 = "(i2)"
     character(len=4), parameter :: fmti3 = "(i3)"
@@ -39,7 +44,7 @@ program test_mode_norm
         do n = 1, 12
 
 
-            call get_mode(type, n, l,wcom,qmod, u, du, v, dv, .true.)
+            call get_mode(type, n, l,wcom,qmod, u, du, v, dv, .true., './mode_normalisation/')
 
             total_integral = SPLINE_ZERO
 
@@ -95,9 +100,9 @@ program test_mode_norm
 
                 ! write with custom name
                 if (i .lt.10)then
-                    write(out_name,'(a, i1, a)')'spline_', i,'.txt'
+                    write(out_name,'(a, i1, a)')'mode_normalisation/spline_', i,'.txt'
                 else 
-                    write(out_name,'(a, i2, a)')'spline_', i,'.txt'
+                    write(out_name,'(a, i2, a)')'mode_normalisation/spline_', i,'.txt'
                 endif
                 !call write_mode_spline(n, type, l, radial_vals, npoints, out_name)
 
@@ -111,13 +116,13 @@ program test_mode_norm
 
                 ! Save the rho spline
                 if (i .lt.10)then
-                    write(out_name,'(a, i1, a)')'rhospline_', i,'.txt'
+                    write(out_name,'(a, i1, a)')'mode_normalisation/rhospline_', i,'.txt'
                 else 
-                    write(out_name,'(a, i2, a)')'rhospline_', i,'.txt'
+                    write(out_name,'(a, i2, a)')'mode_normalisation/rhospline_', i,'.txt'
                 endif
                 open(1,file=trim(out_name))
                 do j =1, npoints
-                    write(1,*)radial_vals(j), rho_spl(j)
+                    write(1,'(2e18.8)')radial_vals(j), rho_spl(j)
                 enddo 
                 close(1)
                 
@@ -152,6 +157,12 @@ program test_mode_norm
 
         enddo ! n 
     enddo ! l
+
+
+    ! If we made it this far give a 0 status output
+    open(2,file=trim('./mode_normalisation/status.txt'))
+    write(2,'(i1)')0
+    close(2)
 
 
 end program test_mode_norm

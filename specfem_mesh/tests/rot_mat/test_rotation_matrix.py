@@ -2,7 +2,7 @@
 import numpy as np
 
 def t_rotation_matrix(pref):
-    ddir = './rotation_matrix/'
+    ddir = './rot_mat/'
 
     n1   = 0
     t1   = 'S'

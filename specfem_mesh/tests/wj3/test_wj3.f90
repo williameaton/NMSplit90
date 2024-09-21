@@ -1,5 +1,5 @@
 program test_wj3 
-    use Vani, only: thrj
+    use V_ani, only: thrj
     implicit none 
     include "constants.h"
 

@@ -253,14 +253,23 @@ subroutine save_W_matrix(l1, l2, fname)
     open(1,file=trim(fname))
     ! Write the real matrix 
     do row =1, 2*l1 + 1
-        Wmat_i =  Wmat(row,:)
-        write(1,*)real(Wmat_i)
+        do col = 1, 2*l2 + 1
+            if (col .lt. 2*l2+1)then 
+            write(1,'(E15.6)', advance='no')real(Wmat(row,col))
+            else 
+                write(1,'(E15.6)', advance='yes')real(Wmat(row,col))
+            endif
+        enddo 
     enddo 
-    ! Write the imaginary part
     do row =1, 2*l1 + 1
-        Wmat_i =  Wmat(row,:)
-        write(1,*)aimag(Wmat_i)
-    enddo ! row
+        do col = 1, 2*l2 + 1
+            if (col .lt. 2*l2+1)then 
+            write(1,'(E15.6)', advance='no')aimag(Wmat(row,col))
+            else 
+                write(1,'(E15.6)', advance='yes')aimag(Wmat(row,col))
+            endif
+        enddo 
+    enddo 
     close(1)
 
 end subroutine save_W_matrix

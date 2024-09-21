@@ -84,7 +84,7 @@ program test_fast_Vani_matrix
      !enddo 
 
 
-    write(out_name, '(a,i1,a,i1,a)')'./symmetry/sem_fast_', n1, type_1, l1, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/sem_fast_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
 

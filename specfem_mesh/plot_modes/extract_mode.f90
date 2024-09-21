@@ -20,7 +20,7 @@ program extract_mode
 
 
     ! Read mineos model 
-    call process_mineos_model()
+    call process_mineos_model(.false.)
 
     allocate(u(NL), v(NL), du(NL), dv(NL))
 

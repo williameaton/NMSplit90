@@ -1,5 +1,5 @@
 
-program test_W_matrix_stored
+program test_W_matrix
     use params, only: NL, IC_ID, ndisc, rdisc, disc, disp1, disp2, & 
                      rad_mineos, rho_mineos, u_spl, v_spl, interp_map, & 
                      interp_id_r, unique_r, n_unique_rad, ngllx, nglly, &
@@ -36,13 +36,14 @@ program test_W_matrix_stored
     complex(SPLINE_REAL), allocatable :: W_s(:)
     complex(SPLINE_REAL), allocatable :: disp1_glob(:,:)
     real(SPLINE_REAL) :: total_integral,  precision,  lf, kf
-    
+
     ! Timing: 
     integer :: start_clock, end_clock, count_rate
     real(8) :: elapsed_time
 
+
     ! Read mineos model 
-    call process_mineos_model()
+    call process_mineos_model(.false.)
 
 
     ! Now we can load the mode: 
@@ -74,7 +75,6 @@ program test_W_matrix_stored
     call system_clock(start_clock)
 
 
-
     do iproc = 0, nproc-1
         ! Things that need to be done for each processor
         call read_proc_coordinates(iproc, region)
@@ -88,18 +88,19 @@ program test_W_matrix_stored
         call get_mesh_radii()
         call compute_rotation_matrix()
 
-        call compute_W_matrix_with_stored(type_1, l1, n1, type_2, l2, n2, iproc)
+        call compute_W_matrix(type_1, l1, n1, type_2, l2, n2, .true., iproc)
 
         call cleanup_for_mode()
-
     enddo 
 
 
     ! Constants so multiply after
     Wmat = Wmat * OMEGA * iONE
 
-    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'Wmat_stored_', n1, type_1, l1, '_', n2, type_2, l2, '.txt'
+    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'rot_mat/Wmat_', n1, type_1, l1, '_', n2, type_2, l2, '.txt'
     call save_W_matrix(l1, l2, trim(out_name))
+
+
 
 
     ! Compute run time
@@ -112,5 +113,4 @@ program test_W_matrix_stored
 
 
 
-
-end program test_W_matrix_stored
+end program test_W_matrix

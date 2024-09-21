@@ -11,7 +11,7 @@ integer, parameter :: verbose      = 0
 logical, parameter :: all_warnings = .false.
 
 ! Specfem mesh files: 
-character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX64/sliced/'
+character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
 
 ! Mineos model parameters: 
 character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'

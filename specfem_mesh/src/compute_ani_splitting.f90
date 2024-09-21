@@ -6,8 +6,11 @@ program compute_vani_splitting
                           compute_rtp_from_xyz, load_ibool, read_proc_coordinates, & 
                           setup_global_coordinate_arrays
     use gll, only: setup_gll, compute_wglljac
-    use v_ani, only: cuda_Vani_matrix_stored_selfcoupling, save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF
-    
+    use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF
+#ifdef WITH_CUDA
+    use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
+#endif
+
     implicit none
     include "constants.h"
 
@@ -21,6 +24,10 @@ program compute_vani_splitting
     integer :: start_clock, end_clock, count_rate, mid1, mid2
     real(8) :: elapsed_time
 
+    open(8,file="profiling/timing_176")
+
+
+
     ! Start clock count
     call system_clock(count_rate=count_rate)
     call system_clock(start_clock)
@@ -31,7 +38,7 @@ program compute_vani_splitting
     ! Choose modes: 
     n1      = 6
     type_1 = 'S'
-    l1      = 5
+    l1      = 10
 
     A =  0.4d0
     C = -0.2d0
@@ -47,6 +54,12 @@ program compute_vani_splitting
     allocate(Vani(tl1, tl1))
     Vani = SPLINE_iZERO
 
+
+
+
+
+
+    
     do iproc = 0, nproc-1
         write(*,*)"Processor: ", iproc
         ! Things that need to be done for each processor
@@ -70,8 +83,7 @@ program compute_vani_splitting
 
         call system_clock(mid2)
         elapsed_time = real(mid2 - mid1, kind=8) / real(count_rate, kind=8)
-        write(*,*)'Time for vani: ', elapsed_time
-
+        write(8,*)elapsed_time
 
         call cleanup_for_mode()
     enddo 
@@ -83,9 +95,7 @@ program compute_vani_splitting
      !       write(*,*)m1, m2, Vani(-m1+l1+1, -m2+l1+1), (-SPLINE_ONE)**real(m1+m2, kind=SPLINE_REAL)
      !        Vani(m1+l1+1, m2+l1+1) =  (-SPLINE_ONE)**real(m1+m2, kind=SPLINE_REAL) * conjg(Vani(-m1+l1+1, -m2+l1+1))
      !    enddo 
-     !enddo 
-
-
+     !enddo
     write(out_name, '(a,i1,a,i2,a)') './sem_fast_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
@@ -97,7 +107,10 @@ program compute_vani_splitting
     elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
     ! Print the elapsed time
     write(*,*) 'Wall clock time taken for test_fast_Vani_matrix:', elapsed_time, 'seconds'
+    write(8,*)elapsed_time
 
+
+    close(8)
 
 
 

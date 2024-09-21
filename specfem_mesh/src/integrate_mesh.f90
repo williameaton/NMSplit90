@@ -32,7 +32,7 @@ program integrate_mesh
 
     
     ! Read mineos model 
-    call process_mineos_model()
+    call process_mineos_model(.false.)
     
 
     totalint = zero 

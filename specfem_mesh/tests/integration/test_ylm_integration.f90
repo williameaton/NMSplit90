@@ -67,7 +67,7 @@ program test_ylm_integration
             call cleanup_for_mode()
         enddo 
 
-        write(outfname, '(a,i1,a)')'test_ylm_int_', m2, '.txt'
+        write(outfname, '(a,i1,a)')'integration/test_ylm_int_', m2, '.txt'
         open(unit=1,file=trim(outfname), &
             status='unknown',form='formatted',action='write')
 

@@ -1,11 +1,12 @@
 #!/bin/bash
 
-this_dir=${test_dir}/plm/
-
-rm ${this_dir}/math.mod 
-rm -r ${this_dir}/__pycache__
-rm ${this_dir}/ylm_plm.mod
-rm ${this_dir}/test_plm
-rm ${this_dir}/test_values
-rm ${this_dir}/testplm.txt
-rm ${this_dir}/plm_value_error.txt
+if [ -z "$this_dir" ]; then
+    my_dir='./'
+else
+    my_dir="${this_dir}/plm"
+fi
+rm -rf ${my_dir}/__pycache__
+rm -f ${my_dir}/testplm.txt
+rm -f ${my_dir}/plm_value_error.txt
+rm -f ${my_dir}/test_plm.o
+rm -f ${my_dir}/test_plm_values.o

@@ -84,7 +84,7 @@ program test_constant_Vani_matrix
         call cleanup_for_mode()
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'./time_trial/sem_', n1, type_1, l1, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/sem_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
 
@@ -95,7 +95,5 @@ program test_constant_Vani_matrix
     elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
     ! Print the elapsed time
     write(*,*) 'Wall clock time taken for test_constant_Vani_matrix:', elapsed_time, 'seconds'
-
-
 
 end program test_constant_Vani_matrix

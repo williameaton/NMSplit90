@@ -23,7 +23,7 @@ program test_ylm_values
     costh = cosp(theta)
 
 
-    open(unit=1,file='ylm_value_error.txt', &
+    open(unit=1,file='ylm/ylm_value_error.txt', &
     status='unknown',form='formatted',action='write')
     
     

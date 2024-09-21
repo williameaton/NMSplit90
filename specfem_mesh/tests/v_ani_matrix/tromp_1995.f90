@@ -178,7 +178,10 @@ program tromp_1995
             sum = zero
             do N = 0, 4
                 do I = 1, I_n(N+1)
-                    sum = sum + integrate_GNIr2(s, l, N, I, u_spl_1, du_spl_1, v_spl_1, dv_spl_1, npoints, radial_vals, Arad, Crad, Lrad, Nrad, Frad, type)
+                    sum = sum + integrate_GNIr2(s, l, N, I, u_spl_1, du_spl_1, & 
+                                                v_spl_1, dv_spl_1, npoints,    & 
+                                                radial_vals, Arad, Crad, Lrad, &
+                                                Nrad, Frad, type)
                 enddo
             enddo 
 
@@ -186,11 +189,10 @@ program tromp_1995
             ! since that is already added in to the Gamma_NI via the gammaD1_coeff 
             ! function 
             Vani(m+l+1,m+l+1) = Vani(m+l+1,m+l+1) + (-SPLINE_ONE)**mf * (two*lf + one) * thrj(l, s, l, -m, 0, m) * sum 
-
         enddo 
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'./time_trial/radial_', n1, type, l, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/radial_', n1, type, l, '.txt'
     call save_Vani_matrix(l, out_name)
 
 

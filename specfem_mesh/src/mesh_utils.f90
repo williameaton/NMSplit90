@@ -355,14 +355,20 @@ module mesh_utils
             do i = 1, ngllx
                 do j = 1, nglly
                     do k = 1, ngllz
-                        rstore(i,j,k,ispec) = (xstore(i,j,k,ispec)**TWO + ystore(i,j,k,ispec)**TWO + zstore(i,j,k,ispec)**TWO)**HALF
+                        rstore(i,j,k,ispec) = (xstore(i,j,k,ispec)**TWO + &
+                                               ystore(i,j,k,ispec)**TWO + & 
+                                               zstore(i,j,k,ispec)**TWO)**HALF
                                             
                         ! 0 <= phi <= 2pi
-                        phistore(i,j,k,ispec) = atan2(ystore(i,j,k,ispec), xstore(i,j,k,ispec))   
-                        if(phistore(i,j,k,ispec) .lt. ZERO) phistore(i,j,k,ispec)  = TWO_PI + phistore(i,j,k,ispec) 
+                        phistore(i,j,k,ispec) = atan2(ystore(i,j,k,ispec),&
+                                                      xstore(i,j,k,ispec))   
+                        if(phistore(i,j,k,ispec) .lt. ZERO)& 
+                             phistore(i,j,k,ispec)  = TWO_PI + phistore(i,j,k,ispec) 
 
                         ! 0 <= theta <= pi                        
-                        thetastore(i,j,k,ispec) = PI_OVER_TWO -  atan2(zstore(i,j,k,ispec), (xstore(i,j,k,ispec)**TWO + ystore(i,j,k,ispec)**TWO)**HALF) 
+                        thetastore(i,j,k,ispec) = PI_OVER_TWO -  atan2(zstore(i,j,k,ispec),&
+                                                                     (xstore(i,j,k,ispec)**TWO +&
+                                                                      ystore(i,j,k,ispec)**TWO)**HALF) 
 
                         !if (rstore(i,j,k,ispec) .eq. zero)then 
                         !    thetastore(i,j,k,ispec) = zero
@@ -653,6 +659,9 @@ module mesh_utils
         implicit none 
         include "constants.h"
 
+        ! Save: 
+        
+
         ! Local variables: 
         integer :: i, j, s, t, n, p, ispec
         real(kind=CUSTOM_REAL) :: val, jl(3,3), tmp(3,3)
@@ -777,10 +786,7 @@ module mesh_utils
             write(*,'(a,i1)')'     --> ngllz: ', ngllz
         endif 
     
-        ! Allocate mesh arrays:
-        
-        
-        
+        ! Allocate mesh arrays:        
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore_dp)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, ystore_dp)
