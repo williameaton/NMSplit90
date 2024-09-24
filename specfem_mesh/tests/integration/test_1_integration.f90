@@ -3,7 +3,7 @@ program integrate_mesh_1
     ! f = 1 and f = r
 
 
-    use params, only: nspec, ngllx, nglly, ngllz, rstore
+    use params, only: nspec, ngllx, nglly, ngllz, rstore, nprocs
     use allocation_module, only: allocate_if_unallocated
     use mesh_utils, only: read_proc_coordinates, load_ibool, & 
                           compute_jacobian, cleanup_for_mode, &
@@ -15,7 +15,6 @@ program integrate_mesh_1
     include "constants.h"
     
     integer :: iproc, i, j, k, ispec                  
-    integer :: nprocs                ! Number of processors used by mesher 
     integer :: region                ! Region code
     real(kind=CUSTOM_REAL) :: totalint_1, totalint_r
     real(kind=CUSTOM_REAL) :: integral_1, integral_r
@@ -24,7 +23,6 @@ program integrate_mesh_1
         
     ! Setup parameters: 
     region = 3      ! Inner core
-    nprocs = 6
     
     ! Read mineos model 
     call process_mineos_model()
@@ -39,9 +37,9 @@ program integrate_mesh_1
         call read_proc_coordinates(iproc, region)
         call load_ibool(iproc, region)
         call setup_gll()
-        call compute_jacobian()
-        call get_mesh_radii()
-        call compute_rtp_from_xyz()
+        call compute_jacobian(iproc, .false.)
+        call get_mesh_radii(iproc, .false.)
+        call compute_rtp_from_xyz(iproc, .false.)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, integrand)
         
         ! Just integration 1 over the whole IC 

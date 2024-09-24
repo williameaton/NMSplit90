@@ -10,8 +10,16 @@ include "precision.h"
 integer, parameter :: verbose      = 0
 logical, parameter :: all_warnings = .false.
 
+integer, parameter :: nprocs       = 6
+
 ! Specfem mesh files: 
+!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets8/'
 character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
+
+
+
+
+
 
 ! Mineos model parameters: 
 character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'

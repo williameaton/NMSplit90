@@ -1,5 +1,5 @@
 
-subroutine get_mesh_radii()
+subroutine get_mesh_radii(iproc, save)
     ! Determines a list of the unique radii of the GLL point
     ! Points each GLL point to its radial value in the list 
     ! 
@@ -12,6 +12,7 @@ subroutine get_mesh_radii()
     include "constants.h"
 
     integer :: iproc
+    logical :: save
 
     ! Local variables: 
     character(len=6) :: proc_str 
@@ -22,8 +23,6 @@ subroutine get_mesh_radii()
     integer :: i, j, k, ispec, size_r, unique_id, ur
     
     logical :: match
-
-
 
     ! Compute radii
     rr  = (xstore**TWO + ystore**TWO + zstore**TWO)**HALF
@@ -104,17 +103,6 @@ subroutine get_mesh_radii()
         write(*,'(a,i8)')  '  -- n_unique_rad :', n_unique_rad
         stop
     endif        
-
-
-    !write(*,*)'Max radius: ', maxval(unique_r)
-    !call buffer_int(proc_str, iproc)
-    !open(1, file=trim(datadir)//'/store/unique_r/unq_r'//trim(proc_str), form='formatted')
-    !do i = 1, n_unique_rad
-    !    write(1,*)unique_r(i)
-    !enddo 
-    !close(1)
-
-
     
 
 
@@ -122,6 +110,7 @@ subroutine get_mesh_radii()
     call create_interpolation_radial_map(unique_r, interp_id_r, n_unique_rad, 1, IC_ID)
 
 
+    if(save)call save_get_mesh_radii_results(iproc)
 
 end subroutine get_mesh_radii
 

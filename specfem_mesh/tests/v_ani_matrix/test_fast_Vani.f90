@@ -61,11 +61,11 @@ program test_fast_Vani_matrix
 
         call load_ibool(iproc, region)
         call setup_gll()
-        call compute_jacobian()
+        call compute_jacobian(iproc, .false.)
 
-        call setup_global_coordinate_arrays()
-        call compute_rtp_from_xyz()
-        call get_mesh_radii()
+        call setup_global_coordinate_arrays(iproc, .false.)
+        call compute_rtp_from_xyz(iproc, .false.)
+        call get_mesh_radii(iproc, .false.)
         call compute_rotation_matrix()
         call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
 

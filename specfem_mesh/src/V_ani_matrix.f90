@@ -238,7 +238,7 @@ contains
 
 
     subroutine compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, n1, n2)
-        use params, only: ngllx, nglly, ngllz, nspec, Cxyz
+        use params, only: ngllx, nglly, ngllz, nspec, Cxyz, verbose
         use allocation_module, only: deallocate_if_allocated
         implicit none 
         include "constants.h"
@@ -246,6 +246,8 @@ contains
         real(kind=CUSTOM_REAL) :: A, C, L, N, F, n1, n2
         real(kind=CUSTOM_REAL) :: M(6,6), Cnat(6,6)
         integer :: i, j, k, ispec 
+
+        if(verbose.ge.2)write(*,'(/,a)')'• Computing elastic tensor for constant ACLNF'
 
 
         call deallocate_if_allocated(Cxyz)

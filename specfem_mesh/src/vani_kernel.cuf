@@ -3,7 +3,6 @@ module vani_kernel
     use cudafor
     contains 
 
-
     ! Subroutine on host that drives vknl
     subroutine compute_vani_sc_cuda(l)
         use params, only: ngllx, nspec, wglljac, strains, Cxyz, vani
@@ -22,7 +21,7 @@ module vani_kernel
         real, device, dimension(4,4) :: a
 
         ! Currently not connected to constants.h
-        complex(kind=4), parameter :: izero = (0.0, 0.0)
+        !complex(kind=4), parameter :: izero = (0.0, 0.0)
         complex(kind=4), parameter :: ione  = (0.0, 1.0)
 
         ! Copy to the device: 
@@ -110,15 +109,5 @@ module vani_kernel
         trash = atomicadd(d_Vani_i(m1, m2),  aimag(cont))  
         
         end subroutine vani_knl_NGLL5
-
-
-
-
-
-
-
-
-
-
 
 end module vani_kernel

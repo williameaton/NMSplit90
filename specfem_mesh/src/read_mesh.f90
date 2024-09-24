@@ -8,7 +8,6 @@ use ylm_plm
 implicit none 
 
 integer :: iproc             
-integer :: nprocs                ! Number of processors used by mesher 
 integer :: region                ! Region code
 
 integer :: n, l, m 
@@ -16,7 +15,6 @@ integer :: n, l, m
 
 ! Setup parameters: 
 region = 3      ! Inner core
-nprocs = 6
 
 n = 10
 l = 5
@@ -32,13 +30,13 @@ do iproc = 0, 5
         call load_ibool(iproc, region)
 
         call setup_gll()
-        call compute_jacobian()
+        call compute_jacobian(iproc, .false.)
 
         ! Get unique mesh radii that are present
-        call get_mesh_radii()
-
+        call get_mesh_radii(iproc, .false.)
+        
         ! We will need the r theta phi coordinates: 
-        call compute_rtp_from_xyz()
+        call compute_rtp_from_xyz(iproc, .false.)
 
         ! Compute strain tensor for mode
         allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 

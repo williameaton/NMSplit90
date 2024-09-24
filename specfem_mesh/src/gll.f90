@@ -30,11 +30,13 @@ module gll
     end function lagrange
     ! ------------------------------------------------------------------
 
-    subroutine compute_wglljac()
+    subroutine compute_wglljac(iproc, save)
         use params, only: wgll, detjac, ngllx, nglly, ngllz, nspec, & 
                           wglljac
         use allocation_module, only: deallocate_if_allocated
         implicit none
+        integer :: iproc 
+        logical :: save 
         integer :: i, j, k, ispec
 
         call deallocate_if_allocated(wglljac)
@@ -53,6 +55,10 @@ module gll
                 enddo
             enddo 
         enddo 
+
+        if(save)then 
+            call save_wglljac(iproc)
+        endif 
 
 
     end subroutine compute_wglljac

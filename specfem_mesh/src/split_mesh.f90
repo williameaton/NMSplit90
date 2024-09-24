@@ -1,7 +1,7 @@
 program split_mesh
     use params, only: nglob, nspec, ngllx, nglly, ngllz, rstore, nspec, & 
                       ibool, x_glob, y_glob, z_glob, xstore, ystore, zstore, & 
-                      thetastore, datadir, verbose
+                      thetastore, datadir, verbose, nprocs
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use mesh_utils, only: compute_rtp_from_xyz, map_local_global_double_precision,& 
                           load_ibool, read_proc_coordinates
@@ -9,7 +9,7 @@ program split_mesh
     include "constants.h"
     
     integer :: iproc, i, j, k, ispec, iii, ib_orig, ib_ctr, & 
-               this_nodes_id, i_newspec, nprocs, region,    &
+               this_nodes_id, i_newspec, region,    &
                nspec_new, IOUT          
     character(len=250) :: varname, proc_fmtname
     double precision :: eproc, tolerance
@@ -23,7 +23,6 @@ program split_mesh
 
     ! Setup parameters: 
     region = 3      ! Inner core
-    nprocs = 6
     
     tolerance = 1.0e-9 ! Tolerance for matching elements 
 
@@ -33,7 +32,7 @@ program split_mesh
         ! Get mesh for this processor
         call read_proc_coordinates(iproc, region)
         call load_ibool(iproc, region)
-        call compute_rtp_from_xyz()
+        call compute_rtp_from_xyz(iproc, .false.)
 
         if(iproc.eq.0)then 
             ! if on first processor
@@ -65,7 +64,7 @@ program split_mesh
             ! Get mesh for this processor
             call read_proc_coordinates(iproc, region)
             call load_ibool(iproc, region)
-            call compute_rtp_from_xyz()
+            call compute_rtp_from_xyz(iproc, .false.)
 
             ! Now we have the original elmtsum we can see if it is present in another processor
             ! I.e. does the sum in an element on this proc match a sum on the main proc (0)
