@@ -5,7 +5,8 @@ program semi_analytical_W_matrix
                      interp_id_r, unique_r, n_unique_rad, ngllx, nglly, &
                      ngllz, nspec, Wmat, rad_id, wgll, detjac, rho_spl, & 
                      nglob, realfmt, u_spl, v_spl, udot_spl, vdot_spl
-    use spline, only: create_interpolation_radial_map, interpolate_mode_eigenfunctions, write_mode_spline, interpolate_mineos_variable, write_scalar_spline
+    use spline, only: create_interpolation_radial_map, interpolate_mode_eigenfunctions,&
+                       write_mode_spline, interpolate_mineos_variable, write_scalar_spline
     use Integrate, only: integrate_r_traps
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use mesh_utils, only: compute_jacobian, compute_rtp_from_xyz, load_ibool, & 
@@ -21,7 +22,7 @@ program semi_analytical_W_matrix
     character(len=1)   :: char, type_1, type_2
     character(len=10)  :: mode
     character(len=250) :: arg, ensight_nm
-    character(len=30)  :: out_name
+    character(len=80)  :: out_name
     character(len=4), parameter :: fmti1 = "(i1)"
     character(len=4), parameter :: fmti2 = "(i2)"
     character(len=4), parameter :: fmti3 = "(i3)"
@@ -49,7 +50,7 @@ program semi_analytical_W_matrix
 
         
     ! Read mineos model 
-    call process_mineos_model()
+    call process_mineos_model(.false.)
     allocate(u1(NL), v1(NL), du1(NL), dv1(NL))
     allocate(u2(NL), v2(NL), du2(NL), dv2(NL))
 
@@ -155,7 +156,8 @@ program semi_analytical_W_matrix
         write(*,*)'Ws will be 0'
 
     elseif(type_1.eq.'S' .and. type_2.eq.'S')then 
-        W_s = (v_spl_1*v_spl_1 + u_spl_1*v_spl_2 + u_spl_2*v_spl_1  ) * rho_spl * radial_vals * radial_vals
+        W_s = (v_spl_1*v_spl_1 + u_spl_1*v_spl_2 + u_spl_2*v_spl_1  ) & 
+        * rho_spl * radial_vals * radial_vals
     elseif(type_1.eq.'T' .and. type_2.eq.'T')then
         W_s = (u_spl_1*u_spl_2) * rho_spl * radial_vals * radial_vals
     else
@@ -222,7 +224,7 @@ program semi_analytical_W_matrix
         enddo 
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'semi_analytical_', n1, type_1, l1, '_', n2, type_2, l2, '.txt'
+    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'./rot_mat/semi_analytical_', n1, type_1, l1, '_', n2, type_2, l2, '.txt'
     call save_W_matrix(l1, l2, trim(out_name))
 
 

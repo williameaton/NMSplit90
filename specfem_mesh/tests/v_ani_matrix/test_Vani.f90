@@ -70,11 +70,11 @@ program test_constant_Vani_matrix
 
         call load_ibool(iproc, region)
         call setup_gll()
-        call compute_jacobian()
+        call compute_jacobian(iproc, .false.)
 
-        call setup_global_coordinate_arrays()
-        call compute_rtp_from_xyz()
-        call get_mesh_radii()
+        call setup_global_coordinate_arrays(iproc, .false.)
+        call compute_rtp_from_xyz(iproc, .false.)
+        call get_mesh_radii(iproc, .false.)
         call compute_rotation_matrix()
 
         call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
@@ -84,7 +84,7 @@ program test_constant_Vani_matrix
         call cleanup_for_mode()
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'./time_trial/sem_', n1, type_1, l1, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/sem_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
 
@@ -95,7 +95,5 @@ program test_constant_Vani_matrix
     elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
     ! Print the elapsed time
     write(*,*) 'Wall clock time taken for test_constant_Vani_matrix:', elapsed_time, 'seconds'
-
-
 
 end program test_constant_Vani_matrix

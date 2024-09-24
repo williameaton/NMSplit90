@@ -238,7 +238,7 @@ contains
 
 
     subroutine compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, n1, n2)
-        use params, only: ngllx, nglly, ngllz, nspec, Cxyz
+        use params, only: ngllx, nglly, ngllz, nspec, Cxyz, verbose
         use allocation_module, only: deallocate_if_allocated
         implicit none 
         include "constants.h"
@@ -246,6 +246,8 @@ contains
         real(kind=CUSTOM_REAL) :: A, C, L, N, F, n1, n2
         real(kind=CUSTOM_REAL) :: M(6,6), Cnat(6,6)
         integer :: i, j, k, ispec 
+
+        if(verbose.ge.2)write(*,'(/,a)')'• Computing elastic tensor for constant ACLNF'
 
 
         call deallocate_if_allocated(Cxyz)
@@ -278,8 +280,8 @@ contains
         ! Computes V^{ani}_{kk'} between l and l'
         ! This assumes that the Cxyz matrix has already been computed for each GLL point 
         use params, only: NL, IC_ID, n_unique_rad, unique_r, interp_id_r, strain1, ngllx, & 
-                        nglly, ngllz, nspec, strain2, detjac, wgll, ngllx, nglly, ngllz, & 
-                        nspec, Cxyz, Vani
+                        nglly, ngllz, nspec, strain2, ngllx, nglly, ngllz, & 
+                        nspec, Cxyz, Vani, wglljac
         use allocation_module, only: deallocate_if_allocated
         use spline, only: interpolate_mode_eigenfunctions
         use mesh_utils, only: rotate_complex_sym_matrix_rtp_to_xyz
@@ -363,8 +365,7 @@ contains
                                                         strain1(Vcont(q),i,j,k,ispec) ) 
                                     enddo
                                 enddo 
-                                sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i) & 
-                                              * wgll(j) * wgll(k), kind=SPLINE_REAL) * cont 
+                                sum = sum  +  wglljac(i,j,k,ispec) * cont 
                             enddo 
                         enddo
                     enddo
@@ -394,8 +395,7 @@ contains
                                                             strain2(Vcont(q),i,j,k,ispec) ) 
                                         enddo
                                     enddo 
-                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i) * & 
-                                                   wgll(j) * wgll(k), kind=SPLINE_REAL) * cont 
+                                    sum = sum  +  wglljac(i,j,k,ispec) * cont 
                                 enddo 
                             enddo
                         enddo
@@ -417,7 +417,7 @@ contains
     subroutine compute_Vani_matrix_stored_selfcoupling(t1, l1, n1, iproc)
         ! A specific case of compute_Vani_matrix used for fast self coupling computation
         ! by loading stored strain values for modes
-        use params, only: strains, ngllx, nglly, ngllz, nspec, detjac, wgll, Cxyz, Vani
+        use params, only: strains, ngllx, nglly, ngllz, nspec, wglljac, Cxyz, Vani
         use allocation_module, only: deallocate_if_allocated
         implicit none 
         include "constants.h"
@@ -445,6 +445,7 @@ contains
             call load_mode_strain_binary(n1, t1, l1, im, strains(:,:,:,:,:,l1+im+1), iproc)
         enddo 
 
+
         ! Loop over row (m1) and column (m2) of matrix
         do m1 = -l1, l1 
             do m2 = -l1, l1 !-m1
@@ -465,12 +466,8 @@ contains
                                                     strains(Vcont(q),i,j,k,ispec,m2+l1+1) ) 
                                         enddo ! q
                                     enddo ! p 
-
-                                    ! TODO: create 3D wgll array of wgll(i)*wgll(j)*wgll(k)
-                                    ! Multiply by GLL weights and determinant of Jacobian
-                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i)      & 
-                                                  * wgll(j) * wgll(k), kind=SPLINE_REAL)  &
-                                                  * cont 
+                    
+                                    sum = sum  +  wglljac(i,j,k,ispec) * cont 
                                 enddo ! k
                             enddo ! j
                         enddo ! i
@@ -485,11 +482,72 @@ contains
 
 
 
+
+    subroutine cuda_Vani_matrix_stored_selfcoupling(t1, l1, n1, iproc)
+        !use omp_lib
+        use params, only: strains, ngllx, nglly, ngllz, nspec, wglljac, Cxyz, Vani
+        use allocation_module, only: deallocate_if_allocated
+#ifdef WITH_CUDA
+        use vani_kernel, only: compute_vani_sc_cuda
+# else 
+        use cuda_proxies, only: compute_vani_sc_cuda
+#endif
+
+        implicit none 
+        include "constants.h"
+
+        ! IO variables
+        integer           :: l1, n1
+        character         :: t1
+        integer, optional :: iproc
+
+        ! Local variables 
+        integer :: m1, m2, im, i, j, k, ispec, p, q
+        complex(SPLINE_REAL) :: sum, cont
+
+        integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+        ! Timing: 
+        integer ::  loop_begin, loop_end, load_begin, load_end, count_rate
+        real(8) :: elapsed_time
+    
+               
+        ! Allocate the strain for this proc. 
+        call deallocate_if_allocated(strains)
+        allocate(strains(6, ngllx, nglly, ngllz, nspec, 2*l1+1))
+
+        ! Load all strains once and for all for each m value
+
+        do im =  -l1, l1 
+            call load_mode_strain_binary(n1, t1, l1, im, strains(:,:,:,:,:,l1+im+1), iproc)
+        enddo 
+
+        call compute_vani_sc_cuda(l1)
+
+ 
+    end subroutine cuda_Vani_matrix_stored_selfcoupling
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     subroutine compute_Vani_matrix_stored(t1, l1, n1, t2, l2, n2, iproc)
         ! A specific case of compute_Vani_matrix used for fast computation
         ! by loading stored strain values for modes
         use params, only: strain1, ngllx, nglly, ngllz, nspec, &   
-                          strain2, detjac, wgll, Cxyz, Vani
+                          strain2, wglljac, Cxyz, Vani
         use allocation_module, only: deallocate_if_allocated
         implicit none 
         include "constants.h"
@@ -530,8 +588,7 @@ contains
                                                             strain2(Vcont(q),i,j,k,ispec) ) 
                                         enddo
                                     enddo 
-                                    sum = sum  +  real(detjac(i,j,k,ispec) * wgll(i) & 
-                                                       * wgll(j) * wgll(k), kind=SPLINE_REAL) * cont 
+                                    sum = sum  +  wglljac(i,j,k,ispec) * cont 
                                 enddo 
                             enddo
                         enddo
@@ -541,9 +598,6 @@ contains
         enddo !m1 
 
     end subroutine compute_Vani_matrix_stored
-
-
-
 
 
 
@@ -605,418 +659,425 @@ contains
 
 
 
-    subroutine compute_Gamma_NI()
-        ! Computes the radial Gamma_NI values (D.209 - D.221) of DT98
-    end subroutine compute_Gamma_NI
+        subroutine compute_Gamma_NI()
+            ! Computes the radial Gamma_NI values (D.209 - D.221) of DT98
+        end subroutine compute_Gamma_NI
 
 
 
 
-    real(kind=CUSTOM_REAL) function gammaD1_coeff(row, s, a, c, l, n, f)
-    ! Computes value of table D.2 of DT98 
-    integer :: row
-    integer :: s 
-    real(kind=CUSTOM_REAL) :: a, c, l, n , f
+        real(kind=CUSTOM_REAL) function gammaD1_coeff(row, s, a, c, l, n, f)
+        ! Computes value of table D.2 of DT98 
+        integer :: row
+        integer :: s 
+        real(kind=CUSTOM_REAL) :: a, c, l, n , f
 
-    real(kind=CUSTOM_REAL) :: lam(5), coeff, fifteen, twone, i_rt3, i_rt6, two_35, two_7rt10, two_rt70
+        real(kind=CUSTOM_REAL) :: lam(5), coeff, fifteen, twone, i_rt3, i_rt6, two_35, two_7rt10, two_rt70
 
-    fifteen = three * five
-    twone   = three*seven
-    i_rt3   = one/(three**half)
-    i_rt6   = one/(six**half)
+        fifteen = three * five
+        twone   = three*seven
+        i_rt3   = one/(three**half)
+        i_rt6   = one/(six**half)
 
-    two_35    = two/(five*seven)
-    two_7rt10 = two/(seven * (ten**half) )
-    two_rt70  = two/((seven*ten)**half)
+        two_35    = two/(five*seven)
+        two_7rt10 = two/(seven * (ten**half) )
+        two_rt70  = two/((seven*ten)**half)
 
-    ! compute Lambda values 
-    lam(1) = c + six * a - four  * l - ten       * n + eight * f
-    lam(2) = c +       a + six   * l + five      * n - two   * f
-    lam(3) = c - six * a - four  * l + seven*two * n + five  * f
-    lam(4) = c +       a + three * l - seven     * n - two   * f
-    lam(5) = c +       a - four  * l                 - two   * f
-
-
-    if(row.lt.1 .or. row.gt.13)then
-        write(*,*)'Error in gammaD1_coeff. row must be 1-13 but was ', row
-        stop 
-    endif 
-
-    select case(s)
-        ! S = 0 
-        case(0)
-            select case(row)
-                case(1)
-                    coeff = (lam(1) + two*lam(2))/fifteen
-                case(2)
-                    coeff = lam(2)*two/fifteen
-                case(3)
-                    coeff = (lam(1) + lam(2))/fifteen
-                case(4)
-                    coeff = -lam(1)/fifteen
-                case(5)
-                    coeff = -lam(2)/fifteen
-                case default
-                    coeff = zero 
-            end select 
-        ! S = 2
-        case(2)
-            select case(row)
-                case(1)
-                    coeff = four*(lam(3)+ two*lam(4))/twone
-                case(2)
-                    coeff = -four*lam(4)/twone
-                case(3)
-                    coeff = -two*(lam(3)+lam(4))/twone
-                case(4)
-                    coeff = -lam(3)/twone
-                case(5)
-                    coeff = -lam(4)/twone
-                case(6)
-                    coeff = (lam(3) + two*lam(4))*i_rt3/seven
-                case(7)
-                    coeff = -two * lam(4) * i_rt3 / seven
-                case(8)
-                    coeff = -(lam(3)+lam(4))*i_rt3/seven
-                case(9)
-                    coeff = two*lam(3)*i_rt6/seven
-                case(10)
-                    coeff = two*lam(4)*i_rt6/seven    
-                case(11)
-                    coeff = -two*(lam(3)+ two*lam(4)) * i_rt6/seven
-                case default
-                    coeff = zero 
-            end select 
-        ! S = 4
-        case(4)
-            select case(row)
-                case(1)
-                    coeff = two_35 * four
-                case(2)
-                    coeff = two_35 
-                case(3)
-                    coeff = two_35 
-                case(4)
-                    coeff = two_35 * two 
-                case(5)
-                    coeff = two_35 * two 
-                case(6)
-                    coeff = two_7rt10 * two 
-                case(7)
-                    coeff = two_7rt10 
-                case(8)
-                    coeff = two_7rt10 
-                case(9)
-                    coeff = two_7rt10 * two 
-                case(10)
-                    coeff = two_7rt10 * two 
-                case(11)
-                    coeff = two_7rt10 
-                case(12)
-                    coeff = two_rt70 
-                case(13)
-                    coeff = two_rt70 * two 
-            end select
-
-            coeff = coeff * lam(5)
-
-        ! Error s != 0, 2, 4
-        case default
-            write(*,*)'Error in gammaD1_coeff. S must be 0, 2, 4 but was ', s
-            stop
-    end select 
-
-    ! Compute coefficient including the s term
-    gammaD1_coeff =  coeff
-    end function gammaD1_coeff
+        ! compute Lambda values 
+        lam(1) = c + six * a - four  * l - ten       * n + eight * f
+        lam(2) = c +       a + six   * l + five      * n - two   * f
+        lam(3) = c - six * a - four  * l + seven*two * n + five  * f
+        lam(4) = c +       a + three * l - seven     * n - two   * f
+        lam(5) = c +       a - four  * l                 - two   * f
 
 
+        if(row.lt.1 .or. row.gt.13)then
+            write(*,*)'Error in gammaD1_coeff. row must be 1-13 but was ', row
+            stop 
+        endif 
 
+        select case(s)
+            ! S = 0 
+            case(0)
+                select case(row)
+                    case(1)
+                        coeff = (lam(1) + two*lam(2))/fifteen
+                    case(2)
+                        coeff = lam(2)*two/fifteen
+                    case(3)
+                        coeff = (lam(1) + lam(2))/fifteen
+                    case(4)
+                        coeff = -lam(1)/fifteen
+                    case(5)
+                        coeff = -lam(2)/fifteen
+                    case default
+                        coeff = zero 
+                end select 
+            ! S = 2
+            case(2)
+                select case(row)
+                    case(1)
+                        coeff = four*(lam(3)+ two*lam(4))/twone
+                    case(2)
+                        coeff = -four*lam(4)/twone
+                    case(3)
+                        coeff = -two*(lam(3)+lam(4))/twone
+                    case(4)
+                        coeff = -lam(3)/twone
+                    case(5)
+                        coeff = -lam(4)/twone
+                    case(6)
+                        coeff = (lam(3) + two*lam(4))*i_rt3/seven
+                    case(7)
+                        coeff = -two * lam(4) * i_rt3 / seven
+                    case(8)
+                        coeff = -(lam(3)+lam(4))*i_rt3/seven
+                    case(9)
+                        coeff = two*lam(3)*i_rt6/seven
+                    case(10)
+                        coeff = two*lam(4)*i_rt6/seven    
+                    case(11)
+                        coeff = -two*(lam(3)+ two*lam(4)) * i_rt6/seven
+                    case default
+                        coeff = zero 
+                end select 
+            ! S = 4
+            case(4)
+                select case(row)
+                    case(1)
+                        coeff = two_35 * four
+                    case(2)
+                        coeff = two_35 
+                    case(3)
+                        coeff = two_35 
+                    case(4)
+                        coeff = two_35 * two 
+                    case(5)
+                        coeff = two_35 * two 
+                    case(6)
+                        coeff = two_7rt10 * two 
+                    case(7)
+                        coeff = two_7rt10 
+                    case(8)
+                        coeff = two_7rt10 
+                    case(9)
+                        coeff = two_7rt10 * two 
+                    case(10)
+                        coeff = two_7rt10 * two 
+                    case(11)
+                        coeff = two_7rt10 
+                    case(12)
+                        coeff = two_rt70 
+                    case(13)
+                        coeff = two_rt70 * two 
+                end select
 
-    real(CUSTOM_REAL) function thrj(j1, j2, j3, m1, m2, m3)
-    ! Arguments
-    integer, intent(in) :: j1, j2, j3, m1, m2, m3
-    integer :: jc, ja, jb, ma, mb, mc, lm1, lm2, m, n, mx, my
-    real(CUSTOM_REAL) :: ss, alpha, beta, gamma, y(100)
-    
-    !-----
-    ! Evaluation of Wigner 3-j coefficients
-    thrj = zero
-    
-    ! Early returns based on selection criteria
-    if ((j1 + j2 - j3 < 0) .or. (j2 + j3 - j1 < 0) .or. (j3 + j1 - j2 < 0)) return
-    if (j1 - abs(m1) < 0) return
-    if (j2 - abs(m2) < 0) return
-    if (j3 - abs(m3) < 0) return
-    if (m1 + m2 + m3 /= 0) return
-    
-    !-----
-    ! Use symmetries to make j3 the largest of j1, j2, j3
-    jc = max(j1, j2, j3)
-    
-    if(jc.eq.j3)then
-            ja = j1; jb = j2; jc = j3
-            ma = m1; mb = m2; mc = m3
-    elseif (jc.eq.j2)then
-            ja = j3; jb = j1; jc = j2
-            ma = m3; mb = m1; mc = m2
-    else 
-            ja = j2; jb = j3; jc = j1
-            ma = m2; mb = m3; mc = m1
-    endif
+                coeff = coeff * lam(5)
 
-    lm2 = -jb
-    if (ja + mc - jb < 0) lm2 = -mc - ja
+            ! Error s != 0, 2, 4
+            case default
+                write(*,*)'Error in gammaD1_coeff. S must be 0, 2, 4 but was ', s
+                stop
+        end select 
 
-    lm1 = -mc - lm2
-    m = lm1 + jb + mc + 1
-
-    if (ja - jb - mc < 0) m = lm1 + ja + 1
-    
-    ! Initialize array y
-    y(1) = zero
-    y(2) = one
-    ss   = one
-    
-    ! Main calculation loop
-    if (m > 1) then
-        do n = 2, m
-            mx = lm1 - n + 2
-            my = lm2 + n - 2
-            alpha = sqrt(real((ja - mx + 1) * (ja + mx) * (jb + my + 1) * (jb - my), CUSTOM_REAL))
-            beta = real(jc * (jc + 1) - ja * (ja + 1) - jb * (jb + 1) - 2 * mx * my, CUSTOM_REAL)
-            gamma = sqrt(real((ja + mx + 1) * (ja - mx) * (jb - my + 1) * (jb + my), CUSTOM_REAL))
-            y(n+1) = (beta * y(n) - gamma * y(n-1)) / alpha
-            ss = ss + y(n+1)**two
-        end do
-    end if
-    
-    ! Compute final result
-    n = lm1 - ma + 2
-    thrj = y(n) * ((-one)**real(-ja + jb + mc,kind=CUSTOM_REAL)) / sqrt(ss * real(2 * jc + 1, CUSTOM_REAL))
-
-    return
-end function thrj
+        ! Compute coefficient including the s term
+        gammaD1_coeff =  coeff
+        end function gammaD1_coeff
 
 
 
 
-real(kind=SPLINE_REAL) function integrate_GNIr2(s, l, N, I, u, du, v, dv, nlen, rvals, dA, dC, dL, dN, dF, type)
-    ! Computes the integral in D.208
-    use integrate, only: integrate_r_traps
-    implicit none 
-    include 'constants.h'
-    integer :: N, I, nlen, s, l, coeff_ind, w1, w2, w3, h
-    real(kind=CUSTOM_REAL) :: dA(nlen), dC(nlen), dL(nlen), dN(nlen), dF(nlen)
-    real(kind=CUSTOM_REAL) :: rvals(nlen)
-    real(kind=SPLINE_REAL) :: u(nlen), v(nlen), du(nlen), dv(nlen), lf, kf, om2, om0, om2sq, om0sq
-    real(kind=SPLINE_REAL) :: gam(nlen), r(nlen), r2(nlen), coeff, xi(nlen), chi(nlen), phi(nlen), integrand(nlen)
-    character :: type
+        real(CUSTOM_REAL) function thrj(j1, j2, j3, m1, m2, m3)
+        ! Arguments
+        integer, intent(in) :: j1, j2, j3, m1, m2, m3
+        integer :: jc, ja, jb, ma, mb, mc, lm1, lm2, m, n, mx, my
+        real(CUSTOM_REAL) :: ss, alpha, beta, gamma, y(100)
+        
+        !-----
+        ! Evaluation of Wigner 3-j coefficients
+        thrj = zero
+        
+        ! Early returns based on selection criteria
+        if ((j1 + j2 - j3 < 0) .or. (j2 + j3 - j1 < 0) .or. (j3 + j1 - j2 < 0)) return
+        if (j1 - abs(m1) < 0) return
+        if (j2 - abs(m2) < 0) return
+        if (j3 - abs(m3) < 0) return
+        if (m1 + m2 + m3 /= 0) return
+        
+        !-----
+        ! Use symmetries to make j3 the largest of j1, j2, j3
+        jc = max(j1, j2, j3)
+        
+        if(jc.eq.j3)then
+                ja = j1; jb = j2; jc = j3
+                ma = m1; mb = m2; mc = m3
+        elseif (jc.eq.j2)then
+                ja = j3; jb = j1; jc = j2
+                ma = m3; mb = m1; mc = m2
+        else 
+                ja = j2; jb = j3; jc = j1
+                ma = m2; mb = m3; mc = m1
+        endif
 
-    ! l and k in floats
-    lf = real(l, kind=SPLINE_REAL)
-    kf = (lf*(lf+SPLINE_ONE))**SPLINE_HALF
+        lm2 = -jb
+        if (ja + mc - jb < 0) lm2 = -mc - ja
 
-    ! Compute r^2
-    r  = real(rvals, kind=SPLINE_REAL)
-    r2 = r*r
+        lm1 = -mc - lm2
+        m = lm1 + jb + mc + 1
 
-    om0 = OmNL(0,l)
-    om2 = OmNL(2,l)
+        if (ja - jb - mc < 0) m = lm1 + ja + 1
+        
+        ! Initialize array y
+        y(1) = zero
+        y(2) = one
+        ss   = one
+        
+        ! Main calculation loop
+        if (m > 1) then
+            do n = 2, m
+                mx = lm1 - n + 2
+                my = lm2 + n - 2
+                alpha = sqrt(real((ja - mx + 1) * (ja + mx) * (jb + my + 1) * (jb - my), CUSTOM_REAL))
+                beta = real(jc * (jc + 1) - ja * (ja + 1) - jb * (jb + 1) - 2 * mx * my, CUSTOM_REAL)
+                gamma = sqrt(real((ja + mx + 1) * (ja - mx) * (jb - my + 1) * (jb + my), CUSTOM_REAL))
+                y(n+1) = (beta * y(n) - gamma * y(n-1)) / alpha
+                ss = ss + y(n+1)**two
+            end do
+        end if
+        
+        ! Compute final result
+        n = lm1 - ma + 2
+        thrj = y(n) * ((-one)**real(-ja + jb + mc,kind=CUSTOM_REAL)) / sqrt(ss * real(2 * jc + 1, CUSTOM_REAL))
+
+        return
+    end function thrj
 
 
-    om0sq = om0*om0
-    om2sq = om2*om2
-
-    if (type.eq.'S')then 
-        chi = dv*r + u - v
-        phi = (SPLINE_TWO*u - kf*kf*v)
-        xi  = SPLINE_ZERO
-    elseif(type.eq.'T')then 
-        chi = SPLINE_ZERO
-        phi = SPLINE_ZERO
-        xi  = du*r - u
-    else
-        write(*,*)'Error: type must be S, or T: ', type
-    endif 
 
 
-    ! Generate integral: 
-    select case(N)
-        case(0) ! N = 0
-            coeff_ind = I
-            select case(I)
-                case(1)
-                    gam = du * du  * r2
-                    w1 = 0 
-                    w2 = 0
-                    w3 = 0
-                case(2)
-                    gam = SPLINE_TWO * om0sq * om2sq  
-                    if (type.eq.'S')then 
-                        gam = gam * v * v
-                    elseif(type.eq.'T')then 
-                        gam = gam * u * u
-                    endif 
-                    w1 = -2 
-                    w2 = 0
-                    w3 = 2
+    real(kind=SPLINE_REAL) function integrate_GNIr2(s, l, N, I, u, du, v, dv,& 
+                                                    nlen, rvals, dA, dC, dL, dN, dF, type)
+        ! Computes the integral in D.208
+        use integrate, only: integrate_r_traps
+        implicit none 
+        include 'constants.h'
+        integer :: N, I, nlen, s, l, coeff_ind, w1, w2, w3, h
+        real(kind=CUSTOM_REAL) :: dA(nlen), dC(nlen), dL(nlen), dN(nlen), dF(nlen)
+        real(kind=CUSTOM_REAL) :: rvals(nlen)
+        real(kind=SPLINE_REAL) :: u(nlen), v(nlen), du(nlen), dv(nlen), lf, kf, om2, om0, om2sq, om0sq
+        real(kind=SPLINE_REAL) :: gam(nlen), r(nlen), r2(nlen), coeff, xi(nlen), chi(nlen), phi(nlen), integrand(nlen)
+        character :: type
 
-                case(3)
-                    gam = phi*phi 
-                    w1 = 0 
-                    w2 = 0
-                    w3 = 0
-                case(4)
-                    gam = -SPLINE_TWO * phi * du  * r
-                    w1 = 0 
-                    w2 = 0
-                    w3 = 0
-                case(5)
-                    gam = SPLINE_TWO * om0sq * (chi*chi + xi*xi)
-                    w1 = -1
-                    w2 = 0
-                    w3 = 1
-                case default
-                    write(*,*)'Error in I value', I
-                    stop
-            end select
+        ! l and k in floats
+        lf = real(l, kind=SPLINE_REAL)
+        kf = (lf*(lf+SPLINE_ONE))**SPLINE_HALF
 
-        case(1) ! N = 1
-            coeff_ind = 5 + I 
-            select case (I)
-                case(1)
-                    gam = - SPLINE_FOUR * om0 * chi * du * r 
-                    w1 = -1
-                    w2 = 1
-                    w3 = 0
-                case(2)
-                    gam = - SPLINE_FOUR * om0sq * om2 
+        ! Compute r^2
+        r  = real(rvals, kind=SPLINE_REAL)
+        r2 = r*r
+
+        om0 = OmNL(0,l)
+        om2 = OmNL(2,l)
+
+
+        om0sq = om0*om0
+        om2sq = om2*om2
+
+        if (type.eq.'S')then 
+            chi = dv*r + u - v
+            phi = (SPLINE_TWO*u - kf*kf*v)
+            xi  = SPLINE_ZERO
+        elseif(type.eq.'T')then 
+            chi = SPLINE_ZERO
+            phi = SPLINE_ZERO
+            xi  = du*r - u
+        else
+            write(*,*)'Error: type must be S, or T: ', type
+        endif 
+
+
+        ! Generate integral: 
+        select case(N)
+            case(0) ! N = 0
+                coeff_ind = I
+                select case(I)
+                    case(1)
+                        gam = du * du  * r2
+                        w1 = 0 
+                        w2 = 0
+                        w3 = 0
+                    case(2)
+                        gam = SPLINE_TWO * om0sq * om2sq  
+                        if (type.eq.'S')then 
+                            gam = gam * v * v
+                        elseif(type.eq.'T')then 
+                            gam = gam * u * u
+                        endif 
+                        w1 = -2 
+                        w2 = 0
+                        w3 = 2
+
+                    case(3)
+                        gam = phi*phi 
+                        w1 = 0 
+                        w2 = 0
+                        w3 = 0
+                    case(4)
+                        gam = -SPLINE_TWO * phi * du  * r
+                        w1 = 0 
+                        w2 = 0
+                        w3 = 0
+                    case(5)
+                        gam = SPLINE_TWO * om0sq * (chi*chi + xi*xi)
+                        w1 = -1
+                        w2 = 0
+                        w3 = 1
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select
+
+            case(1) ! N = 1
+                coeff_ind = 5 + I 
+                select case (I)
+                    case(1)
+                        gam = - SPLINE_FOUR * om0 * chi * du * r 
+                        w1 = -1
+                        w2 = 1
+                        w3 = 0
+                    case(2)
+                        gam = - SPLINE_FOUR * om0sq * om2 
+                        if (type.eq.'S')then 
+                            gam = gam * v * chi
+                        elseif(type.eq.'T')then 
+                            gam = gam * u * xi
+                        endif 
+                        w1 = -2
+                        w2 = 1
+                        w3 = 1
+
+                    case(3)
+                        gam = SPLINE_FOUR * om0 * chi * phi 
+                        w1 = 0
+                        w2 = 1
+                        w3 = -1
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select 
+                
+
+            case(2) ! N = 2
+                coeff_ind = 8 + I 
+                select case (I)
+                    case(1)
+                        gam = SPLINE_FOUR * om0 * om2 * du * v * r 
+                        w1 = -2 
+                        w2 = 2
+                        w3 = 0
+                    case(2)
+                        gam = SPLINE_TWO * om0sq * (chi*chi - xi*xi) 
+                        w1 = -1
+                        w2 = 2
+                        w3 = -1
+                    case(3)
+                        gam = - SPLINE_FOUR * om0 * om2 * v * phi 
+                        w1 = -2
+                        w2 = 2
+                        w3 = 0
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select 
+
+
+            case(3) ! N = 3
+                if(I.eq.1)then 
+                    coeff_ind = 12 
+                    gam = -SPLINE_FOUR * om0sq * om2  
                     if (type.eq.'S')then 
                         gam = gam * v * chi
                     elseif(type.eq.'T')then 
-                        gam = gam * u * xi
+                        gam = -gam * u * xi 
                     endif 
                     w1 = -2
-                    w2 = 1
-                    w3 = 1
-
-                case(3)
-                    gam = SPLINE_FOUR * om0 * chi * phi 
-                    w1 = 0
-                    w2 = 1
+                    w2 = 3
                     w3 = -1
-                case default
+                else 
                     write(*,*)'Error in I value', I
                     stop
-            end select 
-            
+                endif
 
-        case(2) ! N = 2
-            coeff_ind = 8 + I 
-            select case (I)
-                case(1)
-                    gam = SPLINE_FOUR * om0 * om2 * du * v * r 
-                    w1 = -2 
-                    w2 = 2
-                    w3 = 0
-                case(2)
-                    gam = SPLINE_TWO * om0sq * (chi*chi - xi*xi) 
-                    w1 = -1
-                    w2 = 2
-                    w3 = -1
-                case(3)
-                    gam = - SPLINE_FOUR * om0 * om2 * v * phi 
+            case(4) ! N = 4
+                if(I.eq.1)then 
+                    coeff_ind = 13 
+                    gam = SPLINE_TWO * om0sq * om2sq 
+                    if (type.eq.'S')then 
+                        gam = gam * v * v
+                    elseif(type.eq.'T')then 
+                        gam = -gam * u * u
+                    endif 
                     w1 = -2
-                    w2 = 2
-                    w3 = 0
-                case default
+                    w2 = 4
+                    w3 = -2
+                else 
                     write(*,*)'Error in I value', I
                     stop
-            end select 
-
-
-        case(3) ! N = 3
-            if(I.eq.1)then 
-                coeff_ind = 12 
-                gam = -SPLINE_FOUR * om0sq * om2  
-                if (type.eq.'S')then 
-                    gam = gam * v * chi
-                elseif(type.eq.'T')then 
-                    gam = -gam * u * xi 
-                endif 
-                w1 = -2
-                w2 = 3
-                w3 = -1
-            else 
-                write(*,*)'Error in I value', I
+                endif
+            case default
+                write(*,*)'Error in N value', N
                 stop
-            endif
+        end select 
 
-        case(4) ! N = 4
-            if(I.eq.1)then 
-                coeff_ind = 13 
-                gam = SPLINE_TWO * om0sq * om2sq 
-                if (type.eq.'S')then 
-                    gam = gam * v * v
-                elseif(type.eq.'T')then 
-                    gam = -gam * u * u
-                endif 
-                w1 = -2
-                w2 = 4
-                w3 = -2
-            else 
-                write(*,*)'Error in I value', I
-                stop
-            endif
-        case default
-            write(*,*)'Error in N value', N
-            stop
-    end select 
+        do h = 1, nlen
+            integrand(h) =  real(gammaD1_coeff(coeff_ind, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
+        enddo 
 
-    do h = 1, nlen
-        integrand(h) =  real(gammaD1_coeff(coeff_ind, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
-    enddo 
+        integrand = integrand * gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL)
+        integrate_GNIr2 =  integrate_r_traps(rvals, integrand, nlen)
 
-    integrand = integrand * gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL)
-    integrate_GNIr2 =  integrate_r_traps(rvals, integrand, nlen)
-
-    return
-end function integrate_GNIr2
+        return
+    end function integrate_GNIr2
 
 
 
 
 
-subroutine save_Vani_matrix(l, fname)
-    use params, only: Vani
-    implicit none 
-    include "constants.h"
-    character(len=*) :: fname
-    integer :: l
+    subroutine save_Vani_matrix(l, fname)
+        use params, only: Vani
+        implicit none 
+        include "constants.h"
+        character(len=*) :: fname
+        integer :: l
 
-    integer :: row
-
-    complex(kind=SPLINE_REAL) :: Vani_i(2*l + 1)
-
-    write(*,*)'Writing to ', trim(fname)
-
-    open(1,file=trim(fname))
-    ! Write the real matrix 
-    do row =1, 2*l + 1
-        Vani_i =  Vani(row,:)
-        write(1,*)real(Vani_i)
-    enddo 
-    ! Write the imaginary part
-    do row =1, 2*l + 1
-        Vani_i =  Vani(row,:)
-        write(1,*)aimag(Vani_i)
-    enddo ! row
-    close(1)
-
-end subroutine save_Vani_matrix
+        integer :: row, col
 
 
+        write(*,*)'Writing to ', trim(fname)
+
+        open(1,file=trim(fname))
+        ! Write the real matrix 
+        do row =1, 2*l + 1
+            do col = 1, 2*l + 1
+                if (col .lt. 2*l+1)then 
+                write(1,'(E15.6)', advance='no')real(Vani(row,col))
+                else 
+                    write(1,'(E15.6)', advance='yes')real(Vani(row,col))
+                endif
+            enddo 
+        enddo 
+        do row =1, 2*l + 1
+            do col = 1, 2*l + 1
+                if (col .lt. 2*l+1)then 
+                write(1,'(E15.6)', advance='no')aimag(Vani(row,col))
+                else 
+                    write(1,'(E15.6)', advance='yes')aimag(Vani(row,col))
+                endif
+            enddo 
+        enddo 
+        close(1)
+
+    end subroutine save_Vani_matrix
 
 end module V_ani
 

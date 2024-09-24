@@ -7,16 +7,24 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose = 0
+integer, parameter :: verbose      = 0
 logical, parameter :: all_warnings = .false.
 
+integer, parameter :: nprocs       = 6
+
 ! Specfem mesh files: 
-character(len=250) :: datadir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/DATABASES_MPI/NEX112/sliced'
+!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets8/'
+character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
+
+
+
+
+
 
 ! Mineos model parameters: 
-character(len=250), parameter  :: ddir = '/Users/eaton/Documents/Software/NMSplit90/databases/prem_ani_att_database/'
+character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'
 character(len=60),  parameter  :: model_fname = 'model'
-integer                              :: NR
+integer                        :: NR
 integer                        :: NL
 integer                        :: IC_ID     ! IC side of ICB
 integer                        :: CMB_ID    ! OC side of CMB
@@ -60,6 +68,9 @@ integer :: ngllx
 integer :: nglly
 integer :: ngllz
 real(kind=CUSTOM_REAL), allocatable :: xi(:), wgll(:), dgll(:,:)
+real(kind=SPLINE_REAL), allocatable :: wglljac(:,:,:,:)
+
+
 
 ! Local mesh variables:
 integer, allocatable                   :: ibool(:,:,:,:)

@@ -1,5 +1,6 @@
 program test_spline
-    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, unique_r, interp_id_r, IC_ID, interp_map
+    use params, only: NL, u_spl, v_spl, udot_spl, vdot_spl, n_unique_rad, & 
+                      unique_r, interp_id_r, IC_ID, interp_map, nprocs
     use mesh_utils, only: read_proc_coordinates, load_ibool
     use spline, only: interpolate_mode_eigenfunctions, write_mode_spline, create_interpolation_radial_map
     use allocation_module, only: allocate_if_unallocated
@@ -7,7 +8,6 @@ program test_spline
     include "constants.h"
 
     integer :: iproc             
-    integer :: nprocs                ! Number of processors used by mesher 
     integer :: region                ! Region code
 
     ! Variables for splines/modes: 
@@ -20,7 +20,6 @@ program test_spline
     
     ! Setup parameters: 
     region = 3      ! Inner core
-    nprocs = 6
     iproc  = 0
     mode_type = 'S' 
     n = 23
@@ -36,13 +35,13 @@ program test_spline
     call load_ibool(iproc, region)
 
     ! Get unique mesh radii that are present
-    call get_mesh_radii()
-
+    call get_mesh_radii(iproc, .false.)
+        
     allocate(u(NL), v(NL), du(NL), dv(NL))
 
 
     ! Load the mode from the database and save it (.true.)
-    call get_mode(mode_type, n, l, om, qval, u, du, v, dv, .true.)
+    call get_mode(mode_type, n, l, om, qval, u, du, v, dv, .true., './spline/')
 
 
     call allocate_if_unallocated(n_unique_rad, u_spl)

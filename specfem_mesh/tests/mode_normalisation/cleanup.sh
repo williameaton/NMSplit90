@@ -1,17 +1,13 @@
 #!/bin/bash
 
-this_dir=${test_dir}/mode_normalisation/
+if [ -z "$this_dir" ]; then
+    my_dir='./'
+else
+    my_dir="${this_dir}/mode_normalisation"
+fi
 
-# cleanup 
-# Note that you should not delete spline.mod
-rm ${this_dir}/*T*.txt
-rm ${this_dir}/*spline*.txt
-rm ${this_dir}/params.mod
-rm ${this_dir}/math.mod
-rm ${this_dir}/allocation_module.mod
-rm ${this_dir}/integrate.mod
-rm ${this_dir}/mesh_utils.mod
-rm ${this_dir}/ylm_plm.mod
-rm ${this_dir}/test_norm
-rm -r ${this_dir}/__pycache__
-rm ${this_dir}/status.txt
+rm -f ${my_dir}/*T*.txt
+rm -f ${my_dir}/*spline*.txt
+rm -rf ${my_dir}/__pycache__
+rm -f ${my_dir}/status.txt
+rm -f ${my_dir}/*.o

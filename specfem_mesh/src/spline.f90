@@ -419,7 +419,9 @@ module spline
        j = interp_map(i)
       
         do m = 0, k
-            interp(i) = interp(i) +  c(m+1,j- min_knot +1)*(real(outradial(i) - rad_mineos(j), kind=SPLINE_REAL))**(real(k-m, kind=SPLINE_REAL)) 
+            interp(i) = interp(i) +  c(m+1,j- min_knot +1) * & 
+              (real(outradial(i) - rad_mineos(j), & 
+                  kind=SPLINE_REAL))**(real(k-m, kind=SPLINE_REAL)) 
         enddo
     enddo 
 
@@ -473,12 +475,12 @@ module spline
     endif 
     
 
-    open(1,file=trim(eigstring))
+    open(1, file=trim('./spline/'//eigstring))
     do i =1, npoints
         if(mode_type=='S')then 
-            write(1,*)rad_arr(i), u_spl(i), udot_spl(i), v_spl(i), vdot_spl(i)
+            write(1,'(f12.6,f12.6,f12.6,f12.6,f12.6)')rad_arr(i), u_spl(i), udot_spl(i), v_spl(i), vdot_spl(i)
         elseif (mode_type=='T')then 
-            write(1,*)rad_arr(i), u_spl(i), udot_spl(i)
+            write(1,'(f12.6,f12.6,f12.6)')rad_arr(i), u_spl(i), udot_spl(i)
         endif 
     enddo 
     close(1)

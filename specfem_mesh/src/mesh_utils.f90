@@ -336,13 +336,15 @@ module mesh_utils
 
 
 
-    subroutine compute_rtp_from_xyz()
+    subroutine compute_rtp_from_xyz(iproc, save)
         ! Converts the stored xyz to r theta phi
         use allocation_module, only: allocate_if_unallocated
         use params, only: xstore, ystore, zstore, rstore, thetastore, phistore, & 
                         ngllx, nglly, ngllz, nspec     
         implicit none
         include "constants.h" 
+        integer :: iproc
+        logical :: save
 
         integer ispec, i ,j , k
 
@@ -355,14 +357,20 @@ module mesh_utils
             do i = 1, ngllx
                 do j = 1, nglly
                     do k = 1, ngllz
-                        rstore(i,j,k,ispec) = (xstore(i,j,k,ispec)**TWO + ystore(i,j,k,ispec)**TWO + zstore(i,j,k,ispec)**TWO)**HALF
+                        rstore(i,j,k,ispec) = (xstore(i,j,k,ispec)**TWO + &
+                                               ystore(i,j,k,ispec)**TWO + & 
+                                               zstore(i,j,k,ispec)**TWO)**HALF
                                             
                         ! 0 <= phi <= 2pi
-                        phistore(i,j,k,ispec) = atan2(ystore(i,j,k,ispec), xstore(i,j,k,ispec))   
-                        if(phistore(i,j,k,ispec) .lt. ZERO) phistore(i,j,k,ispec)  = TWO_PI + phistore(i,j,k,ispec) 
+                        phistore(i,j,k,ispec) = atan2(ystore(i,j,k,ispec),&
+                                                      xstore(i,j,k,ispec))   
+                        if(phistore(i,j,k,ispec) .lt. ZERO)& 
+                             phistore(i,j,k,ispec)  = TWO_PI + phistore(i,j,k,ispec) 
 
                         ! 0 <= theta <= pi                        
-                        thetastore(i,j,k,ispec) = PI_OVER_TWO -  atan2(zstore(i,j,k,ispec), (xstore(i,j,k,ispec)**TWO + ystore(i,j,k,ispec)**TWO)**HALF) 
+                        thetastore(i,j,k,ispec) = PI_OVER_TWO -  atan2(zstore(i,j,k,ispec),&
+                                                                     (xstore(i,j,k,ispec)**TWO +&
+                                                                      ystore(i,j,k,ispec)**TWO)**HALF) 
 
                         !if (rstore(i,j,k,ispec) .eq. zero)then 
                         !    thetastore(i,j,k,ispec) = zero
@@ -377,6 +385,9 @@ module mesh_utils
                 enddo 
             enddo
         enddo 
+
+
+        if(save)call save_elem_rtp(iproc)
 
     end subroutine compute_rtp_from_xyz
 
@@ -471,10 +482,12 @@ module mesh_utils
     end subroutine compute_rotation_matrix
 
 
-    subroutine setup_global_coordinate_arrays()
+    subroutine setup_global_coordinate_arrays(iproc, save)
         use params, only: nglob, x_glob, y_glob, z_glob, xstore, ystore, zstore
         use allocation_module, only: allocate_if_unallocated
         implicit none 
+        integer :: iproc
+        logical :: save 
 
         call allocate_if_unallocated(nglob, x_glob)
         call allocate_if_unallocated(nglob, y_glob)
@@ -483,6 +496,9 @@ module mesh_utils
         call map_local_global(ystore, y_glob, 0)
         call map_local_global(zstore, z_glob, 0)
     
+        if(save)call save_global_xyz(iproc)
+
+
     end subroutine setup_global_coordinate_arrays
 
 
@@ -645,7 +661,8 @@ module mesh_utils
         call check_ibool_is_defined()
     end subroutine
     
-    subroutine compute_jacobian()
+
+    subroutine compute_jacobian(iproc, save_jac)
         use params, only: jac, detjac, nspec, ngllx, nglly, ngllz, & 
                           xstore, ystore, zstore, dgll,verbose, jacinv
         use allocation_module, only: allocate_if_unallocated
@@ -653,6 +670,9 @@ module mesh_utils
         implicit none 
         include "constants.h"
 
+        ! Save: 
+        logical :: save_jac
+        integer :: iproc 
         ! Local variables: 
         integer :: i, j, s, t, n, p, ispec
         real(kind=CUSTOM_REAL) :: val, jl(3,3), tmp(3,3)
@@ -722,9 +742,14 @@ module mesh_utils
 
         if(verbose.ge.2)write(*,'(a)')'  --> done'
 
+
+        if(save_jac)then 
+            if(verbose.ge.2)write(*,'(a)')'  --> saving jacobian to binary'
+            call save_jacobian(iproc)
+        endif 
     end subroutine compute_jacobian
     
-    
+
     
     subroutine read_proc_coordinates(iproc, region)
         use params, only: ngllx, nglly, ngllz, nspec, & 
@@ -777,10 +802,7 @@ module mesh_utils
             write(*,'(a,i1)')'     --> ngllz: ', ngllz
         endif 
     
-        ! Allocate mesh arrays:
-        
-        
-        
+        ! Allocate mesh arrays:        
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore_dp)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, xstore)
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, ystore_dp)

@@ -17,6 +17,26 @@ databases/*
 get_mode/*
 
 
+# AC generated stuff: 
+specfem_mesh/configure
+specfem_mesh/AUTHORS
+specfem_mesh/README
+specfem_mesh/ChangeLog
+specfem_mesh/INSTALL
+specfem_mesh/Makefile.in
+specfem_mesh/aclocal.m4
+specfem_mesh/autom4te.cache/*
+specfem_mesh/config.log
+specfem_mesh/config.status
+specfem_mesh/depcomp
+specfem_mesh/install-sh
+specfem_mesh/NEWS
+specfem_mesh/COPYING
+specfem_mesh/missing
+specfem_mesh/fort.*
+
+
+
 # Test files: 
 specfem_mesh/tests/*/*.txt
 specfem_mesh/tests/*/*/*.txt

@@ -1,5 +1,6 @@
 program test_ylm_integration
-    use params, only: nspec, ngllx, nglly, ngllz, rstore, thetastore, phistore
+    use params, only: nspec, ngllx, nglly, ngllz, rstore, thetastore, & 
+                      phistore, nprocs
     use allocation_module, only: allocate_if_unallocated
     use mesh_utils, only: read_proc_coordinates, load_ibool, & 
                           compute_jacobian, cleanup_for_mode, &
@@ -11,7 +12,6 @@ program test_ylm_integration
     include "constants.h"
     
     integer :: iproc, i, j, k, ispec                  
-    integer :: nprocs                ! Number of processors used by mesher 
     integer :: region                ! Region code
     real(kind=CUSTOM_REAL)    :: rreal, phreal, threal
     complex(kind=CUSTOM_REAL) :: totalint, ylm1, ylm2
@@ -22,7 +22,6 @@ program test_ylm_integration
         
     ! Setup parameters: 
     region = 3      ! Inner core
-    nprocs = 6
     
     l1 = 5
     m1 = 2
@@ -42,9 +41,9 @@ program test_ylm_integration
             call read_proc_coordinates(iproc, region)
             call load_ibool(iproc, region)
             call setup_gll()
-            call compute_jacobian()
-            call get_mesh_radii()
-            call compute_rtp_from_xyz()
+            call compute_jacobian(iproc, .false.)
+            call get_mesh_radii(iproc, .false.)
+            call compute_rtp_from_xyz(iproc, .false.)
             call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, integrand)
             
             do ispec = 1, nspec 
@@ -67,7 +66,7 @@ program test_ylm_integration
             call cleanup_for_mode()
         enddo 
 
-        write(outfname, '(a,i1,a)')'test_ylm_int_', m2, '.txt'
+        write(outfname, '(a,i1,a)')'integration/test_ylm_int_', m2, '.txt'
         open(unit=1,file=trim(outfname), &
             status='unknown',form='formatted',action='write')
 

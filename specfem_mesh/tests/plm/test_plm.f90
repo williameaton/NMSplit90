@@ -10,7 +10,7 @@ program test_plm
     theta = 0.5 
 
 ! Write Plms for testing
-open(unit=1,file='testplm.txt', &
+open(unit=1,file='plm/testplm.txt', &
 status='unknown',form='formatted',action='write')
    do l = 0,10
     do m = - l, + l

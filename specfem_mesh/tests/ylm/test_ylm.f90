@@ -11,7 +11,7 @@ program test_ylm
     phi   = 0.124
 
     ! Write Plms for testing
-    open(unit=1,file='testylm.txt', &
+    open(unit=1,file='ylm/testylm.txt', &
     status='unknown',form='formatted',action='write')
     do l = 0,10
         do m = - l, + l

@@ -1,5 +1,5 @@
 program integrate_mesh
-    use params, only: nspec, ngllx, nglly, ngllz, rstore, thetastore, phistore
+    use params, only: nspec, ngllx, nglly, ngllz, rstore, thetastore, phistore, nprocs
     use allocation_module, only: allocate_if_unallocated
     use mesh_utils, only: read_proc_coordinates, load_ibool, & 
                           compute_jacobian, cleanup_for_mode, &
@@ -11,7 +11,6 @@ program integrate_mesh
     include "constants.h"
     
     integer :: iproc, i, j, k, ispec                  
-    integer :: nprocs                ! Number of processors used by mesher 
     integer :: region                ! Region code
     real(kind=CUSTOM_REAL)    :: rreal, phreal, threal
     complex(kind=CUSTOM_REAL) :: totalint, ylm1, ylm2
@@ -21,7 +20,6 @@ program integrate_mesh
         
     ! Setup parameters: 
     region = 3      ! Inner core
-    nprocs = 6
     
     n = 10
     l1 = 5
@@ -32,7 +30,7 @@ program integrate_mesh
 
     
     ! Read mineos model 
-    call process_mineos_model()
+    call process_mineos_model(.false.)
     
 
     totalint = zero 
@@ -45,13 +43,13 @@ program integrate_mesh
         ! Load ibool variable: 
         call load_ibool(iproc, region)
         call setup_gll()
-        call compute_jacobian()
+        call compute_jacobian(.false.)
         
         ! Get unique mesh radii that are present
-        call get_mesh_radii()
+        call get_mesh_radii(iproc, .false.)
         
         ! We will need the r theta phi coordinates: 
-        call compute_rtp_from_xyz()
+        call compute_rtp_from_xyz(iproc, .false.)
         
         call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, integrand)
         

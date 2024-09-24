@@ -14,7 +14,7 @@ program test_values
     sinth = sinp(theta)
     costh = cosp(theta)
 
-    open(unit=1,file='plm_value_error.txt', &
+    open(unit=1,file='plm/plm_value_error.txt', &
     status='unknown',form='formatted',action='write')
     
     !(1) 0 0 

@@ -1,4 +1,4 @@
-    subroutine get_mode(type,nord,l,wcom,qmod,u,du,v,dv, save_mode)
+    subroutine get_mode(type,nord,l,wcom,qmod,u,du,v,dv,save_mode,out_dir)
         !
         ! Usage:
         !    *  input  * 
@@ -23,6 +23,7 @@
         real(4)            :: u(NL),du(NL)
         real(4), optional  :: v(NL),dv(NL)
         logical :: save_mode
+        character(len=*), optional :: out_dir
     
         character(len=200) :: catalogue,bin_file, eigstring
         integer            :: ntype,nvec,i,j
@@ -150,15 +151,15 @@
         if(save_mode)then
             ! Save eigenfunctions to text file in column format 
             write(eigstring,'(i0,a,i0,a)')n4,type1,l4,'.txt'
-            open(ieigtxt,file=trim(eigstring), iostat=ios)
+            open(ieigtxt,file=trim(trim(out_dir)//eigstring), iostat=ios)
             write(ieigtxt,*)n4,  type1, l4
             do i =1,NR
                if(type1=='S')then 
                 ! Radius, U, U', V, V', P, P'
-                  write(ieigtxt,*)rad_mineos(i), buf(i), buf(i + NR), buf(i + 2*NR), buf(i + 3*NR), buf(i + 4*NR), buf(i + 5*NR)
+                  write(ieigtxt,'(7e18.8)')rad_mineos(i), buf(i), buf(i + NR), buf(i + 2*NR), buf(i + 3*NR), buf(i + 4*NR), buf(i + 5*NR)
                elseif (type1=='T' .or. type1=='C')then 
                 ! Radius, W, W' ?
-                  write(ieigtxt,*)rad_mineos(i), buf(i), buf(i + NR)
+                  write(ieigtxt,'(7e15.8)')rad_mineos(i), buf(i), buf(i + NR)
                endif 
             enddo 
             close(ieigtxt)

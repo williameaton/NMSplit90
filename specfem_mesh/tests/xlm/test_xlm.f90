@@ -15,7 +15,7 @@ program test_xlm
     allocate(x(npoints))
 
     ! Write integral to file for pytest 
-    open(unit=1,file='xlm_integral.txt', &
+    open(unit=1,file='xlm/xlm_integral.txt', &
     status='unknown',form='formatted',action='write')
 
     do l1 = 1, 12

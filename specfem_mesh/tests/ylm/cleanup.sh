@@ -1,12 +1,13 @@
 #!/bin/bash
 
-this_dir=${test_dir}/ylm/
+if [ -z "$this_dir" ]; then
+    my_dir='./'
+else
+    my_dir="${this_dir}/ylm"
+fi
 
 # cleanup 
-rm ${this_dir}/ylm_value_error.txt
-rm ${this_dir}/testylm.txt
-rm ${this_dir}/ylm_plm.mod
-rm ${this_dir}/math.mod
-rm -r ${this_dir}/__pycache__
-rm ${this_dir}/test_ylm
-rm ${this_dir}/test_values
+rm -f ${my_dir}/ylm_value_error.txt
+rm -f ${my_dir}/testylm.txt
+rm -f ${my_dir}/*.o
+rm -rf ${my_dir}/__pycache__

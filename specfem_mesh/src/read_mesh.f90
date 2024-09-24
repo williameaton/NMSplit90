@@ -2,13 +2,12 @@ program read_specfem_mesh
 use params 
 use allocation_module
 use mesh_utils
-use gll 
+use gll, only: setup_gll
 use ylm_plm
 
 implicit none 
 
 integer :: iproc             
-integer :: nprocs                ! Number of processors used by mesher 
 integer :: region                ! Region code
 
 integer :: n, l, m 
@@ -16,34 +15,28 @@ integer :: n, l, m
 
 ! Setup parameters: 
 region = 3      ! Inner core
-nprocs = 6
 
 n = 10
 l = 5
 m = 2
 
-
-
-
 ! Read mineos model 
-call process_mineos_model()
+call process_mineos_model(.true.)
 
 do iproc = 0, 5
 
         ! Read the mesh info and coordinates
         call read_proc_coordinates(iproc, region)
-
-        ! Load ibool variable: 
         call load_ibool(iproc, region)
 
         call setup_gll()
-        call compute_jacobian()
+        call compute_jacobian(iproc, .false.)
 
         ! Get unique mesh radii that are present
-        call get_mesh_radii()
-
+        call get_mesh_radii(iproc, .false.)
+        
         ! We will need the r theta phi coordinates: 
-        call compute_rtp_from_xyz()
+        call compute_rtp_from_xyz(iproc, .false.)
 
         ! Compute strain tensor for mode
         allocate(strain1(6,ngllx, nglly, ngllz, nspec), & 

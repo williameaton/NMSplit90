@@ -1,5 +1,5 @@
 
-program test_W_matrix
+program test_W_matrix_stored
     use params, only: NL, IC_ID, ndisc, rdisc, disc, disp1, disp2, & 
                      rad_mineos, rho_mineos, u_spl, v_spl, interp_map, & 
                      interp_id_r, unique_r, n_unique_rad, ngllx, nglly, &
@@ -23,7 +23,7 @@ program test_W_matrix
     character(len=1)   :: char, type_1, type_2
     character(len=10)  :: mode
     character(len=250) :: arg, ensight_nm
-    character(len=30)  :: out_name
+    character(len=80)  :: out_name
     character(len=4), parameter :: fmti1 = "(i1)"
     character(len=4), parameter :: fmti2 = "(i2)"
     character(len=4), parameter :: fmti3 = "(i3)"
@@ -36,11 +36,10 @@ program test_W_matrix
     complex(SPLINE_REAL), allocatable :: W_s(:)
     complex(SPLINE_REAL), allocatable :: disp1_glob(:,:)
     real(SPLINE_REAL) :: total_integral,  precision,  lf, kf
-
+    
     ! Timing: 
     integer :: start_clock, end_clock, count_rate
     real(8) :: elapsed_time
-
 
     ! Read mineos model 
     call process_mineos_model()
@@ -75,32 +74,32 @@ program test_W_matrix
     call system_clock(start_clock)
 
 
+
     do iproc = 0, nproc-1
         ! Things that need to be done for each processor
         call read_proc_coordinates(iproc, region)
 
         call load_ibool(iproc, region)
         call setup_gll()
-        call compute_jacobian()
+        call compute_jacobian(iproc, .false.)
 
-        call setup_global_coordinate_arrays()
-        call compute_rtp_from_xyz()
-        call get_mesh_radii()
+        call setup_global_coordinate_arrays(iproc, .false.)
+        call compute_rtp_from_xyz(iproc, .false.)
+        call get_mesh_radii(iproc, .false.)
         call compute_rotation_matrix()
 
-        call compute_W_matrix(type_1, l1, n1, type_2, l2, n2, .true., iproc)
+        call compute_W_matrix_with_stored(type_1, l1, n1, type_2, l2, n2, iproc)
 
         call cleanup_for_mode()
+
     enddo 
 
 
     ! Constants so multiply after
     Wmat = Wmat * OMEGA * iONE
 
-    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'Wmat_', n1, type_1, l1, '_', n2, type_2, l2, '.txt'
+    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'rot_mat/Wmat_stored_', n1, type_1, l1, '_', n2, type_2, l2, '.txt'
     call save_W_matrix(l1, l2, trim(out_name))
-
-
 
 
     ! Compute run time
@@ -113,4 +112,5 @@ program test_W_matrix
 
 
 
-end program test_W_matrix
+
+end program test_W_matrix_stored
