@@ -430,7 +430,7 @@ module mesh_utils
         endif 
         
 
-
+        
         call allocate_if_unallocated(3, 3, nglob, Rmat)
 
         do iglob = 1, nglob
@@ -622,6 +622,9 @@ module mesh_utils
         call deallocate_if_allocated(jac)
 
 
+        call deallocate_if_allocated(Rmat)
+
+
 
     end subroutine cleanup_for_mode
     
@@ -754,26 +757,26 @@ module mesh_utils
     subroutine read_proc_coordinates(iproc, region)
         use params, only: ngllx, nglly, ngllz, nspec, & 
                           xstore, ystore, zstore, nglob, &
-                          datadir, verbose
+                          datadir, verbose, IIN
         use allocation_module, only: allocate_if_unallocated
         implicit none 
         
         ! IO variables: 
-        integer            :: iproc
-        integer            :: region
+        integer, intent(in) :: iproc
+        integer, intent(in) :: region
     
         ! Local variables
-        integer :: IIN, ier
-        character(len=250) :: binname
+        integer :: ier
+        character(len=550) :: binname
         
         double precision, allocatable :: xstore_dp(:,:,:,:)
         double precision, allocatable :: ystore_dp(:,:,:,:)
         double precision, allocatable :: zstore_dp(:,:,:,:)
-        IIN = 1
     
         ! File name prefix: 
         write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'
-    
+
+
         if(verbose.gt.1)then
             write(*,'(/,a,/)')'• Reading files from '//trim(datadir)
             write(*,'(a,i1)')'  -- region      : ', region
@@ -792,6 +795,7 @@ module mesh_utils
         read(IIN)ngllx
         read(IIN)nglly
         read(IIN)ngllz
+        close(IIN)
             
         if(verbose.ge.3)then
             write(*,'(a)')'  -- Info: '
@@ -819,7 +823,8 @@ module mesh_utils
             stop
         endif 
         read(IIN)xstore_dp
-    
+        close(IIN)
+
         ! Open the y coordinate and load: 
         open(unit=IIN,file=trim(binname)//'ystore.bin', &
         status='unknown',form='unformatted',action='read',iostat=ier)
@@ -828,7 +833,8 @@ module mesh_utils
             stop
         endif 
         read(IIN)ystore_dp
-    
+        close(IIN)
+        
         ! Open the z coordinate and load: 
         open(unit=IIN,file=trim(binname)//'zstore.bin', &
         status='unknown',form='unformatted',action='read',iostat=ier)
@@ -837,7 +843,8 @@ module mesh_utils
             stop
         endif 
         read(IIN)zstore_dp
-    
+        close(IIN)
+
 
       ! Cast from DP to CUSTOM_REAL (could also be DP)
         xstore(:,:,:,:) = real(xstore_dp(:,:,:,:), kind=CUSTOM_REAL)
@@ -884,10 +891,9 @@ module mesh_utils
         real(kind=CUSTOM_REAL)   :: variable(ngllx, nglly, ngllz, nspec)
     
         ! Local variables
-        integer :: IIN, ier
+        integer ::  ier
         character(len=250) :: binname
     
-        IIN = 1
     
         ! File name prefix: 
         write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'//trim(varname)//'.bin'
@@ -899,13 +905,13 @@ module mesh_utils
         endif 
     
         ! Open the variable file and load: 
-        open(unit=IIN,file=trim(binname), &
+        open(unit=iproc,file=trim(binname), &
         status='unknown',form='unformatted',action='read',iostat=ier)
         if (ier.ne.0)then 
             write(*,'(a, i0.6)')'Couldnt read "'//trim(varname)//'" file for proc ', iproc
             stop
         endif 
-        read(IIN)variable
+        read(iproc)variable
     
         if(verbose.ge.2)then
             write(*,'(a)')'  -- '//trim(varname)//' :'
@@ -913,6 +919,8 @@ module mesh_utils
             write(*,*)'     --> max. value: ', maxval(variable)
         endif 
         
+        close(iproc)
+
         return 
     
     end subroutine read_proc_variable
@@ -920,7 +928,7 @@ module mesh_utils
     
     
     subroutine read_integer_proc_variable(iproc, region, variable, varname)
-        use params, only: ngllx, nglly, ngllz, nspec,datadir, verbose
+        use params, only: ngllx, nglly, ngllz, nspec,datadir, verbose, IIN
     
         implicit none 
         include "precision.h"
@@ -932,10 +940,9 @@ module mesh_utils
         integer            :: variable(ngllx, nglly, ngllz, nspec)
     
         ! Local variables
-        integer :: IIN, ier
+        integer :: ier
         character(len=250) :: binname
     
-        IIN = 1
     
         ! File name prefix: 
         write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',iproc,'_'//'reg',region,'_'//trim(varname)//'.bin'
@@ -960,6 +967,8 @@ module mesh_utils
             write(*,*)'     --> max. value: ', maxval(variable)
         endif 
     
+        close(IIN)
+        
         return 
     
     end subroutine read_integer_proc_variable

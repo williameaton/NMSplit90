@@ -172,24 +172,47 @@ end subroutine save_mineos_model
 
 
 
-
-
 subroutine load_mineos_radial_info()
-    use params, only: NR, IC_ID, CMB_ID, rad_mineos, radius, datadir
+    use params, only: NR, IC_ID, CMB_ID, rad_mineos, radius, datadir, IIN
     implicit none 
 
-    open(1, file=trim(datadir)//'/store/mineos_model/radial_data', form='unformatted')
-    read(1)NR
-    read(1)IC_ID
-    read(1)CMB_ID
-
+    open(IIN, file=trim(datadir)//'/store/mineos_model/radial_data', form='unformatted')
+    read(IIN)NR
+    read(IIN)IC_ID
+    read(IIN)CMB_ID
     allocate(radius(NR), rad_mineos(NR))
-
-    read(1)rad_mineos
-    read(1)radius
-    close(1)
-
+    read(IIN)rad_mineos
+    read(IIN)radius
+    close(IIN)
 end subroutine load_mineos_radial_info
+
+
+subroutine load_mineos_radial_info_MPI()
+    use params, only: NR, IC_ID, CMB_ID, rad_mineos, radius, myrank, & 
+                      datadir, MPI_CUSTOM_REAL
+    implicit none 
+#ifdef WITH_MPI
+    include 'mpif.h'
+    
+    integer :: ierr
+
+    if(myrank.eq.0)then 
+        call load_mineos_radial_info()
+    endif 
+
+    call MPI_Bcast(NR,     1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+    call MPI_Bcast(IC_ID,  1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+    call MPI_Bcast(CMB_ID, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+
+    if(myrank.ne.0) allocate(radius(NR), rad_mineos(NR))
+
+    call MPI_Bcast(radius, NR, MPI_CUSTOM_REAL, 0, MPI_COMM_WORLD, ierr)
+    call MPI_Bcast(rad_mineos, NR, MPI_CUSTOM_REAL, 0, MPI_COMM_WORLD, ierr)
+#endif 
+end subroutine load_mineos_radial_info_MPI
+
+
+
 
 
 subroutine load_mineos_density()
@@ -320,7 +343,8 @@ end subroutine
 
 
 subroutine load_jacobian(iproc)
-    use params, only: datadir, jacinv, detjac, jac, ngllx, nglly, ngllz, nspec
+    use params, only: datadir, jacinv, detjac, jac, ngllx, nglly, & 
+                      ngllz, nspec, IIN
     use allocation_module, only: allocate_if_unallocated
     implicit none 
     integer :: iproc 
@@ -328,52 +352,53 @@ subroutine load_jacobian(iproc)
 
     call buffer_int(proc_str, iproc)
 
-
     call allocate_if_unallocated(3, 3, ngllx, nglly, ngllz, nspec, jac)
     call allocate_if_unallocated(3, 3, ngllx, nglly, ngllz, nspec, jacinv)
     call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, detjac)
 
     ! Density
-    open(1, file=trim(datadir)//'/store/jacobian/jacdata_'//proc_str, form='unformatted')
-    read(1)jac
-    read(1)detjac
-    read(1)jacinv
-    close(1)
+    open(IIN, file=trim(datadir)//'/store/jacobian/jacdata_'//proc_str, form='unformatted')
+    read(IIN)jac
+    read(IIN)detjac
+    read(IIN)jacinv
+    close(IIN)
 
 end subroutine load_jacobian
 
 
 subroutine save_jacobian(iproc)
-    use params, only: datadir, jacinv, detjac, jac
+    use params, only: datadir, jacinv, detjac, jac, IOUT
     implicit none 
     integer :: iproc
     character(len = 5) proc_str
 
     call buffer_int(proc_str, iproc)
 
-    open(1, file=trim(datadir)//'/store/jacobian/jacdata_'//proc_str, form='unformatted')
-    write(1)jac
-    write(1)detjac
-    write(1)jacinv
-    close(1)
+    open(IOUT, file=trim(datadir)//'/store/jacobian/jacdata_'//proc_str, form='unformatted')
+    write(IOUT)jac
+    write(IOUT)detjac
+    write(IOUT)jacinv
+    close(IOUT)
+
+
 end subroutine save_jacobian
 
 subroutine save_wglljac(iproc)
-    use params, only: datadir, wglljac
+    use params, only: datadir, wglljac, IOUT
     implicit none 
     integer :: iproc
     character(len = 5) proc_str
 
     call buffer_int(proc_str, iproc)
 
-    open(1, file=trim(datadir)//'/store/jacobian/wglljac_'//proc_str, form='unformatted')
-    write(1)wglljac
-    close(1)
+    open(IOUT, file=trim(datadir)//'/store/jacobian/wglljac_'//proc_str, form='unformatted')
+    write(IOUT)wglljac
+    close(IOUT)
 end subroutine save_wglljac
 
 
 subroutine load_wglljac(iproc)
-    use params, only: datadir, ngllx, nglly, ngllz, nspec, wglljac
+    use params, only: datadir, ngllx, nglly, ngllz, nspec, wglljac, IIN
     use allocation_module, only: deallocate_if_allocated
     implicit none 
     integer :: iproc 
@@ -384,31 +409,31 @@ subroutine load_wglljac(iproc)
     allocate(wglljac(ngllx,nglly,ngllz,nspec))
 
     ! Density
-    open(1, file=trim(datadir)//'/store/jacobian/wglljac_'//proc_str, form='unformatted')
-    read(1)wglljac
-    close(1)
+    open(IIN, file=trim(datadir)//'/store/jacobian/wglljac_'//proc_str, form='unformatted')
+    read(IIN)wglljac
+    close(IIN)
 
 end subroutine load_wglljac
 
 
 subroutine save_global_xyz(iproc)
-    use params, only: datadir, x_glob, y_glob, z_glob
+    use params, only: datadir, x_glob, y_glob, z_glob, IOUT
     implicit none 
     integer :: iproc
     character(len = 5) proc_str
 
     call buffer_int(proc_str, iproc)
 
-    open(1, file=trim(datadir)//'/store/global_xyz/coords_'//proc_str, form='unformatted')
-    write(1)x_glob
-    write(1)y_glob
-    write(1)z_glob
-    close(1)
+    open(IOUT, file=trim(datadir)//'/store/global_xyz/coords_'//proc_str, form='unformatted')
+    write(IOUT)x_glob
+    write(IOUT)y_glob
+    write(IOUT)z_glob
+    close(IOUT)
 end subroutine save_global_xyz
 
 
 subroutine load_global_xyz(iproc)
-    use params, only: datadir, nglob, x_glob, y_glob, z_glob
+    use params, only: datadir, nglob, x_glob, y_glob, z_glob, IIN
     use allocation_module, only: allocate_if_unallocated
     implicit none 
     integer :: iproc
@@ -420,11 +445,11 @@ subroutine load_global_xyz(iproc)
     call allocate_if_unallocated(nglob, y_glob)
     call allocate_if_unallocated(nglob, z_glob)
 
-    open(1, file=trim(datadir)//'/store/global_xyz/coords_'//proc_str, form='unformatted')
-    read(1)x_glob
-    read(1)y_glob
-    read(1)z_glob
-    close(1)
+    open(IIN, file=trim(datadir)//'/store/global_xyz/coords_'//proc_str, form='unformatted')
+    read(IIN)x_glob
+    read(IIN)y_glob
+    read(IIN)z_glob
+    close(IIN)
 end subroutine load_global_xyz
 
 
@@ -432,24 +457,24 @@ end subroutine load_global_xyz
 
 
 subroutine save_elem_rtp(iproc)
-    use params, only: datadir, rstore, thetastore, phistore
+    use params, only: datadir, rstore, thetastore, phistore, IOUT
     implicit none 
     integer :: iproc
     character(len = 5) proc_str
 
     call buffer_int(proc_str, iproc)
 
-    open(1, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//proc_str, form='unformatted')
-    write(1)rstore
-    write(1)thetastore
-    write(1)phistore
-    close(1)
+    open(IOUT, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//proc_str, form='unformatted')
+    write(IOUT)rstore
+    write(IOUT)thetastore
+    write(IOUT)phistore
+    close(IOUT)
 end subroutine save_elem_rtp
 
 
 subroutine load_elem_rtp(iproc)
     use params, only: datadir, rstore, thetastore, phistore,& 
-                      ngllx, nglly, ngllz, nspec 
+                      ngllx, nglly, ngllz, nspec, IIN
     use allocation_module, only: allocate_if_unallocated
     implicit none 
     integer :: iproc
@@ -461,34 +486,35 @@ subroutine load_elem_rtp(iproc)
     call allocate_if_unallocated(ngllx,nglly,ngllz,nspec, thetastore)
     call allocate_if_unallocated(ngllx,nglly,ngllz,nspec, phistore)
 
-    open(1, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//proc_str, form='unformatted')
-    read(1)rstore
-    read(1)thetastore
-    read(1)phistore
-    close(1)
+    open(IIN, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//proc_str, form='unformatted')
+    read(IIN)rstore
+    read(IIN)thetastore
+    read(IIN)phistore
+    close(IIN)
 end subroutine load_elem_rtp
 
 subroutine save_get_mesh_radii_results(iproc)
-    use params, only: datadir, unique_r, rad_id, interp_id_r, n_unique_rad
+    use params, only: datadir, unique_r, rad_id, interp_id_r, & 
+                      n_unique_rad, IOUT
     implicit none 
     integer :: iproc
     character(len = 5) proc_str
 
     call buffer_int(proc_str, iproc)
 
-    open(1, file=trim(datadir)//'/store/mesh_radii_data/data_'//proc_str, form='unformatted')
-    write(1)n_unique_rad
-    write(1)rad_id
-    write(1)unique_r
-    write(1)interp_id_r
-    close(1)
+    open(IOUT, file=trim(datadir)//'/store/mesh_radii_data/data_'//proc_str, form='unformatted')
+    write(IOUT)n_unique_rad
+    write(IOUT)rad_id
+    write(IOUT)unique_r
+    write(IOUT)interp_id_r
+    close(IOUT)
 end subroutine save_get_mesh_radii_results
 
 
 
 subroutine load_get_mesh_radii_results(iproc)
     use params, only: datadir, unique_r, rad_id, interp_id_r, & 
-                      ngllx, nglly, ngllz, nspec, n_unique_rad
+                      ngllx, nglly, ngllz, nspec, n_unique_rad, IIN 
     use allocation_module, only: deallocate_if_allocated
     implicit none 
     integer :: iproc
@@ -501,14 +527,14 @@ subroutine load_get_mesh_radii_results(iproc)
 
     call buffer_int(proc_str, iproc)
 
-    open(1, file=trim(datadir)//'/store/mesh_radii_data/data_'//proc_str, form='unformatted')
-    read(1)n_unique_rad
-    read(1)rad_id
+    open(IIN, file=trim(datadir)//'/store/mesh_radii_data/data_'//proc_str, form='unformatted')
+    read(IIN)n_unique_rad
+    read(IIN)rad_id
 
     allocate(unique_r(n_unique_rad)) 
     allocate(interp_id_r(n_unique_rad))
 
-    read(1)unique_r
-    read(1)interp_id_r
-    close(1)
+    read(IIN)unique_r
+    read(IIN)interp_id_r
+    close(IIN)
 end subroutine load_get_mesh_radii_results

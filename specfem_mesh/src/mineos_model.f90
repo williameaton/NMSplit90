@@ -1,7 +1,7 @@
 subroutine process_mineos_model(save_model)
 
     use params, only: rad_mineos, NR, NL, ddir, model_fname, RA, radius, &
-                      verbose, IC_ID, CMB_ID, rho_mineos, vp
+                      verbose, IC_ID, CMB_ID, rho_mineos, vp, IIN
 
     implicit none
     include "constants.h"
@@ -14,7 +14,7 @@ subroutine process_mineos_model(save_model)
     integer            :: iomod, ios, intjunk, i 
     real(kind=CUSTOM_REAL) :: realjunk, rho,  vph, vsv, vsh, vsv_prev
 
-    iomod = 1
+    iomod = IIN
 
     ! read model file to get radius array (normalised 0 to 1)
     model_file = trim(ddir)//trim(model_fname)

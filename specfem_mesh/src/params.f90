@@ -13,13 +13,8 @@ logical, parameter :: all_warnings = .false.
 integer, parameter :: nprocs       = 6
 
 ! Specfem mesh files: 
-!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets8/'
+!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
 character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
-
-
-
-
-
 
 ! Mineos model parameters: 
 character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'
@@ -130,4 +125,17 @@ integer, parameter :: REALSCALOUT      = 18
 character(len=5), parameter  :: intfmt  = "(i10)"
 character(len=7), parameter  :: realfmt = "(e12.5)"
 
+
+! MPI 
+
+integer :: myrank
+integer :: MPI_CUSTOM_REAL 
+integer :: MPI_SPLINE_REAL
+integer :: MPI_SPLINE_COMPLEX
+integer :: IIN, IOUT
+
+
+
+
 end module params
+

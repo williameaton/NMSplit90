@@ -1,6 +1,7 @@
 
 program compute_vani_splitting
-    use params, only: Vani, nspec
+    use params, only: Vani, nspec, nprocs, verbose, myrank, MPI_SPLINE_COMPLEX, & 
+                      MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use mesh_utils, only: cleanup_for_mode, compute_jacobian, compute_rotation_matrix, & 
                           compute_rtp_from_xyz, load_ibool, read_proc_coordinates, & 
@@ -15,31 +16,87 @@ program compute_vani_splitting
     implicit none
     include "constants.h"
 
+#ifdef WITH_MPI
+include 'mpif.h'
+#endif 
+
     real(kind=CUSTOM_REAL) :: A, C, L, N, F
-    integer :: iproc, i,j,k,ispec, l1, l2, n1, m1,m2, n2, nproc, region, tl1, tl2, h, b
+    integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
+               tl1, tl2, h, b, cluster_size, sets_per_process, & 
+               myset_start, myset_end
     character ::  type_1, type_2
     character(len=250) :: out_name
     real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
+
+    complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
 
    ! Timing: 
     integer :: start_clock, end_clock, count_rate, mid1, mid2
     real(8) :: elapsed_time
 
-    open(8,file="profiling/timing_176")
 
-#ifdef WITH_CUDA
-    write(*,*)"Computing with CUDA"
+#ifdef WITH_MPI
+    call MPI_INIT(ierr)
+    call MPI_COMM_SIZE(MPI_COMM_WORLD, cluster_size, ierr)
+    call MPI_COMM_RANK(MPI_COMM_WORLD, myrank, ierr)
+
+    ! Setup MPI precisions: 
+    if(SPLINE_REAL.eq.4)then 
+         MPI_SPLINE_REAL    = MPI_REAL
+         MPI_SPLINE_COMPLEX = MPI_COMPLEX
+    elseif(SPLINE_REAL.eq.8)then
+         MPI_SPLINE_REAL    = MPI_DOUBLE_PRECISION 
+         MPI_SPLINE_COMPLEX = MPI_DOUBLE_COMPLEX
+    endif
+
+    if(CUSTOM_REAL.eq.4)then
+         MPI_CUSTOM_REAL = MPI_REAL
+    elseif(CUSTOM_REAL.eq.8)then
+         MPI_CUSTOM_REAL = MPI_DOUBLE_PRECISION 
+    endif 
+
+    ! Check equal load balance across the processes:
+    sets_per_process =  nprocs/cluster_size
+    if( mod(nprocs,cluster_size).ne.0)then 
+        write(*,*)'Error: you are using '
+        write(*,*)'     -- nprocs ',nprocs 
+        write(*,*)'     -- nnodes ',cluster_size 
+        write(*,*)'And therefore nnodes is not divisible by nnodes. Stop.'
+        stop 
+    else 
+        if(myrank.eq.0 .and.verbose.ge.1)write(*,*)'Sets for each node:', sets_per_process
+        myset_start = myrank*sets_per_process
+        myset_end = myset_start + sets_per_process - 1 
+
+        print *, 'Process: ', myrank, 'does sets', myset_start, 'to ', myset_end
+
+    endif 
+
+    IIN = myrank
+    IOUT = IIN + 2000
 #else 
-    write(*,*)"Computing without CUDA"
+    write(*,*)"Computing without OpenMPI"
+    myset_start = 0
+    myset_end   = nprocs-1
+
+    IIN  = 1
+    IOUT = 101
 #endif
 
     ! Start clock count
     call system_clock(count_rate=count_rate)
     call system_clock(start_clock)
 
+
+
+
+#ifdef WITH_MPI
+    call load_mineos_radial_info_MPI()
+#else
     ! Read mineos model 
-    !call load_mineos_radial_info()
     call process_mineos_model(.true.)
+#endif
+
 
     ! Choose modes: 
     n1      = 6
@@ -53,81 +110,84 @@ program compute_vani_splitting
     F =  0.1d0
 
     region = 3
-    nproc  = 8
 
     ! Setup Vani matrix
     tl1 = 2*l1 + 1
     allocate(Vani(tl1, tl1))
     Vani = SPLINE_iZERO
 
-    
-    do iproc = 0, nproc-1
-        write(*,*)"Processor: ", iproc
+
+    do iset = myset_start, myset_end
+
 
         ! Things that need to be done for each processor
-        call read_proc_coordinates(iproc, region)
 
-        call load_ibool(iproc, region)
+        call read_proc_coordinates(iset, region)
+
+        write(*,*)'nspec', myrank, nspec
+
+
+        call load_ibool(iset, region)
         call setup_gll()
   
-        call compute_jacobian(iproc, .true.)
-        call compute_wglljac(iproc, .true.)
-        call setup_global_coordinate_arrays(iproc, .true.)
-        call compute_rtp_from_xyz(iproc, .true.)
-        call get_mesh_radii(iproc, .true.)
+        !call compute_jacobian(iset, .true.)
+        !call compute_wglljac(iset, .true.)
+        !call setup_global_coordinate_arrays(iset, .true.)
+        !call compute_rtp_from_xyz(iset, .true.)
+        !call get_mesh_radii(iset, .true.)
 
-        write(*,*)"nspec", nspec
-
-
-        !call load_jacobian(iproc)
-        !call load_wglljac(iproc)
-        !call load_global_xyz(iproc)
-        !call load_elem_rtp(iproc)
-       ! call load_get_mesh_radii_results(iproc)
+        call load_jacobian(iset)
+        call load_wglljac(iset)
+        call load_global_xyz(iset)
+        call load_elem_rtp(iset)
+        call load_get_mesh_radii_results(iset)
         
         call compute_rotation_matrix()
         call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
 
-        call system_clock(mid1)
-
 #ifdef WITH_CUDA
-        call cuda_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iproc)
+        call cuda_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
 #else
-        !call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iproc)
-        call compute_Vani_matrix(type_1, l1, n1, type_1, l1, n1, .true., iproc)
+        !call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
+        !call compute_Vani_matrix(type_1, l1, n1, type_1, l1, n1, .true., iset)
 #endif
-
-        call system_clock(mid2)
-        elapsed_time = real(mid2 - mid1, kind=8) / real(count_rate, kind=8)
-        write(8,*)elapsed_time
-        write(*,*)'Elapsed', elapsed_time
-
+        
         call cleanup_for_mode()
     enddo 
 
 
-    ! Symmetry D.153
-    !do m1 = -l1+1, l1
-     !   do m2 = -m1+1, l1 
-     !       write(*,*)m1, m2, Vani(-m1+l1+1, -m2+l1+1), (-SPLINE_ONE)**real(m1+m2, kind=SPLINE_REAL)
-     !        Vani(m1+l1+1, m2+l1+1) =  (-SPLINE_ONE)**real(m1+m2, kind=SPLINE_REAL) * conjg(Vani(-m1+l1+1, -m2+l1+1))
-     !    enddo 
-     !enddo
+
+! Reduce the Vmatrix for all processes
+#ifdef WITH_MPI
+    if(myrank.eq.0)then 
+        allocate(Vani_modesum(tl1, tl1))
+        Vani_modesum = SPLINE_iZERO  ! Initialize to zero
+    endif 
+
+    call MPI_Reduce(Vani, Vani_modesum, tl1*tl1, MPI_SPLINE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+    if(myrank.eq.0)then 
+        write(out_name, '(a,i1,a,i2,a)') './sem_fast_', n1, type_1, l1, '.txt'
+        Vani = Vani_modesum
+        call save_Vani_matrix(l1, out_name)
+        ! Compute run time
+        call system_clock(end_clock)
+        elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+        write(*,*) 'Wall clock time taken for test_fast_Vani_matrix:', elapsed_time, 'seconds'
+    endif 
+
+    call mpi_finalize(ierr)
+
+
+#else
     write(out_name, '(a,i1,a,i2,a)') './sem_fast_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
-
-
-
     ! Compute run time
     call system_clock(end_clock)
-    ! Calculate the elapsed time in seconds
     elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-    ! Print the elapsed time
     write(*,*) 'Wall clock time taken for test_fast_Vani_matrix:', elapsed_time, 'seconds'
-    write(8,*)elapsed_time
+#endif
 
-
-    close(8)
 
 
 
