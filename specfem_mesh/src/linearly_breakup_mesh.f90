@@ -34,7 +34,7 @@ character(len=30) :: fmtstr
 ! Setup parameters: 
 region        = 3      ! Inner core
 nprocs_before = 6      ! Current setup 
-nsets         = 8      ! new setup 
+nsets         = 4      ! new setup 
 
 ntot_elem = 0 
 
@@ -78,11 +78,6 @@ allocate(ib_store_proc(ngllx, nglly, ngllz,nspec_per_set))
 iproc = 0
 call load_new_proc(iproc, region, rem_in_proc, proc_id_ff)
 iset  = 0 
-
-
-
-
-!--------------  START OF NEW SET HERE 
 rem_el_in_set = nspec_per_set   ! Remaining elements in a set
 set_id_ff     = 1               ! ID to fill from in set
 
@@ -133,7 +128,7 @@ do while (iset.lt.nsets) ! is this the correct finish?
     ib_store_proc(:,:,:,set_id_ff:set_id_end)  = iproc
 
 
-    set_id_ff  = set_id_end + 1 
+    set_id_ff  = set_id_end  + 1 
     proc_id_ff = proc_id_end + 1 
 
     rem_el_in_set = rem_el_in_set - nelms_to_copy
