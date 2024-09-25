@@ -3,10 +3,7 @@ program compute_vani_splitting
     use params, only: Vani, nspec, nprocs, verbose, myrank, MPI_SPLINE_COMPLEX, & 
                       MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
-    use mesh_utils, only: cleanup_for_mode, compute_jacobian, compute_rotation_matrix, & 
-                          compute_rtp_from_xyz, load_ibool, read_proc_coordinates, & 
-                          setup_global_coordinate_arrays
-    use gll, only: setup_gll, compute_wglljac
+    use mesh_utils, only: cleanup_for_mode, compute_rotation_matrix
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                      compute_Vani_matrix_stored_selfcoupling, compute_Vani_matrix
 #ifdef WITH_CUDA
@@ -30,6 +27,11 @@ include 'mpif.h'
     real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
 
     complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
+
+    ! Switches 
+    logical :: ONLY_ONE_TASK_PER_SET
+    logical, parameter :: load_from_bin = .true.
+    logical, parameter :: save_to_bin   = .true.
 
     ! Modes: 
     integer, dimension(5), parameter :: modeNs = (/2, 3, 9, 9, 6/)
@@ -76,6 +78,9 @@ include 'mpif.h'
         print *, 'Process: ', myrank, 'does sets', myset_start, 'to ', myset_end
 
     endif 
+    
+    ! Determine if each task is doing more than one set
+    ONLY_ONE_TASK_PER_SET = (myset_start.eq.myset_end)
 
     IIN = myrank
     IOUT = IIN + 2000
@@ -86,9 +91,18 @@ include 'mpif.h'
 
     IIN  = 1
     IOUT = 101
+    ONLY_ONE_TASK_PER_SET = .false.
 #endif
 
 
+
+call system_clock(count_rate=count_rate)
+region = 3
+A =  0.4d0
+C = -0.2d0
+L =  0.3d0
+N = -0.5d0
+F =  0.1d0
 
 #ifdef WITH_MPI
     call load_mineos_radial_info_MPI()
@@ -98,27 +112,21 @@ include 'mpif.h'
 #endif
 
 
+if(ONLY_ONE_TASK_PER_SET)then 
+    iset = myset_start
+    call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin)
+    call compute_rotation_matrix()
+    call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
+endif 
 
-! Loop through the modes: 
-do i_mode = 1, 5
+
+do i_mode = 5, 5
 
     ! Start clock count
-    call system_clock(count_rate=count_rate)
     call system_clock(start_clock)
-
-
-    ! Choose modes: 
     n1      = modeNs(i_mode)
-    type_1 = 'S'
+    type_1  = 'S'
     l1      = modeLs(i_mode)
-
-    A =  0.4d0
-    C = -0.2d0
-    L =  0.3d0
-    N = -0.5d0
-    F =  0.1d0
-
-    region = 3
 
     ! Setup Vani matrix
     tl1 = 2*l1 + 1
@@ -127,50 +135,40 @@ do i_mode = 1, 5
 
 
     do iset = myset_start, myset_end
+        if(.not.ONLY_ONE_TASK_PER_SET)then
+            call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin)
+            call compute_rotation_matrix()
+            call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
+        endif 
 
-        ! Things that need to be done for each set
-        call read_proc_coordinates(iset, region)
-
-        call load_ibool(iset, region)
-        call setup_gll()
-  
-        !call compute_jacobian(iset, .true.)
-        !call compute_wglljac(iset, .true.)
-        !call setup_global_coordinate_arrays(iset, .true.)
-        !call compute_rtp_from_xyz(iset, .true.)
-        !call get_mesh_radii(iset, .true.)
-
-        call load_jacobian(iset)
-        call load_wglljac(iset)
-        call load_global_xyz(iset)
-        call load_elem_rtp(iset)
-        call load_get_mesh_radii_results(iset)
-        
-        call compute_rotation_matrix()
-        call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
-
+! Compute the Vani matrix
 #ifdef WITH_CUDA
         call cuda_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
 #else
-        !call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
-        call compute_Vani_matrix(type_1, l1, n1, type_1, l1, n1, .true., iset)
+        if(load_from_bin)then 
+            call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
+        else 
+            call compute_Vani_matrix(type_1, l1, n1, & 
+                                    type_1, l1, n1, & 
+                                    .true., iset)
+        endif
 #endif
-        call cleanup_for_mode()
-    enddo 
+
+        if(.not.ONLY_ONE_TASK_PER_SET)call cleanup_for_mode()
+    enddo !iset 
 
 
-
-! Reduce the Vmatrix for all processes
+! ---------------------- OUTPUT THE V MATRIX FOR A MODE ----------------------
 #ifdef WITH_MPI
     if(myrank.eq.0)then 
         allocate(Vani_modesum(tl1, tl1))
-        Vani_modesum = SPLINE_iZERO  ! Initialize to zero
+        Vani_modesum = SPLINE_iZERO  
     endif 
 
-    call MPI_Reduce(Vani, Vani_modesum, tl1*tl1, MPI_SPLINE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+    call MPI_Reduce(Vani, Vani_modesum, tl1*tl1, MPI_SPLINE_COMPLEX, &
+                    MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
     if(myrank.eq.0)then 
-
         call buffer_int(nstr, n1)
         call buffer_int(lstr, l1)
         out_name =  './output/sem_fast_'//trim(nstr)//type_1//trim(lstr)// '.txt'
@@ -180,33 +178,68 @@ do i_mode = 1, 5
         ! Compute run time
         call system_clock(end_clock)
         elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-        write(*,*) 'Wall clock time taken for test_fast_Vani_matrix:', elapsed_time, 'seconds'
+        write(*,*) 'Wall clock time:', elapsed_time, 'seconds'
         deallocate(Vani_modesum)
     endif 
 
     CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
-
 #else
     call buffer_int(nstr, n1)
     call buffer_int(lstr, l1)
     out_name =  './output/sem_fast_'//trim(nstr)// type_1//trim(lstr)// '.txt'
-    
-
     call save_Vani_matrix(l1, out_name)
-    ! Compute run time
     call system_clock(end_clock)
     elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-    write(*,*) 'Wall clock time taken for test_fast_Vani_matrix:', elapsed_time, 'seconds'
+    write(*,*) 'Wall clock time:', elapsed_time, 'seconds'
 #endif
-
-
     deallocate(Vani)
+! ----------------- END OF OUTPUT THE V MATRIX FOR A MODE --------------
+
 enddo ! i_mode 
 
 
 #ifdef WITH_MPI
     call mpi_finalize(ierr)
 #endif
-
-
 end program compute_vani_splitting
+
+
+
+
+
+
+
+
+
+
+
+
+
+subroutine setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin)
+    use mesh_utils, only: read_proc_coordinates, load_ibool, & 
+                          compute_jacobian, compute_rtp_from_xyz, & 
+                          setup_global_coordinate_arrays
+    use gll, only: setup_gll, compute_wglljac
+    implicit none 
+    integer :: iset, region
+    logical :: load_from_bin, save_to_bin
+
+    ! Things that need to be done for each set  
+    call read_proc_coordinates(iset, region)
+    call load_ibool(iset, region)
+    call setup_gll()
+
+    if(load_from_bin)then 
+        call load_jacobian(iset)
+        call load_wglljac(iset)
+        call load_global_xyz(iset)
+        call load_elem_rtp(iset)
+        call load_get_mesh_radii_results(iset)
+    else
+        call compute_jacobian(iset, save_to_bin)
+        call compute_wglljac(iset, save_to_bin)
+        call setup_global_coordinate_arrays(iset, save_to_bin)
+        call compute_rtp_from_xyz(iset, save_to_bin)
+        call get_mesh_radii(iset, save_to_bin)
+    endif 
+end subroutine setup_mesh_sem_details
