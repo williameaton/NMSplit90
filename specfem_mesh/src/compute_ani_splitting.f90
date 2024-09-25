@@ -23,14 +23,19 @@ include 'mpif.h'
     real(kind=CUSTOM_REAL) :: A, C, L, N, F
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
                tl1, tl2, h, b, cluster_size, sets_per_process, & 
-               myset_start, myset_end
+               myset_start, myset_end, i_mode
     character ::  type_1, type_2
+    character(len=2) nstr, lstr
     character(len=250) :: out_name
     real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
 
     complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
 
-   ! Timing: 
+    ! Modes: 
+    integer, dimension(5), parameter :: modeNs = (/2, 3, 9, 9, 6/)
+    integer, dimension(5), parameter :: modeLs = (/3, 2, 2, 3, 10/)
+
+    ! Timing: 
     integer :: start_clock, end_clock, count_rate, mid1, mid2
     real(8) :: elapsed_time
 
@@ -83,11 +88,6 @@ include 'mpif.h'
     IOUT = 101
 #endif
 
-    ! Start clock count
-    call system_clock(count_rate=count_rate)
-    call system_clock(start_clock)
-
-
 
 
 #ifdef WITH_MPI
@@ -98,10 +98,19 @@ include 'mpif.h'
 #endif
 
 
+
+! Loop through the modes: 
+do i_mode = 1, 5
+
+    ! Start clock count
+    call system_clock(count_rate=count_rate)
+    call system_clock(start_clock)
+
+
     ! Choose modes: 
-    n1      = 6
+    n1      = modeNs(i_mode)
     type_1 = 'S'
-    l1      = 10
+    l1      = modeLs(i_mode)
 
     A =  0.4d0
     C = -0.2d0
@@ -119,13 +128,8 @@ include 'mpif.h'
 
     do iset = myset_start, myset_end
 
-
-        ! Things that need to be done for each processor
-
+        ! Things that need to be done for each set
         call read_proc_coordinates(iset, region)
-
-        write(*,*)'nspec', myrank, nspec
-
 
         call load_ibool(iset, region)
         call setup_gll()
@@ -149,9 +153,8 @@ include 'mpif.h'
         call cuda_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
 #else
         !call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
-        !call compute_Vani_matrix(type_1, l1, n1, type_1, l1, n1, .true., iset)
+        call compute_Vani_matrix(type_1, l1, n1, type_1, l1, n1, .true., iset)
 #endif
-        
         call cleanup_for_mode()
     enddo 
 
@@ -167,20 +170,28 @@ include 'mpif.h'
     call MPI_Reduce(Vani, Vani_modesum, tl1*tl1, MPI_SPLINE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
     if(myrank.eq.0)then 
-        write(out_name, '(a,i1,a,i2,a)') './sem_fast_', n1, type_1, l1, '.txt'
+
+        call buffer_int(nstr, n1)
+        call buffer_int(lstr, l1)
+        out_name =  './output/sem_fast_'//trim(nstr)//type_1//trim(lstr)// '.txt'
+
         Vani = Vani_modesum
         call save_Vani_matrix(l1, out_name)
         ! Compute run time
         call system_clock(end_clock)
         elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
         write(*,*) 'Wall clock time taken for test_fast_Vani_matrix:', elapsed_time, 'seconds'
+        deallocate(Vani_modesum)
     endif 
 
-    call mpi_finalize(ierr)
-
+    CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
 #else
-    write(out_name, '(a,i1,a,i2,a)') './sem_fast_', n1, type_1, l1, '.txt'
+    call buffer_int(nstr, n1)
+    call buffer_int(lstr, l1)
+    out_name =  './output/sem_fast_'//trim(nstr)// type_1//trim(lstr)// '.txt'
+    
+
     call save_Vani_matrix(l1, out_name)
     ! Compute run time
     call system_clock(end_clock)
@@ -189,6 +200,13 @@ include 'mpif.h'
 #endif
 
 
+    deallocate(Vani)
+enddo ! i_mode 
+
+
+#ifdef WITH_MPI
+    call mpi_finalize(ierr)
+#endif
 
 
 end program compute_vani_splitting

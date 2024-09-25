@@ -4,7 +4,19 @@ VPATH = src
 
 # -cpp allows linknig to the .cuf file
 # -D WITH_CUDA to set preprocessor WITH_CUDA = true
-AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas -cuda -lcudart -D WITH_CUDA
+if USE_CUDA
+    AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas -cuda -lcudart -D WITH_CUDA
+else
+    AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas -cuda -lcudart
+endif
+
+# Append flag for MPI
+if USE_OPENMPI
+    AM_FCFLAGS += -D WITH_MPI -Ktrap=inv
+endif 
+
+
+
 
 bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh
 
