@@ -34,7 +34,7 @@ character(len=30) :: fmtstr
 ! Setup parameters: 
 region        = 3      ! Inner core
 nprocs_before = 6      ! Current setup 
-nsets         = 4      ! new setup 
+nsets         = 32     ! new setup 
 
 ntot_elem = 0 
 

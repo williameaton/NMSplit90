@@ -1,13 +1,13 @@
 
 # Look in src for source files 
-VPATH = src
+VPATH  = src
 
 # -cpp allows linknig to the .cuf file
 # -D WITH_CUDA to set preprocessor WITH_CUDA = true
 if USE_CUDA
-    AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas -cuda -lcudart -D WITH_CUDA
+    AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -D WITH_CUDA
 else
-    AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas -cuda -lcudart
+    AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart
 endif
 
 # Append flag for MPI
@@ -28,6 +28,15 @@ SETUP_SRCS = params.f90 allocation.f90 math.f90 output.f90 mesh_utils.f90 ylm_pl
 BUILT_SOURCES = params.o vani_kernel.o
 
 
+
+# Create params.f90 from params.f90.in by replacing nmodes
+params: src/params.in
+	rm -f src/params.f90 &&  \
+    $(AM_V_GEN) sed -e 's/@n_sets@/$(N_SETS)/g' src/params.in > $@ &&\
+     sed -i -e 's/@n_modes@/$(N_MODES)/g' params && \
+     mv params src/params.f90
+
+
 # Rule to build params.o from params.f90
 params.o: params.f90
 	$(FC) -c $(AM_FCFLAGS) src/params.f90 -o params.o
@@ -40,9 +49,9 @@ vani_kernel.o: src/params.f90 src/vani_kernel.cuf
 
 linbreak_mesh_SOURCES = $(SETUP_SRCS) linearly_breakup_mesh.f90 
 
-split_mesh_SOURCES = $(SETUP_SRCS) split_mesh.f90 
+split_mesh_SOURCES    = $(SETUP_SRCS) split_mesh.f90 
 
-read_mesh_SOURCES = $(SETUP_SRCS) gll.f90  mineos_model.f90 visual.f90  read_mesh.f90 
+read_mesh_SOURCES     = $(SETUP_SRCS) gll.f90  mineos_model.f90 visual.f90  read_mesh.f90 
 
 
 compute_vani_SOURCES = $(SETUP_SRCS) \

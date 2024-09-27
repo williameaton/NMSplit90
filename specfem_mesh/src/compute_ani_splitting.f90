@@ -20,9 +20,10 @@ include 'mpif.h'
     real(kind=CUSTOM_REAL) :: A, C, L, N, F
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
                tl1, tl2, h, b, cluster_size, sets_per_process, & 
-               myset_start, myset_end, i_mode
+               myset_start, myset_end, i_mode, nmodes
     character ::  type_1, type_2
     character(len=2) nstr, lstr
+    character(len=12) nprocstr, nmodestr, timing_fmt_vals
     character(len=250) :: out_name
     real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
 
@@ -34,12 +35,12 @@ include 'mpif.h'
     logical, parameter :: save_to_bin   = .true.
 
     ! Modes: 
-    integer, dimension(5), parameter :: modeNs = (/2, 3, 9, 9, 6/)
-    integer, dimension(5), parameter :: modeLs = (/3, 2, 2, 3, 10/)
+    integer, dimension(19), parameter :: modeNs = (/2, 3, 9, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27/)
+    integer, dimension(19), parameter :: modeLs = (/3, 2, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2/)
 
     ! Timing: 
     integer :: start_clock, end_clock, count_rate, mid1, mid2
-    real(8) :: elapsed_time
+    real(8),allocatable :: elapsed_time(:)
 
 
 #ifdef WITH_MPI
@@ -119,8 +120,14 @@ if(ONLY_ONE_TASK_PER_SET)then
     call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
 endif 
 
+nmodes = 19
 
-do i_mode = 5, 5
+allocate(elapsed_time(nmodes))
+
+
+
+
+do i_mode = 1, nmodes
 
     ! Start clock count
     call system_clock(start_clock)
@@ -151,6 +158,7 @@ do i_mode = 5, 5
             call compute_Vani_matrix(type_1, l1, n1, & 
                                     type_1, l1, n1, & 
                                     .true., iset)
+            write(*,*)'Done iset', iset
         endif
 #endif
 
@@ -177,8 +185,7 @@ do i_mode = 5, 5
         call save_Vani_matrix(l1, out_name)
         ! Compute run time
         call system_clock(end_clock)
-        elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-        write(*,*) 'Wall clock time:', elapsed_time, 'seconds'
+        elapsed_time(i_mode) = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
         deallocate(Vani_modesum)
     endif 
 
@@ -189,13 +196,38 @@ do i_mode = 5, 5
     out_name =  './output/sem_fast_'//trim(nstr)// type_1//trim(lstr)// '.txt'
     call save_Vani_matrix(l1, out_name)
     call system_clock(end_clock)
-    elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-    write(*,*) 'Wall clock time:', elapsed_time, 'seconds'
+    elapsed_time(i_mode) = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
 #endif
     deallocate(Vani)
 ! ----------------- END OF OUTPUT THE V MATRIX FOR A MODE --------------
 
 enddo ! i_mode 
+
+
+
+#ifdef WITH_MPI 
+#ifdef WITH_CUDA
+if(myrank.eq.0)then 
+
+    call buffer_int(nprocstr, nprocs)
+    call buffer_int(nmodestr, nmodes)
+
+    open(1, file='output/timings/timing_176_'//trim(nprocstr)//'_'//trim(nmodestr), & 
+            status='unknown', action='write', position='append' )
+
+    ! Use the nproc to buffer the number of floats needed for the format of elapsedtime
+    call buffer_int(nprocstr, nmodes)
+    timing_fmt_vals = "(a,"//trim(nprocstr)//"f12.6)"
+
+    ! Use the nmodestr to write the np 
+    call buffer_int(nmodestr, cluster_size)
+    write(1,timing_fmt_vals) nmodestr, elapsed_time
+    close(1)
+endif
+#endif
+#endif
+
+
 
 
 #ifdef WITH_MPI
