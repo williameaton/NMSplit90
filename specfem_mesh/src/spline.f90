@@ -7,8 +7,8 @@ module spline
 
 
 
-  subroutine load_rho_spline(rvals, spline, length, iproc)
-    use params, only: datadir
+  subroutine load_rho_spline(iproc)
+    use params, only: datadir, unique_r, n_unique_rad, rho_spl
     implicit none 
     integer :: length, iproc
     real(kind=CUSTOM_REAL) :: rvals(length)
@@ -23,7 +23,7 @@ module spline
     open(1, file=trim(datadir)//'/store/rho/'//trim(fname), form='unformatted')
 
     ! Read the data from the binary file
-    read(1) stored_len
+    read(1) n_unique_rad
 
     if(stored_len.ne.length)then 
       write(*,*)'Error: the length parsed to load_rho_spline was different from that stored in the binary you are trying to load: '
@@ -32,8 +32,13 @@ module spline
       stop 
     endif
 
-    read(1)rvals
-    read(1)spline
+    call deallocate_if_allocated(unique_r)
+    allocate(unique_r(n_unique_rad))
+    call deallocate_if_allocated(rho_spl)
+    allocate(rho_spl(n_unique_rad))
+
+    read(1)unique_r
+    read(1)rho_spl
     close(1)
   end subroutine load_rho_spline
 

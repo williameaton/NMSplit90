@@ -18,6 +18,7 @@ AC_ARG_ENABLE([openmpi],
     [with_openmpi=$enableval], [with_openmpi=no])
 
 
+# Check for cuda support
 if test "$with_cuda" = "yes"; then
     AC_MSG_NOTICE([CUDA support enabled])
     AM_CONDITIONAL([USE_CUDA], [true])
@@ -25,7 +26,7 @@ else
     AC_MSG_NOTICE([CUDA support disabled])
     AM_CONDITIONAL([USE_CUDA], [false])
 fi
-
+# Check for MPI and change compiler based on this 
 if test "$with_openmpi" = "yes"; then
     AC_MSG_NOTICE([OpenMPI support enabled])
     AC_MSG_NOTICE([Using mpifort compiler])
@@ -38,6 +39,37 @@ else
     FC=nvfortran
 fi
 
+
+# NMODES
+AC_ARG_VAR([nmodes], [Number of modes used in params.f90])
+if test -z "$nmodes"; then
+    n_modes=1  # Default value if --nmodes is not provided
+else
+    n_modes=$nmodes
+fi
+# Ensure n_modes is a valid integer
+case "$n_modes" in
+    ''|*[!0-9]*)
+        AC_MSG_ERROR([Please provide an integer value for nmodes using --nmodes=VALUE])
+        ;;
+esac
+AC_SUBST([N_MODES], [$n_modes])
+
+
+# NSETS
+AC_ARG_VAR([nsets], [Number of sets used in params.f90])
+if test -z "$nsets"; then
+    n_sets=8 
+else
+    n_sets=$nsets
+fi
+# Ensure n_sets is a valid integer
+case "$n_sets" in
+    ''|*[!0-9]*)
+        AC_MSG_ERROR([Please provide an integer value for nmodes using --nsets=VALUE])
+        ;;
+esac
+AC_SUBST([N_SETS], [$n_sets])
 
 
 

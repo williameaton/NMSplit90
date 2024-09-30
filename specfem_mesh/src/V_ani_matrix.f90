@@ -405,8 +405,6 @@ contains
                     write(*,*)' done m2 ', m2
                 enddo ! m2 
             endif 
-            write(*,*)' done m1 ', m1
-
         enddo ! m1
 
     end subroutine compute_Vani_matrix
