@@ -166,10 +166,7 @@ subroutine compute_W_matrix_with_stored(t1, l1, n1, t2, l2, n2, iproc)
 
 
     ! Get density at each radius 
-    call deallocate_if_allocated(rho_spl)
-    allocate(rho_spl(n_unique_rad))
-
-    call load_rho_spline(unique_r, rho_spl, n_unique_rad, iproc)
+    call load_rho_spline(iproc)
 
 
     ! In general I believe there are only non-zero values when m1 = m2 
@@ -236,6 +233,13 @@ subroutine compute_W_matrix_with_stored(t1, l1, n1, t2, l2, n2, iproc)
     if(allocated(disp2))deallocate(disp2)
 
 end subroutine compute_W_matrix_with_stored
+
+
+
+
+
+
+
 
 
 

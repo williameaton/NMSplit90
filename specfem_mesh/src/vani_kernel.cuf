@@ -18,10 +18,9 @@ module vani_kernel
         real,    device, dimension(6, 6, ngllx, ngllx, ngllx, nspec) :: d_Cxyz
         real,    device, dimension(2*l+1, 2*l+1)                     :: d_vani_real, d_vani_imag
         complex, device, dimension(6, ngllx, ngllx, ngllx, nspec, 2*l+1) :: d_strains
-        real, device, dimension(4,4) :: a
+        !real, device, dimension(4,4) :: a
 
         ! Currently not connected to constants.h
-        !complex(kind=4), parameter :: izero = (0.0, 0.0)
         complex(kind=4), parameter :: ione  = (0.0, 1.0)
 
         ! Copy to the device: 
