@@ -1,0 +1,110 @@
+module W_kernel 
+
+    use cudafor
+    contains 
+
+    ! Subroutine on host that drives W 
+    ! SELF COUPLING ONLY 
+    subroutine compute_w_sc_cuda(n, t, l, iproc)
+        use params, only: ngllx, nspec, wglljac, vani, & 
+                          Wmat, disps, rho_spl, rad_id, n_unique_rad
+        implicit none 
+        ! IO variables
+        integer :: n, l, i, j, k, ispec, tl1, iproc
+        character :: t
+        ! Local host variables
+        real :: Wloc_r(2*l+1), Wloc_i(2*l+1)
+
+        ! Local device variables
+        real,    device, dimension(ngllx, ngllx, ngllx, nspec)       :: d_wglljac
+        real,    device, dimension(2*l+1)                            :: d_W_real, d_W_imag
+        complex, device, dimension(3,ngllx,ngllx,ngllx,nspec,2*l+1)  :: d_disp
+        integer, device, dimension(ngllx,ngllx,ngllx,nspec)          :: d_rid
+        real,    device, dimension(n_unique_rad)                     :: d_rho
+        ! Currently not connected to constants.h
+        complex(kind=4), parameter :: ione  = (0.0, 1.0)
+
+        ! Copy to the device: 
+        Wloc_r = 0.0_4
+        d_vani_real = Wloc_r   ! Zero these
+        d_vani_imag = Wloc_r   ! Zero these
+        d_wglljac   = wglljac
+
+
+        tl1 = 2*l + 1
+
+        ! Load the displacements once and for all : 
+        call deallocate_if_allocated(disps)
+        allocate(disps(3, ngllx, ngllx, ngllx, nspec, tl1))
+        do im =  -l1, l1 
+            call load_mode_disp_binary(n, t, l, im, disps(:,:,:,:,:,l1+im+1), iproc)
+        enddo 
+
+        ! Copy to device 
+        d_disps = disps
+        d_rid   = rad_id
+        d_rho   = rho_spl
+
+
+        ! Launching m x nspec blocks so that each block 
+        ! deals with one m value for a single element
+        if(ngllx.eq.5)then
+        call W_knl_NGLL5<<<dim3(tl1,1,nspec), dim3(ngllx,ngllx,ngllx)>>> & 
+             (tl1, ngllx, nspec, n_unique_rad, d_disps, d_rid, &
+              d_rho, d_wglljac, d_W_real, d_W_imag)
+        else 
+            write(*,*)'Error. hardcoded for ngll = 5'
+            stop
+        endif 
+
+        Wloc_r = d_W_real        
+        Wloc_i = d_W_imag
+
+        ! Add the real and imaginary components to the global W
+        do i = 1, tl1
+            Wmat(i,i) =  Wmat(i,i) + Wloc_r(i) + ione*Vloc_i(i)
+        enddo 
+        
+        write(*,*)'Warning: still need to multiply by i omega after reduction.'
+    end subroutine compute_w_sc_cuda
+
+
+    ! SELF COUPLING - assumes disp1 = disp2
+    attributes(global) subroutine W_knl_NGLL5(tl1, ngll, nspec, n_unq_rad, d_disp, d_rid, &
+                                              d_rho, d_wglljac, d_W_r, d_W_i )
+        integer, value                                 :: ngll, nspec, tl1, n_unq_rad
+        real, dimension(ngll, ngll, ngll, nspec)       :: d_wglljac
+        real(kind=4), dimension(tl1)                   :: d_W_r, d_W_i
+        complex, dimension(3,ngll,ngll,ngll,nspec,tl1) :: d_disp
+        integer, dimension(ngll,ngll,ngll,nspec)       :: d_rid
+        real,    dimension(n_unq_rad)                  :: d_rho
+
+        ! internal variables
+        integer         :: i, j, k, ispec, m, p, q, istat
+        complex(kind=4) :: integrand
+        real(kind=4)    :: trash
+
+        ! Group-related index
+        i = threadidx%x 
+        j = threadidx%y
+        k = threadidx%z
+        ! Block-related index
+        m     = blockidx%x 
+        ispec = blockidx%z
+
+        if (i.gt.ngll .or. j.gt.ngll .or. k.gt.ngll) return
+
+        integrand = rho_spl(rad_id(i,j,k,ispec)) * & 
+                    (- conjg(disp(1,i,j,k,ispec,m))*disp(2,i,j,k,ispec,m)+& 
+                       conjg(disp(2,i,j,k,ispec,m))*disp(1,i,j,k,ispec,m)) * & 
+                       d_wglljac(i,j,k,ispec)  
+
+
+        ! Extract the real and imaginary parts: 
+        ! atomic add not available for complex. 
+        trash = atomicadd(d_W_r(m1, m2),  real(integrand,kind=4))
+        trash = atomicadd(d_W_i(m1, m2),  aimag(integrand))  
+        
+        end subroutine W_knl_NGLL5
+
+end module W_kernel
