@@ -7,7 +7,7 @@ VPATH  = src
 if USE_CUDA
     AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -D WITH_CUDA
 else
-    AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart
+    AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 endif
 
 # Append flag for MPI
@@ -18,7 +18,9 @@ endif
 
 
 
-bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh
+
+
+bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh kdtree
 
 # Basic files for all programs 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 output.f90 mesh_utils.f90 ylm_plm.f90 spline.f90  projection.f90 
@@ -63,8 +65,16 @@ compute_vani_SOURCES = $(SETUP_SRCS) \
                         V_ani_matrix.f90 \
                         vani_kernel.o\
                         compute_ani_splitting.f90
-                        
+
+
+
+kdtree_SOURCES = $(SETUP_SRCS) gll.f90  mineos_model.f90 visual.f90  kdtree.f90
+kdtree_LDADD   = -lcoretran
+
+
+
 compute_vani_LDADD = vani_kernel.o
+
 
 # Specify where to find the object file (if necessary)
 EXTRA_DIST = vani_kernel.o

@@ -21,29 +21,43 @@ integer :: region, nprocs_before, nsets, iproc, ntot_elem,   &
            set_id_end, proc_id_ff, proc_id_end, iset, & 
            ib_orig, maxnglob, ib_proc, min_ib_proc,   & 
            max_ib_proc, min_ib, max_ib, nibool, iiprc,&
-            ispec, i,j,k,iib, count
+           ispec, i,j,k,iib, count, start_reg, end_reg, & 
+           iregion, procs_in_set, this_nodes_id, hhh, & 
+           max_val_to_start, procctr
 double precision, allocatable :: xcoord_new(:,:,:,:), & 
                                  ycoord_new(:,:,:,:), & 
                                  zcoord_new(:,:,:,:)
 integer, allocatable :: ibool_new(:,:,:,:), ib_store(:,:,:,:), & 
-                        ib_store_proc(:,:,:,:), ib_map(:)
+                        ib_store_proc(:,:,:,:), ibool_map(:,:),& 
+                        ib_ctr(:), ibool_new_pproc(:,:,:,:,:)
 logical :: get_new_proc, filled_set
 character(len=400) :: outname
 character(len=30) :: fmtstr
 
+logical :: calc_ibool
+
 ! Setup parameters: 
-region        = 3      ! Inner core
-nprocs_before = 6      ! Current setup 
-nsets         = 32     ! new setup 
+calc_ibool       = .true.
+start_reg        = 1
+end_reg          = 3     ! Inner core
+nprocs_before    = 6     ! Current setup 
+nsets            = 8     ! new setup 
 
 ntot_elem = 0 
 
 ! Count the total number of elements
-do iproc = 0, nprocs_before - 1 
-    call read_proc_coordinates(iproc, region)  
-    ntot_elem = ntot_elem + nspec
-    call cleanup_for_mode()
+do iregion = start_reg, end_reg
+    do iproc = 0, nprocs_before - 1 
+        call read_proc_coordinates(iproc, iregion)  
+        ntot_elem = ntot_elem + nspec
+        call cleanup_for_mode()
+
+        write(*,*)'Nspec = ', nspec
+    enddo 
 enddo 
+
+write(*,*)'Total elements: ', ntot_elem
+
 
 
 ! TODO: Could be more flexible to cases without absolutley perfect division
@@ -70,12 +84,12 @@ allocate(ib_store_proc(ngllx, nglly, ngllz,nspec_per_set))
 
 
 
-
-
+region = start_reg
 
 ! Will set remaining_in_processor to the nspec of the prod
 ! Will set processor_id_fill_from to 1 
 iproc = 0
+procctr = 0 
 call load_new_proc(iproc, region, rem_in_proc, proc_id_ff)
 iset  = 0 
 rem_el_in_set = nspec_per_set   ! Remaining elements in a set
@@ -125,7 +139,7 @@ do while (iset.lt.nsets) ! is this the correct finish?
 
     ! Store the ibool values AND the proc it was on 
     ib_store(:,:,:,set_id_ff:set_id_end)       = ibool(:,:,:,proc_id_ff:proc_id_end)
-    ib_store_proc(:,:,:,set_id_ff:set_id_end)  = iproc
+    ib_store_proc(:,:,:,set_id_ff:set_id_end)  = procctr
 
 
     set_id_ff  = set_id_end  + 1 
@@ -141,32 +155,122 @@ do while (iset.lt.nsets) ! is this the correct finish?
     if(set_id_end.eq.nspec_per_set)then 
         write(*,*)' Set is now filled...'
         ! Compute ibool for this set & output
-        min_ib_proc = minval(ib_store_proc)
-        max_ib_proc = maxval(ib_store_proc)
-        min_ib = minval(ib_store)
-        max_ib = maxval(ib_store)
 
-        write(*,*,advance='no')' Reformatting ibool...'
-        nibool = 1
-        do iiprc = min_ib_proc, max_ib_proc
-            do iib = min_ib, max_ib
-                count = 0
+        ! Determine how many different processors were used to fill set
+        procs_in_set  = maxval(ib_store_proc) - minval(ib_store_proc) + 1
+        
+        ! Reduce iprocs first index to 1 
+        ib_store_proc = ib_store_proc - minval(ib_store_proc) + 1
+
+        ! Reduce ibstore so it starts at 1: 
+        ib_store = ib_store - minval(ib_store) + 1
+
+        allocate(ibool_map(maxval(ib_store), procs_in_set)) 
+        ibool_map = 0
+
+        allocate(ibool_new_pproc(ngllx, nglly, ngllz, nspec_per_set, procs_in_set))
+        ibool_new_pproc = 0 
+
+        allocate(ib_ctr(procs_in_set))
+        ib_ctr(:) = 1
+
+
+        
+        ! Loop over each GLL in the set: 
+        do ispec = 1, nspec_per_set
+            do i = 1, ngllx
+                do j = 1, nglly   
+                    do k = 1, ngllz 
+                        ib_orig = ib_store(i,j,k,ispec)
+                        ib_proc = ib_store_proc(i,j,k,ispec)
+
+                        if(ibool_map(ib_orig, ib_proc).eq.0)then 
+                            ! New ibool value to have 
+                            ibool_map(ib_orig, ib_proc) = ib_ctr(ib_proc)
+                            this_nodes_id               = ib_ctr(ib_proc)
+                            ib_ctr(ib_proc)             = ib_ctr(ib_proc) + 1
+                        else 
+                            ! Use preexisting ID
+                            this_nodes_id = ibool_map(ib_orig, ib_proc)
+                        endif
+
+                        ! Store for now
+                        ibool_new_pproc(i, j, k, ispec, ib_proc) = this_nodes_id
+                    enddo 
+                enddo
+            enddo 
+        enddo
+
+        !At this point we have the ibools for each of the processors that contribute
+        !to this, in some continuous order each starting at 1. The next step is 
+        !to ensure continuity between the processes
+        !if(minval(ibool_new_pproc(:,:,:,:,1)).ne.1)then 
+        !    write(*,*)'Error: minval(ibool_new_pproc(:,:,:,:,1).ne.1'
+        !    write(*,*)"min value is ", minval(ibool_new_pproc(:,:,:,:,1))
+        !    stop 
+        !endif
+        if(procs_in_set.gt.1)then 
+            do hhh = 2, procs_in_set
+                max_val_to_start = maxval(ibool_new_pproc(:,:,:,:,hhh-1))
                 do ispec = 1, nspec_per_set
                     do i = 1, ngllx
-                        do j = 1, nglly
-                            do k = 1, ngllz
-                                if(ib_store(i,j,k,ispec).eq.iib .and. ib_store_proc(i,j,k,ispec).eq.iiprc)then
-                                    ibool_new(i,j,k,ispec) = nibool 
-                                    count = count + 1
-                                endif
-                            enddo 
-                        enddo 
+                        do j = 1, nglly   
+                            do k = 1, ngllz 
+                                if (ibool_new_pproc(i,j,k,ispec,hhh).ne.0)then  
+                                    ibool_new_pproc(i,j,k,ispec,hhh) =    & 
+                                        ibool_new_pproc(i,j,k,ispec,hhh)+ & 
+                                        max_val_to_start
+                                endif 
+                            enddo
+                        enddo
                     enddo
+                enddo
+            enddo
+        endif
+
+        ! Compile into the new ibool 
+        do ispec = 1, nspec_per_set
+            do i = 1, ngllx
+                do j = 1, nglly   
+                    do k = 1, ngllz 
+                        ibool_new(i,j,k,ispec) = ibool_new_pproc(i,j,k,ispec,ib_store_proc(i,j,k,ispec))
+                    enddo 
                 enddo 
-                if (count.gt.0)  nibool = nibool + 1
-            enddo !iib
-        enddo !iiproc
-        write(*,*,advance='yes')' done'
+            enddo 
+        enddo 
+
+        deallocate(ibool_map)
+        deallocate(ib_ctr)
+        deallocate(ibool_new_pproc)
+
+        ! min_ib_proc = minval(ib_store_proc)
+        ! max_ib_proc = maxval(ib_store_proc)
+        ! min_ib = minval(ib_store)
+        ! max_ib = maxval(ib_store)
+
+        ! if(calc_ibool)then 
+        !     write(*,*,advance='no')' Reformatting ibool...'
+        !     nibool = 1
+        !     do iiprc = min_ib_proc, max_ib_proc
+        !         do iib = min_ib, max_ib
+        !             count = 0
+        !             do ispec = 1, nspec_per_set
+        !                 do i = 1, ngllx
+        !                     do j = 1, nglly
+        !                         do k = 1, ngllz
+        !                             if(ib_store(i,j,k,ispec).eq.iib .and. ib_store_proc(i,j,k,ispec).eq.iiprc)then
+        !                                 ibool_new(i,j,k,ispec) = nibool 
+        !                                 count = count + 1
+        !                             endif
+        !                         enddo 
+        !                     enddo 
+        !                 enddo
+        !             enddo 
+        !             if (count.gt.0)  nibool = nibool + 1
+        !         enddo !iib
+        !     enddo !iiproc
+        !     write(*,*,advance='yes')' done'
+        ! endif 
 
 
         ! Write out to disc
@@ -182,7 +286,16 @@ do while (iset.lt.nsets) ! is this the correct finish?
             fmtstr = '(a,i5,a,i0.6,a,i1,a)'
         endif 
 
-        write(outname,trim(fmtstr))trim(datadir)//'/linear/sets',nsets,'/proc',iset,'_'//'reg',region,'_'
+
+        ! If cross multiple regions then use region 0
+        ! Else just use the region read in 
+        if(end_reg-start_reg.ne.0)then
+            iregion = 0 
+        else
+            iregion = region 
+        endif 
+
+        write(outname,trim(fmtstr))trim(datadir)//'/linear/sets',nsets,'/proc',iset,'_'//'reg',iregion,'_'
 
         open(1,file=trim(outname)//'xstore.bin', form='UNFORMATTED')
         write(1)xcoord_new
@@ -196,9 +309,11 @@ do while (iset.lt.nsets) ! is this the correct finish?
         write(3)zcoord_new
         close(3)
 
-        open(4,file=trim(outname)//'ibool.bin', form='UNFORMATTED')
-        write(4)ibool_new
-        close(4)
+        if(calc_ibool)then
+            open(4,file=trim(outname)//'ibool.bin', form='UNFORMATTED')
+            write(4)ibool_new
+            close(4)
+        endif
 
 
         open(5,file=trim(outname)//'info.bin', form='UNFORMATTED')
@@ -223,11 +338,22 @@ do while (iset.lt.nsets) ! is this the correct finish?
 
 
     if(get_new_proc)then 
-        write(*,*)' Loading new proc...'
         call cleanup_for_mode()
-        iproc = iproc + 1
+        if (iproc.eq.nprocs_before-1)then 
+            ! Need a new region:
+            iproc = 0
+            region = region + 1
+        else 
+            iproc = iproc + 1
+        endif 
+        procctr = procctr + 1
         call load_new_proc(iproc, region, rem_in_proc, proc_id_ff)
         get_new_proc = .false.
+
+        write(*,*)' Loaded new proc...', iproc
+        write(*,*)' For region...', region
+
+
     endif 
 
     
@@ -247,13 +373,16 @@ end program linearly_breakup_mesh
 
 
 subroutine load_new_proc(iproc, region, rem_in_proc, proc_id_ff)
-    use params, only: nspec
+    use params, only: nspec, ibool
     use mesh_utils, only: load_ibool, read_proc_coordinates
     implicit none 
     integer :: iproc, region, rem_in_proc, proc_id_ff
 
     call read_proc_coordinates(iproc, region)
     call load_ibool(iproc, region)
+
+    write(*,*)'min ibool = ', minval(ibool)
+    write(*,*)'max ibool = ', maxval(ibool)
     
     rem_in_proc = nspec
     proc_id_ff  = 1
