@@ -1,4 +1,5 @@
 module integrate 
+    use specfem_mesh, only: SetMesh
     implicit none 
     include "constants.h"
 
@@ -18,22 +19,22 @@ module integrate
 
     contains
 
-     real(kind=CUSTOM_REAL) function integrate_real_mesh_scalar(scalar)
+     real(kind=CUSTOM_REAL) function integrate_real_mesh_scalar(SM, scalar)
         ! Integrates a real scalar, defined at each GLL point, over the mesh
-        use params, only: ngllx, nglly, ngllz, nspec, detjac, wgll
         implicit none 
         ! IO variables: 
-        real(kind=CUSTOM_REAL) :: scalar(ngllx, nglly, ngllz, nspec)
+        type(SetMesh) :: SM 
+        real(kind=CUSTOM_REAL) :: scalar(SM%ngllx, SM%nglly, SM%ngllz, SM%nspec)
         ! Local 
         real(kind=CUSTOM_REAL) :: sum
         integer :: i, j, k, ispec
 
         sum = zero 
-        do ispec = 1, nspec 
-            do i = 1, ngllx 
-                do j = 1, nglly
-                    do k = 1, ngllz 
-                        sum = sum + scalar(i, j, k, ispec) * detjac(i, j, k, ispec) * wgll(i) * wgll(j) * wgll(k)
+        do ispec = 1, SM%nspec 
+            do i = 1, SM%ngllx 
+                do j = 1, SM%nglly
+                    do k = 1, SM%ngllz 
+                        sum = sum + scalar(i, j, k, ispec) * SM%detjac(i, j, k, ispec) * SM%wgll(i) * SM%wgll(j) *SM%wgll(k)
                     enddo 
                 enddo 
             enddo 
@@ -43,26 +44,24 @@ module integrate
     end function  integrate_real_mesh_scalar
 
     
-    complex(kind=CUSTOM_REAL) function integrate_complex_mesh_scalar(compl_scal)
+    complex(kind=CUSTOM_REAL) function integrate_complex_mesh_scalar(SM, compl_scal)
         ! Integrates a complex scalar, defined at each GLL point, over the mesh
-        use params, only: ngllx, nglly, ngllz, nspec, detjac, wgll
         implicit none 
-
-        complex(kind=CUSTOM_REAL) :: compl_scal(ngllx, nglly, ngllz, nspec) 
+        type(SetMesh) :: SM 
+        complex(kind=CUSTOM_REAL) :: compl_scal(SM%ngllx, SM%nglly, SM%ngllz, SM%nspec) 
         complex(kind=CUSTOM_REAL) :: sum
         integer :: i, j, k, ispec
 
         sum = (zero, zero) 
-        do ispec = 1, nspec 
-            do i = 1, ngllx 
-                do j = 1, nglly
-                    do k = 1, ngllz 
-                        sum = sum + compl_scal(i, j, k, ispec) * detjac(i, j, k, ispec) * wgll(i) * wgll(j) * wgll(k)
+        do ispec = 1, SM%nspec 
+            do i = 1, SM%ngllx 
+                do j = 1, SM%nglly
+                    do k = 1, SM%ngllz 
+                        sum = sum + compl_scal(i, j, k, ispec) * SM%detjac(i, j, k, ispec) * SM%wgll(i) * SM%wgll(j) * SM%wgll(k)
                     enddo 
                 enddo 
             enddo 
         enddo 
-
         integrate_complex_mesh_scalar = sum 
         return
     end function  integrate_complex_mesh_scalar

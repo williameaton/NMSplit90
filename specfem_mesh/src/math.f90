@@ -198,7 +198,4 @@ module math
     end function inv_8
 
 
-
-
-
 end module math

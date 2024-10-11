@@ -30,88 +30,24 @@ module gll
     end function lagrange
     ! ------------------------------------------------------------------
 
-    subroutine compute_wglljac(iproc, save)
-        use params, only: wgll, detjac, ngllx, nglly, ngllz, nspec, & 
-                          wglljac
-        use allocation_module, only: deallocate_if_allocated
-        implicit none
-        integer :: iproc 
-        logical :: save 
-        integer :: i, j, k, ispec
-
-        call deallocate_if_allocated(wglljac)
-        allocate(wglljac(ngllx,nglly,ngllz,nspec))
-
-        do ispec = 1, nspec
-            do i = 1, ngllx
-                do j = 1, nglly
-                    do k = 1, ngllz 
-                        wglljac(i,j,k,ispec) =real(wgll(i) * & 
-                                                   wgll(j) * & 
-                                                   wgll(k) * & 
-                                                   detjac(i,j,k,ispec), & 
-                                                   kind=SPLINE_REAL)
-                    enddo 
-                enddo
-            enddo 
-        enddo 
-
-        if(save)then 
-            call save_wglljac(iproc)
-        endif 
 
 
-    end subroutine compute_wglljac
-
-
-
-    subroutine setup_gll()
-        use params, only: xi, wgll, ngllx, nglly, ngllz, verbose
-        use allocation_module, only: allocate_if_unallocated
-        implicit none 
-
-
-        if (ngllx.ne.nglly .or. ngllx.ne.ngllz .or. nglly.ne.ngllz)then
-            write(*,*)'Error: currently only working for case of ngllx = nglly = ngllz'
-            stop 
-        endif 
-
-        call allocate_if_unallocated(ngllx, xi)
-        call allocate_if_unallocated(ngllx, wgll)
-
-        call get_gll(ngllx-1, xi, wgll)
-
-        if (verbose.ge.5)then 
-            write(*,'(/,a)')'• Setup GLL points'
-            write(*,'(/,a, i1)')'  --> ngll: ', ngllx
-            write(*,'(/,a)')'  -->  gll: '
-            write(*,*) xi
-            write(*,'(/,a)')'  -->  wgll: '
-            write(*,*)wgll
-        endif 
-
-        ! Get derivative of lagrange polynomials
-        call lagrange1st(ngllx-1)
-        
-    end subroutine setup_gll
-
-
-    subroutine lagrange1st(N)
+    subroutine lagrange1st(N, xi, dgll)
     ! Calculation of 1st derivatives of Lagrange polynomials
     ! at GLL collocation points
     ! dgll = legendre1st(N)
     ! dgll is a matrix with columns -> GLL nodes
     !                        rows -> order
         use allocation_module, only: allocate_if_unallocated
-        use params, only: dgll,  xi
         implicit none 
 
         integer :: N
 
         integer :: i, j, m
         real(kind=CUSTOM_REAL) :: sum, d(N+1,N+1)
+        real(kind=CUSTOM_REAL) :: xi(N),  dgll(N+1,N+1)
 
-        call allocate_if_unallocated(N+1, N+1, dgll)
+        !call allocate_if_unallocated(N+1, N+1, dgll)
 
         d = zero 
 
