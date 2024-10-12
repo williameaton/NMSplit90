@@ -1,7 +1,8 @@
 
 program compute_vani_splitting
     use params, only: Vani, nspec, nprocs, verbose, myrank, MPI_SPLINE_COMPLEX, & 
-                      MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT
+                      MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT, glob_eta1,   &
+                      glob_eta2, nglob, nmodes, IC_ID
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use mesh_utils, only: cleanup_for_mode, compute_rotation_matrix
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
@@ -10,6 +11,11 @@ program compute_vani_splitting
     use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
 #endif
 
+    use m_KdTree, only: KdTree, KdTreeSearch
+    use voronoi, only: vor_x, vor_y, vor_z, & 
+                       vor_A, vor_C, vor_L, vor_N, vor_F, &
+                       load_voronoi_model, project_voroni_to_gll
+
     implicit none
     include "constants.h"
 
@@ -17,10 +23,9 @@ program compute_vani_splitting
 include 'mpif.h'
 #endif 
 
-    real(kind=CUSTOM_REAL) :: A, C, L, N, F
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
                tl1, tl2, h, b, cluster_size, sets_per_process, & 
-               myset_start, myset_end, i_mode, nmodes
+               myset_start, myset_end, i_mode, maxknot
     character ::  type_1, type_2
     character(len=2) nstr, lstr
     character(len=12) nprocstr, nmodestr, timing_fmt_vals
@@ -29,14 +34,22 @@ include 'mpif.h'
 
     complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
 
+    ! KD tree: 
+    type(KdTree)           :: tree
+
+
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
     logical, parameter :: load_from_bin = .true.
-    logical, parameter :: save_to_bin   = .true.
+    logical, parameter :: save_to_bin   = .false.
+    logical, parameter :: force_VTI     = .true.
 
     ! Modes: 
-    integer, dimension(19), parameter :: modeNs = (/2, 3, 9, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27/)
-    integer, dimension(19), parameter :: modeLs = (/3, 2, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2/)
+    !integer, dimension(20), parameter :: modeNs = (/2, 3, 9, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27, 6/)
+    !integer, dimension(20), parameter :: modeLs = (/3, 2, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2, 10/)
+    
+    integer, dimension(16), parameter :: modeNs = (/6, 6, 6, 6, 6,  6,  6,  6, 6, 6, 6, 6, 6, 6, 6, 6 /)
+    integer, dimension(16), parameter :: modeLs = (/1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16/)
 
     ! Timing: 
     integer :: start_clock, end_clock, count_rate, mid1, mid2
@@ -95,36 +108,45 @@ include 'mpif.h'
     ONLY_ONE_TASK_PER_SET = .false.
 #endif
 
+region = 3
 
 
 call system_clock(count_rate=count_rate)
-region = 3
-A =  0.4d0
-C = -0.2d0
-L =  0.3d0
-N = -0.5d0
-F =  0.1d0
+
+
+! Read in voronoi model and build K-d tree: 
+call load_voronoi_model()
+tree = KdTree(vor_x, vor_y, vor_z) 
+
 
 #ifdef WITH_MPI
     call load_mineos_radial_info_MPI()
 #else
     ! Read mineos model 
-    call process_mineos_model(.true.)
+    call process_mineos_model(.true.) 
 #endif
+
+maxknot = IC_ID
 
 
 if(ONLY_ONE_TASK_PER_SET)then 
     iset = myset_start
-    call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin)
+    call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin, maxknot)
+
+    allocate(glob_eta1(nglob), glob_eta2(nglob))
+    call project_voroni_to_gll(tree)
+
+
     call compute_rotation_matrix()
-    call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
+    if(force_VTI)then 
+        glob_eta1 = zero 
+        glob_eta2 = zero
+    endif 
+    call compute_Cxyz_at_gll_constantACLNF(vor_A, vor_C, vor_L, vor_N, & 
+                                           vor_F, glob_eta1, glob_eta2)
 endif 
 
-nmodes = 19
-
 allocate(elapsed_time(nmodes))
-
-
 
 
 do i_mode = 1, nmodes
@@ -141,12 +163,26 @@ do i_mode = 1, nmodes
     Vani = SPLINE_iZERO
 
 
+
+
     do iset = myset_start, myset_end
         if(.not.ONLY_ONE_TASK_PER_SET)then
-            call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin)
+            call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin, maxknot)
+
+            allocate(glob_eta1(nglob), glob_eta2(nglob))
+            call project_voroni_to_gll(tree)
+        
             call compute_rotation_matrix()
-            call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
+
+            if(force_VTI)then 
+                glob_eta1 = zero 
+                glob_eta2 = zero
+            endif 
+            call compute_Cxyz_at_gll_constantACLNF(vor_A, vor_C, vor_L, & 
+                                                   vor_N, vor_F, glob_eta1, glob_eta2)
         endif 
+
+
 
 ! Compute the Vani matrix
 #ifdef WITH_CUDA
@@ -162,7 +198,10 @@ do i_mode = 1, nmodes
         endif
 #endif
 
-        if(.not.ONLY_ONE_TASK_PER_SET)call cleanup_for_mode()
+        if(.not.ONLY_ONE_TASK_PER_SET)then 
+            deallocate(glob_eta1, glob_eta2)
+            call cleanup_for_mode()
+        endif
     enddo !iset 
 
 
@@ -247,19 +286,20 @@ end program compute_vani_splitting
 
 
 
-subroutine setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin)
+subroutine setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin, maxknot)
     use mesh_utils, only: read_proc_coordinates, load_ibool, & 
                           compute_jacobian, compute_rtp_from_xyz, & 
                           setup_global_coordinate_arrays
     use gll, only: setup_gll, compute_wglljac
     implicit none 
-    integer :: iset, region
+    integer :: iset, region, maxknot
     logical :: load_from_bin, save_to_bin
 
     ! Things that need to be done for each set  
     call read_proc_coordinates(iset, region)
     call load_ibool(iset, region)
     call setup_gll()
+
 
     if(load_from_bin)then 
         call load_jacobian(iset)
@@ -272,6 +312,8 @@ subroutine setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin)
         call compute_wglljac(iset, save_to_bin)
         call setup_global_coordinate_arrays(iset, save_to_bin)
         call compute_rtp_from_xyz(iset, save_to_bin)
-        call get_mesh_radii(iset, save_to_bin)
+        call get_mesh_radii(iset, save_to_bin, maxknot)
+
+
     endif 
 end subroutine setup_mesh_sem_details

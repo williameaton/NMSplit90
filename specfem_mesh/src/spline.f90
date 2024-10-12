@@ -4,46 +4,7 @@ module spline
 
 
   contains 
-
-
-
-  ! subroutine load_rho_spline(iproc)
-  !   use params, only: datadir, unique_r, n_unique_rad, rho_spl
-  !   implicit none 
-  !   integer :: length, iproc
-  !   real(kind=CUSTOM_REAL) :: rvals(length)
-  !   real(kind=SPLINE_REAL) :: spline(length)
-
-  !   ! Local 
-  !   integer :: stored_len
-  !   character(len=250) :: fname 
-
-  !   call create_rhospline_fname(iproc, fname)
-
-  !   open(1, file=trim(datadir)//'/store/rho/'//trim(fname), form='unformatted')
-
-  !   ! Read the data from the binary file
-  !   read(1) n_unique_rad
-
-  !   if(stored_len.ne.length)then 
-  !     write(*,*)'Error: the length parsed to load_rho_spline was different from that stored in the binary you are trying to load: '
-  !     write(*,*)'length parsed: ', length
-  !     write(*,*)'stored value : ', stored_len
-  !     stop 
-  !   endif
-
-  !   call deallocate_if_allocated(unique_r)
-  !   allocate(unique_r(n_unique_rad))
-  !   call deallocate_if_allocated(rho_spl)
-  !   allocate(rho_spl(n_unique_rad))
-
-  !   read(1)unique_r
-  !   read(1)rho_spl
-  !   close(1)
-  ! end subroutine load_rho_spline
-
-
-  
+ 
 
   subroutine quad_spline_interp_3(x_in, y_in, n_in, x_out, y_out, n_out)
       ! Very basic spline interpolation if n = 3
@@ -255,66 +216,6 @@ module spline
 
 
   end subroutine cubic_spline_interp
-
-
-
-  ! subroutine write_mode_spline(n, mode_type, l, rad_arr, npoints, name)
-  !   ! Output the spline values: 
-  !   ! Save eigenfunctions to text file in column format 
-  !   use params, only: u_spl, udot_spl, v_spl, vdot_spl, verbose
-  !   implicit none 
-  !   ! IO variables: 
-  !   integer :: n, l 
-  !   character :: mode_type
-  !   real(kind=CUSTOM_REAL) :: rad_arr(npoints)
-  !   integer :: npoints
-  !   character(len=*), optional :: name
-
-  !   ! Local :
-  !   integer :: i
-  !   character(len=30) :: eigstring
-  !   character(len=2)  :: nfmt, lfmt
-  !   character(len=13)  :: fmtstring
-
-
-  !   if (len_trim(name) .eq. 0)then
-  !     if(n.ge.0 .and. n.lt.10)then
-  !       nfmt = 'i1'
-  !     elseif(n.ge.10 .and. n.lt.100)then
-  !       nfmt = 'i2'
-  !     else
-  !       write(*,*)'Format not set for n = ', n
-  !     endif
-  !     if(l.ge.0 .and. l.lt.10)then
-  !       lfmt = 'i1'
-  !     elseif(l.ge.10 .and. l.lt.100)then
-  !       lfmt = 'i2'
-  !     else
-  !       write(*,*)'Format not set for l = ', l
-  !     endif
-  !     write(fmtstring, '(a)') '(a,' // nfmt // ',a,' // lfmt // ',a)'
-  !     write(eigstring,fmtstring) 'spline_', n, mode_type, l, '.txt'
-  !   else 
-  !     write(eigstring,'(a)')name
-  !   endif 
-
-  !   if (verbose.ge.3)then
-  !     write(*,'(/,a)')'Saving spline to '//trim(eigstring)
-  !   endif 
-    
-
-  !   open(1, file=trim('./spline/'//eigstring))
-  !   do i =1, npoints
-  !       if(mode_type=='S')then 
-  !           write(1,'(f12.6,f12.6,f12.6,f12.6,f12.6)')rad_arr(i), u_spl(i), udot_spl(i), v_spl(i), vdot_spl(i)
-  !       elseif (mode_type=='T')then 
-  !           write(1,'(f12.6,f12.6,f12.6)')rad_arr(i), u_spl(i), udot_spl(i)
-  !       endif 
-  !   enddo 
-  !   close(1)
-  ! end subroutine write_mode_spline
-
-
 
 
 

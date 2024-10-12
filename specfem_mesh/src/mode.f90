@@ -8,6 +8,7 @@ module modes
 
         integer                    :: n
         integer                    :: l
+        integer                    :: tl1
         integer                    :: len
         integer                    :: spl_len
         character(len=1)           :: t 
@@ -36,6 +37,7 @@ module modes
    
         contains
             procedure :: get_mineos_mode
+            procedure :: write_spline
     end type Mode
 
     contains 
@@ -221,7 +223,62 @@ module modes
     
     end subroutine get_mineos_mode
 
-    
+
+
+    subroutine write_spline(self, radius, name)
+        ! Output the spline values: 
+        ! Save eigenfunctions to text file in column format 
+        use params, only: verbose
+        implicit none 
+
+        class(Mode) :: self 
+        real(kind=CUSTOM_REAL) :: radius(self%spl_len) 
+        character(len=*), optional :: name
+
+        ! Local :
+        integer           :: i
+        character(len=30) :: eigstring
+        character(len=2)  :: nfmt, lfmt
+        character(len=13) :: fmtstring
+
+
+        if (len_trim(name) .eq. 0)then
+            if(self%n.ge.0 .and. self%n.lt.10)then
+                nfmt = 'i1'
+            elseif(self%n.ge.10 .and. self%n.lt.100)then
+                nfmt = 'i2'
+            else
+                write(*,*)'Format not set for n = ', self%n
+            endif
+            if(self%l.ge.0 .and. self%l.lt.10)then
+                lfmt = 'i1'
+            elseif(self%l.ge.10 .and. self%l.lt.100)then
+                lfmt = 'i2'
+            else
+                write(*,*)'Format not set for l = ', self%l
+            endif
+            write(fmtstring, '(a)') '(a,' // nfmt // ',a,' // lfmt // ',a)'
+            write(eigstring,fmtstring) 'spline_', self%n, self%t, self%l, '.txt'
+        else 
+            write(eigstring,'(a)')name
+        endif 
+
+        if (verbose.ge.3)then
+        write(*,'(/,a)')'Saving spline to '//trim(eigstring)
+        endif 
+        
+
+        open(1, file=trim('./spline/'//eigstring))
+        do i =1, self%spl_len
+            if(self%t=='S')then 
+                write(1,'(f12.6,f12.6,f12.6,f12.6,f12.6)')radius(i), self%u_spl(i), self%du_spl(i), self%v_spl(i), self%dv_spl(i)
+            elseif (self%t=='T')then 
+                write(1,'(f12.6,f12.6,f12.6)')radius(i), self%w_spl(i), self%dw_spl(i)
+            endif 
+        enddo 
+        close(1)
+    end subroutine write_spline
+
 
     function get_mode(n, t, l, mineos, out_dir) result(m)
         implicit none 
@@ -240,6 +297,7 @@ module modes
         m%n      = n
         m%t      = t
         m%l      = l
+        m%tl1    = 2*l + 1
         m%mineos => mineos
         m%len    = m%mineos%NR 
 

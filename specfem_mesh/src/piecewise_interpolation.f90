@@ -86,7 +86,6 @@ module piecewise_interpolation
             self%num_sections = self%upper_disc_id - self%lower_disc_id + 1
 
 
-
             ! We will now split the radial values into their piecewise sections
             ! Three arrays: 
             !   orig_id - the position in the overal new_rad array of that value
@@ -101,12 +100,17 @@ module piecewise_interpolation
             allocate(self%sec_spl(self%n_radial, self%num_sections))
             allocate(self%n_per_sec(self%num_sections))
 
+
+
+
             ! Signals a value not filled 
             self%orig_id = -1
             self%sec_rad = -one
 
             ! IDs start at 1 for each section 
             self%n_per_sec(:) = 1
+
+
 
             ! Loop through each radial value to be interpolated to 
             ! and, for each, find the section the radius is within
@@ -145,6 +149,8 @@ module piecewise_interpolation
                 enddo ! idisc
             enddo ! i 
 
+
+
             ! Subtract 1 from the counter values to give the last index of the
             ! section-wise arrays. This is equivalent to the number of radial
             ! values in each section that need to be interpolated 
@@ -172,7 +178,6 @@ module piecewise_interpolation
             ! Set the min and maximum knots of the model: 
             self%min_knot_id = self%M%disc(self%lower_disc_id)
             self%max_knot_id = self%M%disc(self%upper_disc_id+1)
-
 
         end subroutine setup
 
@@ -328,7 +333,8 @@ module piecewise_interpolation
             class(InterpPiecewise) :: self
             type(Mode) :: Mmode  
 
-            if(Mmode%t.eq.'T' .or. Mmode%t.eq.'C')then 
+            if(Mmode%t.eq.'T' .or. Mmode%t.eq.'C')then
+                write(*,*)'Toroidal mode'  
                 ! toroidal
                 allocate(Mmode%w_spl(self%n_radial))
                 allocate(Mmode%dw_spl(self%n_radial))
@@ -340,10 +346,13 @@ module piecewise_interpolation
                 allocate(Mmode%v_spl(self%n_radial))
                 allocate(Mmode%du_spl(self%n_radial))
                 allocate(Mmode%dv_spl(self%n_radial))
+
                 call self%interpolate_mineos_variable(Mmode%u, Mmode%u_spl)
+
                 call self%interpolate_mineos_variable(Mmode%du, Mmode%du_spl)
                 call self%interpolate_mineos_variable(Mmode%v, Mmode%v_spl)
                 call self%interpolate_mineos_variable(Mmode%dv, Mmode%dv_spl)
+
             endif 
 
             Mmode%spl_len = self%n_radial

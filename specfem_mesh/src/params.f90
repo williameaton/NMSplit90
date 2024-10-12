@@ -7,7 +7,7 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose       = 5
+integer, parameter :: verbose       = 2
 logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .true.
 
@@ -15,7 +15,7 @@ integer, parameter :: nprocs       = 6
 integer, parameter :: nmodes       = 16
 
 ! Specfem mesh files: 
-character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced//'
+character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/sliced/'
 !character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
 
 ! Mineos model parameters: 
@@ -29,7 +29,6 @@ complex(kind=SPLINE_REAL), allocatable :: strains(:,:,:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 
 ! Matrices: 
-real(kind=CUSTOM_REAL),    allocatable :: Rmat(:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: Wmat(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vani(:,:)
 
