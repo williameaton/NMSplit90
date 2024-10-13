@@ -1,6 +1,6 @@
 
 program radial_method
-    use params, only: NL, IC_ID, ndisc, rdisc, disc, disp1, disp2, & 
+    use params, only: NL, IC_ID, rdisc, disc, disp1, disp2, & 
                      rad_mineos, rho_mineos, u_spl, v_spl, interp_map, & 
                      interp_id_r, unique_r, n_unique_rad, ngllx, nglly, &
                      ngllz, nspec, Vani, rad_id, wgll, detjac, rho_spl, & 
@@ -16,7 +16,8 @@ program radial_method
                           cleanup_for_mode, map_local_global, map_complex_vector, delta_spline
     use gll, only: setup_gll
     use math, only: sqrtp
-    use V_ani, only: integrate_GNIr2, thrj, save_Vani_matrix
+    use V_ani, only: integrate_GNIr2, save_Vani_matrix
+    use w3j, only: thrj
     implicit none
     include "constants.h"
 

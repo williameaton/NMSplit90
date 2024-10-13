@@ -1,33 +1,34 @@
 module vani_kernel 
 
     use cudafor
+    include "constants.h"
     contains 
 
     ! Subroutine on host that drives vknl
-    subroutine compute_vani_sc_cuda(l)
-        use params, only: ngllx, nspec, wglljac, strains, Cxyz, vani
+    subroutine compute_vani_sc_cuda(l, ngll, nspec, wglljac)
+        use params, only: strains1, Cxyz, vani
         implicit none 
         ! IO variables
+        integer :: ngll, nspec
         integer :: l, i, j, k, ispec, tl1
+        real(kind=SPLINE_REAL) :: wglljac(ngll, ngll, ngll, nspec)
 
         ! Local host variables
         real :: Vloc_r(2*l+1 , 2*l+1), Vloc_i(2*l+1 , 2*l+1)
 
         ! Local device variables
-        real(kind=4),    device, dimension(ngllx, ngllx, ngllx, nspec)       :: d_wglljac
-        real(kind=4),    device, dimension(6, 6, ngllx, ngllx, ngllx, nspec) :: d_Cxyz
-        real(kind=4),    device, dimension(2*l+1, 2*l+1)                     :: d_vani_real, d_vani_imag
-        complex(kind=4), device, dimension(6, ngllx, ngllx, ngllx, nspec, 2*l+1) :: d_strains
-        !real, device, dimension(4,4) :: a
+        real(kind=4),    device, dimension(ngll, ngll, ngll, nspec)             :: d_wglljac
+        real(kind=4),    device, dimension(6, 6, ngll, ngll, ngll, nspec)         :: d_Cxyz
+        real(kind=4),    device, dimension(2*l+1, 2*l+1)                             :: d_vani_real, d_vani_imag
+        complex(kind=4), device, dimension(6, ngll, ngll, ngll, nspec, 2*l+1)     :: d_strains
 
         ! Currently not connected to constants.h
-        complex(kind=4), parameter :: ione  = (0.0, 1.0)
 
         ! Copy to the device: 
         Vloc_r = 0.0_4
         d_vani_real = Vloc_r   ! Zero these
         d_vani_imag = Vloc_r   ! Zero these
-        d_strains   = strains
+        d_strains   = strains1
         d_wglljac   = wglljac
         d_Cxyz      = Cxyz
 
@@ -35,9 +36,9 @@ module vani_kernel
 
         ! Launching m1 x m2 x nspec blocks so that each block 
         ! deals with one m1, m2 combination for a single element
-        if(ngllx.eq.5)then
-        call vani_knl_NGLL5<<<dim3(tl1,tl1,nspec), dim3(ngllx,ngllx,ngllx)>>> & 
-             (l, tl1, ngllx, nspec, d_wglljac, d_strains, d_Cxyz, d_vani_real, d_vani_imag)
+        if(ngll.eq.5)then
+        call vani_knl_NGLL5<<<dim3(tl1,tl1,nspec), dim3(ngll,ngll,ngll)>>> & 
+             (l, tl1, ngll, nspec, d_wglljac, d_strains, d_Cxyz, d_vani_real, d_vani_imag)
         else 
             write(*,*)'Error. hardcoded for ngll = 5'
             stop
@@ -48,7 +49,7 @@ module vani_kernel
         Vloc_i = d_vani_imag
 
         ! Add the real and imaginary components to the global Vani
-        vani = vani + Vloc_r + ione*Vloc_i
+        vani = vani + Vloc_r + SPLINE_iONE*Vloc_i
 
     end subroutine compute_vani_sc_cuda
 

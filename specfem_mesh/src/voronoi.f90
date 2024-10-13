@@ -2,6 +2,7 @@ module voronoi
 
     use params, only: fname_voronoi
     use variableKind, only: i32, r64
+    use specfem_mesh, only: SetMesh
 
     implicit none 
     include "constants.h"
@@ -46,11 +47,11 @@ module voronoi
 
 
 
-    subroutine project_voroni_to_gll(tree)
+    subroutine project_voroni_to_gll(sm, tree)
         ! Projects eta1 and eta2 values stored at a cloud of Voronoi points
         ! to the GLL mesh using a K-d tree to evaluate the Voronoi cell the
         ! GLL point lies within
-        use params, only: nglob, x_glob, y_glob, z_glob, glob_eta1, glob_eta2
+        use params, only: glob_eta1, glob_eta2
         use dArgDynamicArray_Class, only: dArgDynamicArray
         use m_KdTree, only: KdTree, KdTreeSearch
 
@@ -60,17 +61,18 @@ module voronoi
         type(KdTree)           :: tree
         type(dArgDynamicArray) :: da
         type(KdTreeSearch)     :: search
+        type(SetMesh)          :: sm 
 
         ! Local variables: 
         integer      :: i
         integer(i32) :: ind
 
         ! For each global coordinate we want to map its voroni cell variable value 
-        do i = 1, nglob
+        do i = 1, sm%nglob
             da = search%kNearest(tree, vor_x, vor_y, vor_z, & 
-                                 xQuery = x_glob(i), &
-                                 yQuery = y_glob(i), &
-                                 zQuery = z_glob(i), & 
+                                 xQuery = sm%x_glob(i), &
+                                 yQuery = sm%y_glob(i), &
+                                 zQuery = sm%z_glob(i), & 
                                  k = 1)
                                  
             ! Index of the closest voronoi point 

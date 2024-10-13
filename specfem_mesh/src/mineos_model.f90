@@ -27,6 +27,8 @@ module mineos_model
 
         contains 
             procedure :: process_mineos_model
+            procedure :: load_mineos_radial_info_MPI
+            procedure :: load_mineos_radial_info
             procedure :: find_disc
             procedure :: save_mineos_model
             procedure :: allocate_radii

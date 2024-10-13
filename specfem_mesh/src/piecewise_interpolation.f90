@@ -387,7 +387,7 @@ module piecewise_interpolation
             implicit none 
             class(InterpPiecewise) :: self
             character(len=*) :: fname
-            write(*,*)
+
         end subroutine load
 
 
@@ -396,7 +396,7 @@ module piecewise_interpolation
             class(InterpPiecewise) :: self
             character(len=*) :: fname
 
-            write(*,*)
+
         end subroutine save
 
 
@@ -404,7 +404,7 @@ module piecewise_interpolation
             implicit none 
 
             class(InterpPiecewise) :: self
-            write(*,*)
+
         end subroutine cleanup
 
 

@@ -1,12 +1,11 @@
 
 program compute_vani_splitting
-    use params, only: Vani, nspec, nprocs, verbose, myrank, MPI_SPLINE_COMPLEX, & 
+    use params, only: Vani, verbose, myrank, MPI_SPLINE_COMPLEX, & 
                       MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT, glob_eta1,   &
-                      glob_eta2, nglob, nmodes, IC_ID
+                      glob_eta2,  nmodes, nprocs
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
-    use mesh_utils, only: cleanup_for_mode, compute_rotation_matrix
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
-                     compute_Vani_matrix_stored_selfcoupling, compute_Vani_matrix
+                     compute_Vani_matrix, compute_vani_matrix_stored
 #ifdef WITH_CUDA
     use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
 #endif
@@ -15,18 +14,20 @@ program compute_vani_splitting
     use voronoi, only: vor_x, vor_y, vor_z, & 
                        vor_A, vor_C, vor_L, vor_N, vor_F, &
                        load_voronoi_model, project_voroni_to_gll
-
+    use specfem_mesh, only: SetMesh, create_SetMesh
+    use modes, only: get_mode, Mode 
+    use mineos_model, only: mineos, mineos_ptr
     implicit none
     include "constants.h"
 
 #ifdef WITH_MPI
-include 'mpif.h'
+    include 'mpif.h'
 #endif 
 
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
                tl1, tl2, h, b, cluster_size, sets_per_process, & 
                myset_start, myset_end, i_mode, maxknot
-    character ::  type_1, type_2
+    character ::  t1
     character(len=2) nstr, lstr
     character(len=12) nprocstr, nmodestr, timing_fmt_vals
     character(len=250) :: out_name
@@ -36,7 +37,8 @@ include 'mpif.h'
 
     ! KD tree: 
     type(KdTree)           :: tree
-
+    type(SetMesh)          :: sm 
+    type(Mode)             :: mode_1 
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
@@ -51,11 +53,7 @@ include 'mpif.h'
     integer, dimension(16), parameter :: modeNs = (/6, 6, 6, 6, 6,  6,  6,  6, 6, 6, 6, 6, 6, 6, 6, 6 /)
     integer, dimension(16), parameter :: modeLs = (/1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16/)
 
-    ! Timing: 
-    integer :: start_clock, end_clock, count_rate, mid1, mid2
-    real(8),allocatable :: elapsed_time(:)
-
-
+ 
 #ifdef WITH_MPI
     call MPI_INIT(ierr)
     call MPI_COMM_SIZE(MPI_COMM_WORLD, cluster_size, ierr)
@@ -111,74 +109,84 @@ include 'mpif.h'
 region = 3
 
 
-call system_clock(count_rate=count_rate)
-
-
 ! Read in voronoi model and build K-d tree: 
 call load_voronoi_model()
+
+! Benchmark value
+!vor_A =  0.4d0
+!vor_C = -0.2d0
+!vor_L =  0.3d0
+!vor_N = -0.5d0
+!vor_F =  0.1d0
+
+
 tree = KdTree(vor_x, vor_y, vor_z) 
 
 
 #ifdef WITH_MPI
-    call load_mineos_radial_info_MPI()
+    call mineos%load_mineos_radial_info_MPI()
 #else
     ! Read mineos model 
-    call process_mineos_model(.true.) 
+    call mineos%process_mineos_model(.false.) 
 #endif
+mineos_ptr => mineos
 
-maxknot = IC_ID
+
+
 
 
 if(ONLY_ONE_TASK_PER_SET)then 
     iset = myset_start
-    call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin, maxknot)
-
-    allocate(glob_eta1(nglob), glob_eta2(nglob))
-    call project_voroni_to_gll(tree)
+    sm = create_SetMesh(iset, region)
 
 
-    call compute_rotation_matrix()
+    call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
+
+
+
+    allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
+    call project_voroni_to_gll(sm, tree)
+
+
+    call sm%compute_rotation_matrix()
     if(force_VTI)then 
         glob_eta1 = zero 
         glob_eta2 = zero
     endif 
-    call compute_Cxyz_at_gll_constantACLNF(vor_A, vor_C, vor_L, vor_N, & 
+    call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, vor_N, & 
                                            vor_F, glob_eta1, glob_eta2)
 endif 
 
-allocate(elapsed_time(nmodes))
 
 
 do i_mode = 1, nmodes
-
-    ! Start clock count
-    call system_clock(start_clock)
     n1      = modeNs(i_mode)
-    type_1  = 'S'
+    t1      = 'S'
     l1      = modeLs(i_mode)
 
-    ! Setup Vani matrix
-    tl1 = 2*l1 + 1
-    allocate(Vani(tl1, tl1))
+    mode_1  = get_mode(n1, t1, l1, mineos_ptr)
+
+
+    allocate(Vani(mode_1%tl1, mode_1%tl1))
     Vani = SPLINE_iZERO
-
-
 
 
     do iset = myset_start, myset_end
         if(.not.ONLY_ONE_TASK_PER_SET)then
-            call setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin, maxknot)
+            
+            sm = create_SetMesh(iset, region)
+            call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
 
-            allocate(glob_eta1(nglob), glob_eta2(nglob))
-            call project_voroni_to_gll(tree)
+            allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
+            call project_voroni_to_gll(sm, tree)
         
-            call compute_rotation_matrix()
+            call sm%compute_rotation_matrix()
 
             if(force_VTI)then 
                 glob_eta1 = zero 
                 glob_eta2 = zero
             endif 
-            call compute_Cxyz_at_gll_constantACLNF(vor_A, vor_C, vor_L, & 
+            call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, & 
                                                    vor_N, vor_F, glob_eta1, glob_eta2)
         endif 
 
@@ -186,45 +194,42 @@ do i_mode = 1, nmodes
 
 ! Compute the Vani matrix
 #ifdef WITH_CUDA
-        call cuda_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
+        call cuda_Vani_matrix_stored_selfcoupling(sm, n1, t1, l1)
 #else
         if(load_from_bin)then 
-            call compute_Vani_matrix_stored_selfcoupling(type_1, l1, n1, iset)
+            call compute_Vani_matrix_stored(sm, t1, l1, n1, t1, l1, n1) 
         else 
-            call compute_Vani_matrix(type_1, l1, n1, & 
-                                    type_1, l1, n1, & 
-                                    .true., iset)
+            call compute_Vani_matrix(sm, n1, t1, l1, n1, t1, l1, .true.)
             write(*,*)'Done iset', iset
         endif
 #endif
 
         if(.not.ONLY_ONE_TASK_PER_SET)then 
             deallocate(glob_eta1, glob_eta2)
-            call cleanup_for_mode()
+            call sm%cleanup()
         endif
+
+        
     enddo !iset 
 
 
 ! ---------------------- OUTPUT THE V MATRIX FOR A MODE ----------------------
 #ifdef WITH_MPI
     if(myrank.eq.0)then 
-        allocate(Vani_modesum(tl1, tl1))
+        allocate(Vani_modesum(mode_1%tl1, mode_1%tl1))
         Vani_modesum = SPLINE_iZERO  
     endif 
 
-    call MPI_Reduce(Vani, Vani_modesum, tl1*tl1, MPI_SPLINE_COMPLEX, &
+    call MPI_Reduce(Vani, Vani_modesum, mode_1%tl1**2, MPI_SPLINE_COMPLEX, &
                     MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
     if(myrank.eq.0)then 
         call buffer_int(nstr, n1)
         call buffer_int(lstr, l1)
-        out_name =  './output/sem_fast_'//trim(nstr)//type_1//trim(lstr)// '.txt'
+        out_name =  './output/sem_fast_'//trim(nstr)//t1//trim(lstr)// '.txt'
 
         Vani = Vani_modesum
         call save_Vani_matrix(l1, out_name)
-        ! Compute run time
-        call system_clock(end_clock)
-        elapsed_time(i_mode) = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
         deallocate(Vani_modesum)
     endif 
 
@@ -232,39 +237,13 @@ do i_mode = 1, nmodes
 #else
     call buffer_int(nstr, n1)
     call buffer_int(lstr, l1)
-    out_name =  './output/sem_fast_'//trim(nstr)// type_1//trim(lstr)// '.txt'
+    out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)// '.txt'
     call save_Vani_matrix(l1, out_name)
-    call system_clock(end_clock)
-    elapsed_time(i_mode) = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
 #endif
     deallocate(Vani)
 ! ----------------- END OF OUTPUT THE V MATRIX FOR A MODE --------------
 
 enddo ! i_mode 
-
-
-
-#ifdef WITH_MPI 
-#ifdef WITH_CUDA
-if(myrank.eq.0)then 
-
-    call buffer_int(nprocstr, nprocs)
-    call buffer_int(nmodestr, nmodes)
-
-    open(1, file='output/timings/timing_176_'//trim(nprocstr)//'_'//trim(nmodestr), & 
-            status='unknown', action='write', position='append' )
-
-    ! Use the nproc to buffer the number of floats needed for the format of elapsedtime
-    call buffer_int(nprocstr, nmodes)
-    timing_fmt_vals = "(a,"//trim(nprocstr)//"f12.6)"
-
-    ! Use the nmodestr to write the np 
-    call buffer_int(nmodestr, cluster_size)
-    write(1,timing_fmt_vals) nmodestr, elapsed_time
-    close(1)
-endif
-#endif
-#endif
 
 
 
@@ -274,46 +253,3 @@ endif
 #endif
 end program compute_vani_splitting
 
-
-
-
-
-
-
-
-
-
-
-
-
-subroutine setup_mesh_sem_details(iset, region, load_from_bin, save_to_bin, maxknot)
-    use mesh_utils, only: read_proc_coordinates, load_ibool, & 
-                          compute_jacobian, compute_rtp_from_xyz, & 
-                          setup_global_coordinate_arrays
-    use gll, only: setup_gll, compute_wglljac
-    implicit none 
-    integer :: iset, region, maxknot
-    logical :: load_from_bin, save_to_bin
-
-    ! Things that need to be done for each set  
-    call read_proc_coordinates(iset, region)
-    call load_ibool(iset, region)
-    call setup_gll()
-
-
-    if(load_from_bin)then 
-        call load_jacobian(iset)
-        call load_wglljac(iset)
-        call load_global_xyz(iset)
-        call load_elem_rtp(iset)
-        call load_get_mesh_radii_results(iset)
-    else
-        call compute_jacobian(iset, save_to_bin)
-        call compute_wglljac(iset, save_to_bin)
-        call setup_global_coordinate_arrays(iset, save_to_bin)
-        call compute_rtp_from_xyz(iset, save_to_bin)
-        call get_mesh_radii(iset, save_to_bin, maxknot)
-
-
-    endif 
-end subroutine setup_mesh_sem_details

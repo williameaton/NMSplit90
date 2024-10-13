@@ -1,49 +1,34 @@
-
 program test_constant_Vani_matrix
-    use params, only: Vani
-    use spline, only: 
-    use Integrate, only: 
+    use params, only: Vani, nprocs
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
-    use mesh_utils, only: cleanup_for_mode, compute_jacobian, compute_rotation_matrix, & 
-                          compute_rtp_from_xyz, load_ibool, read_proc_coordinates, & 
-                          setup_global_coordinate_arrays
-    use gll, only: setup_gll
     use v_ani, only: compute_Vani_matrix, save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF
-
+    use mineos_model, only: mineos, mineos_ptr
+    use specfem_mesh, only: SetMesh, create_SetMesh
+    use piecewise_interpolation, only: InterpPiecewise, create_PieceInterp
     implicit none
     include "constants.h"
 
     real(kind=CUSTOM_REAL) :: A, C, L, N, F
-    integer :: iproc, i,j,k,ispec, l1, l2, n1, n2, nproc, region, tl1, tl2, h, b
-    character ::  type_1, type_2
-    character(len=250) :: out_name
-    real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
+    integer                :: iproc, i, j, k, ispec, l1, l2, n1, n2, region, h, b
+    character              ::  t1, t2
+    character(len=250)     :: out_name
+    real(kind=CUSTOM_REAL), allocatable :: eta1(:), eta2(:)
 
-   ! Timing: 
-    integer :: start_clock, end_clock, count_rate
-    real(8) :: elapsed_time
-
-
-    ! Start clock count
-    call system_clock(count_rate=count_rate)
-    call system_clock(start_clock)
-
-
-
-
-
+    type(SetMesh)          :: sm 
+    type(InterpPiecewise)  :: interp 
 
     ! Read mineos model 
-    call process_mineos_model(.true.)
+    call mineos%process_mineos_model(.true.)
+    mineos_ptr => mineos
 
     ! Choose modes: 
     n1      = 6
-    type_1 = 'S'
-    l1      = 5
+    t1      = 'S'
+    l1      = 10
 
     n2      = 6
-    type_2 = 'S'
-    l2      = 5
+    t2      = 'S'
+    l2      = 10
 
     A =  0.4d0
     C = -0.2d0
@@ -52,48 +37,39 @@ program test_constant_Vani_matrix
     F =  0.1d0
 
     region = 3
-    nproc  = 6
-
-
-    ! Setup Vani matrix
-    tl1 = 2*l1 + 1
-    tl2 = 2*l2 + 1
 
     ! The matrix should be 2l + 1 from -m to m 
-    call allocate_if_unallocated(tl1, tl2, Vani)
+    call allocate_if_unallocated(2*l1+1, 2*l2+1, Vani)
     Vani = SPLINE_iZERO
 
-    do iproc = 0, nproc-1
+    do iproc = 0, nprocs-1
+        sm = create_SetMesh(iproc, region)
         write(*,*)"Processor: ", iproc
-        ! Things that need to be done for each processor
-        call read_proc_coordinates(iproc, region)
+        call sm%read_proc_coordinates()
+        call sm%load_ibool()
+        call sm%setup_gll()
+        call sm%compute_jacobian(.true.)
+        call sm%compute_rtp_from_xyz(.true.)
+        call sm%setup_global_coordinate_arrays(.true.)
+        call sm%get_unique_radii(.true.)
+        call sm%compute_rotation_matrix()
+        call sm%compute_wglljac(.true.)
 
-        call load_ibool(iproc, region)
-        call setup_gll()
-        call compute_jacobian(iproc, .false.)
+        allocate(eta1(sm%nglob), eta2(sm%nglob))
+        eta1 = zero 
+        eta2 = zero 
 
-        call setup_global_coordinate_arrays(iproc, .false.)
-        call compute_rtp_from_xyz(iproc, .false.)
-        call get_mesh_radii(iproc, .false.)
-        call compute_rotation_matrix()
+        call compute_Cxyz_at_gll_constantACLNF(sm, A, C, L, N, F, eta1, eta2)
 
-        call compute_Cxyz_at_gll_constantACLNF(A, C, L, N, F, zero, zero)
+        call compute_Vani_matrix(sm, n1, t1, l1, n2, t2, l2, .true.)
 
-        call compute_Vani_matrix(type_1, l1, n1, type_2, l2, n2, .true., iproc)
-
-        call cleanup_for_mode()
+        call sm%cleanup()
+        deallocate(eta1, eta2)
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/sem_', n1, type_1, l1, '.txt'
+    write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/sem_', n1, t1, l1, '.txt'
     call save_Vani_matrix(l1, out_name)
 
 
-
-    ! Compute run time
-    call system_clock(end_clock)
-    ! Calculate the elapsed time in seconds
-    elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-    ! Print the elapsed time
-    write(*,*) 'Wall clock time taken for test_constant_Vani_matrix:', elapsed_time, 'seconds'
-
+    
 end program test_constant_Vani_matrix

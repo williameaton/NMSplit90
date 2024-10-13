@@ -1,5 +1,6 @@
 module modes
     use mineos_model, only: MineosModel
+    use params, only: verbose
     implicit none
     include "constants.h"
 
@@ -281,6 +282,7 @@ module modes
 
 
     function get_mode(n, t, l, mineos, out_dir) result(m)
+
         implicit none 
         ! in 
         integer                    :: n, l 
@@ -292,7 +294,7 @@ module modes
         type(Mode) :: m 
 
 
-        write(*,*)'Getting mode '
+        if(verbose.ge.2) write(*,*)'Getting mode '
 
         m%n      = n
         m%t      = t
