@@ -9,7 +9,6 @@ real(kind=CUSTOM_REAL), parameter :: PI_TOL = 0.0000002_CUSTOM_REAL
 ! Tolerances (not really constants!)
 double precision, parameter :: pole_tolerance = 1e-4 ! ~600 metres from pole
 
-
 ! Numbers: 
 real(kind=CUSTOM_REAL), parameter :: ZERO  = 0.0000000_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: HALF  = 0.5000000_CUSTOM_REAL
@@ -23,6 +22,7 @@ real(kind=CUSTOM_REAL), parameter :: SEVEN = 7.0000000_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: EIGHT = 8.0000000_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: NINE  = 9.0000000_CUSTOM_REAL
 real(kind=CUSTOM_REAL), parameter :: TEN   = 10.0000000_CUSTOM_REAL
+real(kind=CUSTOM_REAL), parameter :: RT2   = (TWO)**HALF
 
 ! Numbers with spline (eigenfunction) precision:
 real(kind=SPLINE_REAL), parameter :: SPLINE_PI = 3.141592653589793_SPLINE_REAL
@@ -37,7 +37,8 @@ real(kind=SPLINE_REAL), parameter :: SPLINE_SIX   = 6.0000000_SPLINE_REAL
 real(kind=SPLINE_REAL), parameter :: SPLINE_SEVEN = 7.0000000_SPLINE_REAL
 real(kind=SPLINE_REAL), parameter :: SPLINE_EIGHT = 8.0000000_SPLINE_REAL
 real(kind=SPLINE_REAL), parameter :: SPLINE_NINE  = 9.0000000_SPLINE_REAL
-real(kind=SPLINE_REAL), parameter :: SPLINE_TEN  =  10.0000000_SPLINE_REAL
+real(kind=SPLINE_REAL), parameter :: SPLINE_TEN   = 10.0000000_SPLINE_REAL
+real(kind=CUSTOM_REAL), parameter :: SPLINE_RT2   = (SPLINE_TWO)**SPLINE_HALF
 
 ! Imaginary i: 
 complex(kind=CUSTOM_REAL), parameter :: iZERO  = (ZERO, ZERO)

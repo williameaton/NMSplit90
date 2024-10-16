@@ -1,18 +1,14 @@
 program test_ylm_integration
-    use params, only: nspec, ngllx, nglly, ngllz, rstore, thetastore, & 
-                      phistore, nprocs
+    use params, only: nprocs
     use allocation_module, only: allocate_if_unallocated
-    use mesh_utils, only: read_proc_coordinates, load_ibool, & 
-                          compute_jacobian, cleanup_for_mode, &
-                          compute_rtp_from_xyz
-    use gll, only: setup_gll
     use integrate, only: integrate_over_mesh, integrate_complex_mesh_scalar
     use ylm_plm, only: ylm_complex
+    use mineos_model, only: mineos
+    use specfem_mesh, only: SetMesh, create_SetMesh
     implicit none 
     include "constants.h"
     
     integer :: iproc, i, j, k, ispec                  
-    integer :: region                ! Region code
     real(kind=CUSTOM_REAL)    :: rreal, phreal, threal
     complex(kind=CUSTOM_REAL) :: totalint, ylm1, ylm2
     complex(kind=CUSTOM_REAL) :: integral
@@ -20,16 +16,17 @@ program test_ylm_integration
     integer :: l1, m1, l2, m2
     character(len=80)::outfname
         
-    ! Setup parameters: 
-    region = 3      ! Inner core
-    
+    type(SetMesh) :: sm 
+
+
+    ! Setup parameters:     
     l1 = 5
     m1 = 2
     
     l2 = 5
 
     ! Read mineos model 
-    call process_mineos_model()
+    call mineos%process_mineos_model(.false.)
 
     ! Loop over two cases: m=2 and m=3 -- should be 0 for m=3 and 
     ! non zero for m=2
@@ -38,21 +35,23 @@ program test_ylm_integration
         totalint = zero 
 
         do iproc = 0, nprocs-1
-            call read_proc_coordinates(iproc, region)
-            call load_ibool(iproc, region)
-            call setup_gll()
-            call compute_jacobian(iproc, .false.)
-            call get_mesh_radii(iproc, .false.)
-            call compute_rtp_from_xyz(iproc, .false.)
-            call allocate_if_unallocated(ngllx, nglly, ngllz, nspec, integrand)
+            sm = create_SetMesh(iproc, 3)
+            call sm%read_proc_coordinates()
+            call sm%load_ibool()
+            call sm%setup_gll()
+            call sm%compute_jacobian(.false.)
+            call sm%get_unique_radii(.false.)
+            call sm%compute_rtp_from_xyz(.false.)
+
+            call allocate_if_unallocated(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, integrand)
             
-            do ispec = 1, nspec 
-                do i = 1, ngllx
-                    do j = 1, nglly
-                        do k = 1, ngllz
-                            rreal  = real(rstore(i,j,k,ispec),     CUSTOM_REAL)
-                            threal = real(thetastore(i,j,k,ispec), CUSTOM_REAL)
-                            phreal = real(phistore(i,j,k,ispec),   CUSTOM_REAL)
+            do ispec = 1, sm%nspec 
+                do i = 1, sm%ngllx
+                    do j = 1, sm%nglly
+                        do k = 1, sm%ngllz
+                            rreal  = real(sm%rstore(i,j,k,ispec),     CUSTOM_REAL)
+                            threal = real(sm%thetastore(i,j,k,ispec), CUSTOM_REAL)
+                            phreal = real(sm%phistore(i,j,k,ispec),   CUSTOM_REAL)
                             ylm1   = conjg(ylm_complex(l1, m1, threal, phreal))
                             ylm2   = ylm_complex(l2, m2, threal, phreal)
                             integrand(i,j,k,ispec) =  ylm1 * ylm2
@@ -61,9 +60,9 @@ program test_ylm_integration
                 enddo 
             enddo 
 
-            integral = integrate_complex_mesh_scalar(integrand)
+            integral = integrate_complex_mesh_scalar(sm, integrand)
             totalint = totalint + integral
-            call cleanup_for_mode()
+            call sm%cleanup()
         enddo 
 
         write(outfname, '(a,i1,a)')'integration/test_ylm_int_', m2, '.txt'

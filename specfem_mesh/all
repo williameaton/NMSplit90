@@ -1,5 +1,8 @@
 module load nvhpc/24.5
 export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.5/comm_libs/openmpi/openmpi-3.1.5/bin:$PATH
+
+export LD_LIBRARY_PATH=/scratch/gpfs/we3822/coretran/lib:$LD_LIBRARY_PATH
+
 aclocal
 autoconf
 automake --add-missing

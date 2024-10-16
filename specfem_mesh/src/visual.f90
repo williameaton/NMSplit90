@@ -13,10 +13,11 @@ end subroutine setup_ensight_for_proc
 
 
 
-subroutine create_proc_geo_file(part)
-    use params, only: GEOUNIT, nglob, x_glob, y_glob, z_glob, nspec, & 
-                      ngllx, nglly, ngllz, en_fname, intfmt, realfmt, en_dir, ibool
+subroutine create_proc_geo_file(sm, part)
+    use specfem_mesh, only: SetMesh
+    use params, only: GEOUNIT, en_fname, intfmt, realfmt, en_dir
     implicit none 
+    type(SetMesh) :: sm
     
     ! IO variables
     integer :: part
@@ -45,16 +46,16 @@ subroutine create_proc_geo_file(part)
     write(GEOUNIT, '(a)')buffer
     buffer = 'coordinates'          ! line with 'coordinates'
     write(GEOUNIT, '(a)')buffer
-    write(GEOUNIT, intfmt) nglob    ! number of coordinates
+    write(GEOUNIT, intfmt) sm%nglob    ! number of coordinates
    
-    do i = 1, nglob
-        write(GEOUNIT, realfmt)x_glob(i)
+    do i = 1, sm%nglob
+        write(GEOUNIT, realfmt)sm%x_glob(i)
     enddo 
-    do i = 1, nglob
-        write(GEOUNIT, realfmt)y_glob(i)
+    do i = 1, sm%nglob
+        write(GEOUNIT, realfmt)sm%y_glob(i)
     enddo 
-    do i = 1, nglob
-        write(GEOUNIT, realfmt)z_glob(i)
+    do i = 1, sm%nglob
+        write(GEOUNIT, realfmt)sm%z_glob(i)
     enddo 
 
 
@@ -62,24 +63,24 @@ subroutine create_proc_geo_file(part)
     ! Using Hexa8 where each element is subdivided into 8-node
     ! hexes. There will therefore be (ngllx-1)(nglly-1)(ngllz-1) hexes
     ! in each spectral element 
-    nhex = nspec*(ngllx-1)*(nglly-1)*(ngllz-1)
+    nhex = sm%nspec*(sm%ngllx-1)*(sm%nglly-1)*(sm%ngllz-1)
 
     buffer = 'hexa8'   
     write(GEOUNIT, '(a)')buffer ! Element type
     write(GEOUNIT, intfmt) nhex ! Number of elements
     
-    do ispec = 1, nspec
-        do i = 1, ngllx-1
-            do j = 1, nglly-1
-                do k = 1, ngllz-1
-                    write(GEOUNIT,'(8i10)') ibool(i,j,k,ispec),       & 
-                                            ibool(i+1,j,k,ispec),     &
-                                            ibool(i+1,j+1,k,ispec),   &
-                                            ibool(i,j+1,k,ispec),     &
-                                            ibool(i,j,k+1,ispec),     & 
-                                            ibool(i+1,j,k+1,ispec),   &
-                                            ibool(i+1,j+1,k+1,ispec), &
-                                            ibool(i,j+1,k+1,ispec)
+    do ispec = 1, sm%nspec
+        do i = 1, sm%ngllx-1
+            do j = 1, sm%nglly-1
+                do k = 1, sm%ngllz-1
+                    write(GEOUNIT,'(8i10)') sm%ibool(i,j,k,ispec),       & 
+                                            sm%ibool(i+1,j,k,ispec),     &
+                                            sm%ibool(i+1,j+1,k,ispec),   &
+                                            sm%ibool(i,j+1,k,ispec),     &
+                                            sm%ibool(i,j,k+1,ispec),     & 
+                                            sm%ibool(i+1,j,k+1,ispec),   &
+                                            sm%ibool(i+1,j+1,k+1,ispec), &
+                                            sm%ibool(i,j+1,k+1,ispec)
                 enddo 
             enddo 
         enddo 
@@ -97,7 +98,6 @@ subroutine create_proc_case_file()
     implicit none 
     
     ! IO variables
-
     open(unit=CASEUNIT,file=trim(en_dir)//trim(en_fname)//'.case', & 
           status='unknown',form='formatted',action='write')
 
@@ -136,26 +136,29 @@ subroutine create_ensight_file_prefix(iproc, region)
 
     if(verbose.ge.2)write(*,'(/,a)')'Ensight prefix: '//trim(en_fname)
 
-end subroutine
+end subroutine create_ensight_file_prefix
 
 
 
 
-subroutine write_complex_symtensor_to_ensight(symten, suffix, part)
+subroutine write_complex_symtensor_to_ensight(sm, symten, suffix, part)
     ! Write a complex symmetric tensor to ensight
     ! Note that ensight gold supports complex scalars and vectors
     ! as well as symmetric tensors, but NOT complex tensors! 
     ! Here the choice is to output the real and the imaginary 
     ! parts of the tensor separately
-    use params, only: nglob, en_dir, en_fname, TENSORSYMOUT_R, & 
+    use specfem_mesh, only: SetMesh
+    use params, only: en_dir, en_fname, TENSORSYMOUT_R, & 
                       TENSORSYMOUT_I, intfmt, realfmt, CASEUNIT
 
     implicit none 
     include "constants.h"
 
+    type(SetMesh) :: sm 
+
     ! IO variables: 
     integer :: part
-    complex(kind=SPLINE_REAL) :: symten(6, nglob)
+    complex(kind=SPLINE_REAL) :: symten(6, sm%nglob)
     character(len=*) :: suffix
 
     ! Local 
@@ -207,7 +210,7 @@ subroutine write_complex_symtensor_to_ensight(symten, suffix, part)
 
 
     do component = 1, 6
-        do i = 1, nglob
+        do i = 1, sm%nglob
             write(TENSORSYMOUT_R, realfmt)  real(symten(component, i))
             write(TENSORSYMOUT_I, realfmt) aimag(symten(component, i))
         enddo 
@@ -221,17 +224,19 @@ end subroutine
 
 
 
-subroutine write_complex_vector_to_ensight(comvec, suffix, part)
+subroutine write_complex_vector_to_ensight(sm, comvec, suffix, part)
     ! Write a complex vector to ensight
-    use params, only: nglob, en_dir, en_fname, VECOUT_R, VECOUT_I, & 
+    use specfem_mesh, only: SetMesh
+    use params, only:  en_dir, en_fname, VECOUT_R, VECOUT_I, & 
                       intfmt, realfmt, CASEUNIT
 
     implicit none 
     include "constants.h"
+    type(SetMesh) :: sm 
 
     ! IO variables: 
     integer :: part
-    complex(kind=SPLINE_REAL) :: comvec(3, nglob)
+    complex(kind=SPLINE_REAL) :: comvec(3, sm%nglob)
     character(len=*) :: suffix
 
     ! Local 
@@ -279,7 +284,7 @@ subroutine write_complex_vector_to_ensight(comvec, suffix, part)
     write(VECOUT_I, '(a)')buffer
 
     do component = 1, 3
-        do i = 1, nglob
+        do i = 1, sm%nglob
             write(VECOUT_R, realfmt)  real(comvec(component, i))
             write(VECOUT_I, realfmt) aimag(comvec(component, i))
         enddo 
@@ -294,17 +299,20 @@ end subroutine write_complex_vector_to_ensight
 
 
 
-subroutine write_real_scalar_to_ensight(realscal, suffix, part)
+subroutine write_real_scalar_to_ensight(sm, realscal, suffix, part)
     ! Write a real scalar array to ensight
-    use params, only: nglob, en_dir, en_fname, REALSCALOUT, & 
+    use specfem_mesh, only: SetMesh
+    use params, only:  en_dir, en_fname, REALSCALOUT, & 
                       intfmt, realfmt, CASEUNIT
 
     implicit none 
     include "constants.h"
 
+    type(SetMesh) :: sm
+
     ! IO variables: 
     integer :: part
-    real(kind=CUSTOM_REAL) :: realscal(nglob)
+    real(kind=CUSTOM_REAL) :: realscal(sm%nglob)
     character(len=*) :: suffix
 
     ! Local 
@@ -337,7 +345,7 @@ subroutine write_real_scalar_to_ensight(realscal, suffix, part)
     buffer = 'coordinates'
     write(REALSCALOUT, '(a)')buffer
 
-    do i = 1, nglob
+    do i = 1, sm%nglob
         write(REALSCALOUT, realfmt)realscal(i)
     enddo 
 

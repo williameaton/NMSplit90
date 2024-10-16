@@ -7,12 +7,9 @@
 ! should be ~ equal. 
 ! Currently this will just break up the sets into sequential elements of
 ! a certain length - there may be a better way to do this, e.g., by radii
-
-
 program linearly_breakup_mesh 
-use params, only: nspec, ngllx, nglly, ngllz, xstore, ystore, zstore, & 
-                  ibool, datadir
-use mesh_utils, only: read_proc_coordinates, cleanup_for_mode
+use params, only: datadir
+use specfem_mesh, only: SetMesh, create_setmesh
 implicit none 
 
 integer :: region, nprocs_before, nsets, iproc, ntot_elem,   & 
@@ -30,19 +27,21 @@ integer, allocatable :: ibool_new(:,:,:,:), ib_store(:,:,:,:), &
 logical :: get_new_proc, filled_set
 character(len=400) :: outname
 character(len=30) :: fmtstr
+type(SetMesh) :: sm 
 
 ! Setup parameters: 
 region        = 3      ! Inner core
-nprocs_before = 6      ! Current setup 
-nsets         = 32     ! new setup 
+nprocs_before = 1      ! Current setup 
+nsets         = 8      ! new setup 
 
 ntot_elem = 0 
 
 ! Count the total number of elements
 do iproc = 0, nprocs_before - 1 
-    call read_proc_coordinates(iproc, region)  
-    ntot_elem = ntot_elem + nspec
-    call cleanup_for_mode()
+    sm = create_setmesh(iproc, region)
+    call sm%read_proc_coordinates()  
+    ntot_elem = ntot_elem + sm%nspec
+    call sm%cleanup()
 enddo 
 
 
@@ -58,25 +57,21 @@ write(*,*)' Number of set    : ', nsets
 write(*,*)' Elements per set : ', nspec_per_set
 
 
-maxnglob = ngllx*nglly*ngllz*nspec_per_set
+maxnglob = sm%ngllx*sm%nglly*sm%ngllz*nspec_per_set
 
 ! Allocate arrays of correct size for a single set: 
-allocate(xcoord_new(ngllx, nglly, ngllz, nspec_per_set)) 
-allocate(ycoord_new(ngllx, nglly, ngllz, nspec_per_set)) 
-allocate(zcoord_new(ngllx, nglly, ngllz, nspec_per_set)) 
-allocate(ibool_new(ngllx, nglly, ngllz, nspec_per_set)) 
-allocate(ib_store(ngllx, nglly, ngllz,   nspec_per_set)) 
-allocate(ib_store_proc(ngllx, nglly, ngllz,nspec_per_set)) 
-
-
-
-
+allocate(xcoord_new(sm%ngllx, sm%nglly, sm%ngllz, nspec_per_set)) 
+allocate(ycoord_new(sm%ngllx, sm%nglly, sm%ngllz, nspec_per_set)) 
+allocate(zcoord_new(sm%ngllx, sm%nglly, sm%ngllz, nspec_per_set)) 
+allocate(ibool_new(sm%ngllx, sm%nglly, sm%ngllz, nspec_per_set)) 
+allocate(ib_store(sm%ngllx, sm%nglly, sm%ngllz,   nspec_per_set)) 
+allocate(ib_store_proc(sm%ngllx, sm%nglly, sm%ngllz,nspec_per_set)) 
 
 
 ! Will set remaining_in_processor to the nspec of the prod
 ! Will set processor_id_fill_from to 1 
 iproc = 0
-call load_new_proc(iproc, region, rem_in_proc, proc_id_ff)
+call load_new_proc(sm, iproc, region, rem_in_proc, proc_id_ff)
 iset  = 0 
 rem_el_in_set = nspec_per_set   ! Remaining elements in a set
 set_id_ff     = 1               ! ID to fill from in set
@@ -119,12 +114,12 @@ do while (iset.lt.nsets) ! is this the correct finish?
     write(*,*)' proc_id_end = ', proc_id_end
 
     write(*,*)' copying over the coordinates...'
-    xcoord_new(:,:,:,set_id_ff:set_id_end) = xstore(:,:,:,proc_id_ff:proc_id_end)
-    ycoord_new(:,:,:,set_id_ff:set_id_end) = ystore(:,:,:,proc_id_ff:proc_id_end)
-    zcoord_new(:,:,:,set_id_ff:set_id_end) = zstore(:,:,:,proc_id_ff:proc_id_end)
+    xcoord_new(:,:,:,set_id_ff:set_id_end) = sm%xstore(:,:,:,proc_id_ff:proc_id_end)
+    ycoord_new(:,:,:,set_id_ff:set_id_end) = sm%ystore(:,:,:,proc_id_ff:proc_id_end)
+    zcoord_new(:,:,:,set_id_ff:set_id_end) = sm%zstore(:,:,:,proc_id_ff:proc_id_end)
 
     ! Store the ibool values AND the proc it was on 
-    ib_store(:,:,:,set_id_ff:set_id_end)       = ibool(:,:,:,proc_id_ff:proc_id_end)
+    ib_store(:,:,:,set_id_ff:set_id_end)       = sm%ibool(:,:,:,proc_id_ff:proc_id_end)
     ib_store_proc(:,:,:,set_id_ff:set_id_end)  = iproc
 
 
@@ -152,9 +147,9 @@ do while (iset.lt.nsets) ! is this the correct finish?
             do iib = min_ib, max_ib
                 count = 0
                 do ispec = 1, nspec_per_set
-                    do i = 1, ngllx
-                        do j = 1, nglly
-                            do k = 1, ngllz
+                    do i = 1, sm%ngllx
+                        do j = 1, sm%nglly
+                            do k = 1, sm%ngllz
                                 if(ib_store(i,j,k,ispec).eq.iib .and. ib_store_proc(i,j,k,ispec).eq.iiprc)then
                                     ibool_new(i,j,k,ispec) = nibool 
                                     count = count + 1
@@ -204,9 +199,9 @@ do while (iset.lt.nsets) ! is this the correct finish?
         open(5,file=trim(outname)//'info.bin', form='UNFORMATTED')
         write(5)maxval(ibool_new)
         write(5) nspec_per_set
-        write(5) NGLLX
-        write(5) NGLLY
-        write(5) NGLLZ
+        write(5) sm%NGLLX
+        write(5) sm%NGLLY
+        write(5) sm%NGLLZ
         close(5)
 
 
@@ -224,14 +219,13 @@ do while (iset.lt.nsets) ! is this the correct finish?
 
     if(get_new_proc)then 
         write(*,*)' Loading new proc...'
-        call cleanup_for_mode()
+        call sm%cleanup()
         iproc = iproc + 1
-        call load_new_proc(iproc, region, rem_in_proc, proc_id_ff)
+        call load_new_proc(sm, iproc, region, rem_in_proc, proc_id_ff)
         get_new_proc = .false.
     endif 
 
     
-    write(*,*)
     write(*,*)
 
 enddo 
@@ -246,15 +240,15 @@ end program linearly_breakup_mesh
 
 
 
-subroutine load_new_proc(iproc, region, rem_in_proc, proc_id_ff)
-    use params, only: nspec
-    use mesh_utils, only: load_ibool, read_proc_coordinates
+subroutine load_new_proc(sm, iproc, region, rem_in_proc, proc_id_ff)
+    use specfem_mesh, only: SetMesh, create_setmesh
     implicit none 
     integer :: iproc, region, rem_in_proc, proc_id_ff
-
-    call read_proc_coordinates(iproc, region)
-    call load_ibool(iproc, region)
+    type(SetMesh) :: sm 
+    sm = create_setmesh(iproc, region)
+    call sm%read_proc_coordinates()
+    call sm%load_ibool()
     
-    rem_in_proc = nspec
+    rem_in_proc = sm%nspec
     proc_id_ff  = 1
 end subroutine load_new_proc

@@ -53,7 +53,7 @@ program Tromp93_SEM
 
         call setup_global_coordinate_arrays(iproc, .false.)
         call compute_rtp_from_xyz(iproc, .false.)
-        call get_mesh_radii(iproc, .false.)
+        call get_mesh_radii(iproc, .false., NR)
         
         call compute_rotation_matrix()
 
