@@ -11,7 +11,7 @@ module vani_kernel
         ! IO variables
         integer :: ngll, nspec
         integer :: l, i, j, k, ispec, tl1
-        real(kind=SPLINE_REAL) :: wglljac(ngll, ngll, ngll, nspec)
+        real(kind=CUSTOM_REAL) :: wglljac(ngll, ngll, ngll, nspec)
 
         ! Local host variables
         real :: Vloc_r(2*l+1 , 2*l+1), Vloc_i(2*l+1 , 2*l+1)
@@ -29,7 +29,7 @@ module vani_kernel
         d_vani_real = Vloc_r   ! Zero these
         d_vani_imag = Vloc_r   ! Zero these
         d_strains   = strains1
-        d_wglljac   = wglljac
+        d_wglljac   = real(wglljac, kind=4)
         d_Cxyz      = Cxyz
 
         tl1 = 2*l + 1

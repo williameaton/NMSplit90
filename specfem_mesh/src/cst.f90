@@ -69,8 +69,8 @@ module splitting_function
         ! l and ld indicate the order of the modes involved
         implicit none
         integer :: l, ld, ncols, nrows
-        real(kind=CUSTOM_REAL)   :: cst(nrows, ncols)
-        complex(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
+        real(kind=SPLINE_REAL)   :: cst(nrows, ncols)
+        real(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
         character :: type1, type2
         ! Local: 
         integer :: smin, smax, num_s, max_num_t, md, m, t, s,j,is,it
@@ -113,7 +113,7 @@ module splitting_function
                     enddo ! it
                 enddo !is 
 
-                H(md+ld+1, m+l+1)  = real(sum, kind=SPLINE_REAL)
+                H(md+ld+1, m+l+1)  = sum
             enddo ! m
         enddo ! md
 
@@ -126,8 +126,8 @@ module splitting_function
         implicit none 
 
         integer :: l, ld, ncols, nrows
-        real(kind=CUSTOM_REAL)   :: cst(nrows, ncols)
-        complex(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
+        real(kind=SPLINE_REAL)   :: cst(nrows, ncols)
+        real(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
         character :: type1, type2
 
 
@@ -136,6 +136,7 @@ module splitting_function
                    r0, rs, Nd, rt, ct, N, R, im, j, md
         
         
+
         if(ld.lt.l)then
             write(*,*)"ERROR: l' (ld) must be greater than l: "
             write(*,*)"ERROR: l' = ", ld
@@ -143,7 +144,6 @@ module splitting_function
             stop
         endif
 
-        write(*,*) ld, l
             
 
         ! j = 0 for S-S or T-T coupling and 1 for mixed
@@ -152,9 +152,6 @@ module splitting_function
         else
             j = 1
         endif
-        
-
-        write(*,*)'Using j = ', j
         
         cst = ZERO
 
@@ -168,10 +165,8 @@ module splitting_function
             stop
         endif
         
-
         r0 = 1 + ld - l       ! starting row for t = 0
         Nd = 2*l +1           ! Maximum diagonal length 
-
   
         do is = 1, num_s 
             s = smin + is - 1
@@ -200,7 +195,7 @@ module splitting_function
                     md = -(ld) + (rt+im-1) -1 
                     m  = -(l)  + (ct+im-1) -1
                     cst(is,it) = cst(is,it) + F_mst(m, s, t, l, ld, j) * & 
-                                              real(H(md+ld+1, m+l+1), kind=SPLINE_REAL)
+                                              H(md+ld+1, m+l+1)
                 enddo 
 
             enddo 
@@ -211,6 +206,24 @@ module splitting_function
     end subroutine H_to_cst
 
 
+
+    subroutine write_cst_to_file(fname, cst, ncols, nrows, smin, jump)
+        ! Jump of 2 for only even stuff, 1 for all 
+        implicit none 
+        character(len=*)         :: fname
+        real(kind=SPLINE_REAL)   :: cst(nrows, ncols)
+        integer                  :: nrows, ncols, smin, jump, is ,it
+        
+        write(*,*)'Writing to '//trim(fname)
+
+        open(1,file=trim(fname), form='formatted')
+        do is = 1, nrows, jump
+            do it = 1, 2*(smin + is-1)+1
+                write(1,*)smin+is-1, it - (smin+is-1) - 1, real(cst(is,it))
+            enddo 
+        enddo 
+
+    end subroutine write_cst_to_file
 
 
 

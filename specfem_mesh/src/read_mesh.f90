@@ -1,72 +1,47 @@
 program read_specfem_mesh
-use params
+use params, only: nprocs
 use allocation_module
 use mesh_utils
-use gll, only: setup_gll
 use ylm_plm
-
+use mineos_model, only: mineos, mineos_ptr
+use specfem_mesh, only: SetMesh, create_SetMesh
 implicit none 
 
+type(SetMesh) :: sm 
 real(kind=8), allocatable :: proc_id(:)
-integer :: iproc             
-integer :: region                ! Region code
-integer :: n, l, m 
-
-
-region = 3
-
-n = 10
-l = 5
-m = 2
+integer :: iset             
+integer, parameter :: region = 3
 
 ! Read mineos model 
-call process_mineos_model(.true.)
+call mineos%process_mineos_model(.false.)
 
 
+write(*,*)'number of procs: ', nprocs
+do iset = 0, nprocs -1 
 
-do iproc = 0, nprocs -1 
+        sm = create_SetMesh(iset, region) ! ic = 3
 
         ! Read the mesh info and coordinates
-        call read_proc_coordinates(iproc, region)
-        allocate(proc_id(nglob))
+        call sm%read_proc_coordinates()
+        call sm%load_ibool()
 
-        call load_ibool(iproc, region)
+        call sm%setup_global_coordinate_arrays(.false.)
+        call sm%compute_rtp_from_xyz(.false.)
 
-        call setup_gll()
-        call compute_jacobian(iproc, .false.)
+        allocate(proc_id(sm%nglob))
 
-        ! Get unique mesh radii that are present
-        call get_mesh_radii(iproc, .false., NR)
-        
-        ! We will need the r theta phi coordinates: 
-        call compute_rtp_from_xyz(iproc, .false.)
+        proc_id = real(iset,kind=8) 
 
-        ! needed for ensight geo file
-        call allocate_if_unallocated(nglob, x_glob)
-        call allocate_if_unallocated(nglob, y_glob)
-        call allocate_if_unallocated(nglob, z_glob)
-        call map_local_global(xstore, x_glob, 0)
-        call map_local_global(ystore, y_glob, 0)
-        call map_local_global(zstore, z_glob, 0)
-
-
-
-        proc_id = real(iproc,kind=8) 
-
-        call create_ensight_file_prefix(iproc, region)
+        call create_ensight_file_prefix(iset, region)
         call create_proc_case_file()
-        call create_proc_geo_file(1)
-        call write_real_scalar_to_ensight(proc_id, 'proc_id', 1)
+        call create_proc_geo_file(sm, 1)
+        call write_real_scalar_to_ensight(sm,proc_id, 'proc_id', 1)
 
-        call cleanup_for_mode()
+        call sm%cleanup()
 
         deallocate(proc_id)
-
-
-        write(*,*)'Finished processor ', iproc
+        write(*,*)'Finished processor ', iset
 enddo 
-
-
 
 
 end program

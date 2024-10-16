@@ -454,7 +454,7 @@ contains
                                 do k = 1, sm%ngllz
 
                                     ! Contraction of strain with elastic tensor
-                                    ! E_ij c_ijkl E_k^*
+                                    ! E_ij c_ijkl E_kl^*
                                     cont = SPLINE_iZERO
                                     do p = 1, 9
                                         do q = 1, 9
@@ -1062,6 +1062,132 @@ contains
         close(1)
 
     end subroutine save_Vani_matrix
+
+
+
+
+
+    subroutine save_Vani_real_matrix(l, M, fname)
+        implicit none 
+        include "constants.h"
+        character(len=*) :: fname
+        integer :: l
+        real(kind=SPLINE_REAL) :: M(2*l+1, 2*l+1)
+        integer :: row, col
+
+
+        write(*,*)'Writing to ', trim(fname)
+
+        open(1,file=trim(fname))
+        ! Write the real matrix 
+        do row =1, 2*l + 1
+            do col = 1, 2*l + 1
+                if (col .lt. 2*l+1)then 
+                write(1,'(E15.6)', advance='no')real(M(row,col))
+                else 
+                    write(1,'(E15.6)', advance='yes')real(M(row,col))
+                endif
+            enddo 
+        enddo 
+        close(1)
+
+    end subroutine save_Vani_real_matrix
+
+
+    subroutine load_vani_from_file(l, fname)
+        use params, only: Vani
+        use allocation_module, only: allocate_if_unallocated
+        implicit none 
+        include "constants.h"
+        character(len=*) :: fname
+        character(5) :: vals_per_row_str
+        character(15) :: fmt
+        integer :: tl1
+        integer :: l
+        real(kind=SPLINE_REAL), allocatable :: row_data(:)
+
+        integer :: row, col
+
+        tl1 = 2*l+1
+        allocate(row_data(tl1))
+
+        write(*,*)'Loading from ', trim(fname)
+        call allocate_if_unallocated(tl1, tl1, Vani)
+
+        call buffer_int(vals_per_row_str, tl1)
+        
+        fmt = '('//trim(vals_per_row_str)//'E15.6)'
+
+        open(1, file=trim(fname), status = 'old')
+        ! Real component
+        do row =1, tl1
+            read(1, fmt)row_data
+            Vani(row, :) = row_data
+        enddo 
+        ! Imaginary component 
+        do row =1, tl1
+            read(1, fmt)row_data
+            Vani(row, :) = Vani(row, :) + row_data * SPLINE_iONE
+        enddo 
+
+        close(1)
+
+    end subroutine load_vani_from_file
+
+
+    subroutine convert_imag_to_real(l, ld, Im, Re)
+        ! Conversion using DT98 D.3.2
+        implicit none 
+        integer :: l , ld 
+        complex(kind=SPLINE_REAL) :: Im(2*l+1, 2*ld+1)
+        real(kind=SPLINE_REAL)    :: Re(2*l+1, 2*ld+1), f_md
+
+        integer :: m, md, m_ind, md_ind, n_m_ind, n_md_ind
+
+    
+        do m = 1, l
+            m_ind  = l+m+1
+            n_m_ind  = l-m+1
+
+            do md = 1, ld 
+                f_md   = real(md)
+                md_ind = ld+md+1
+                n_md_ind = ld-md+1
+            
+                ! Upper left quadrant
+                Re(n_m_ind, n_md_ind) = real( Im(m_ind, md_ind) + &
+                                        ((-one)**f_md) * Im(m_ind, n_md_ind))
+
+                ! Lower right quadrant
+                Re(m_ind, md_ind) = real( Im(m_ind, md_ind) - &
+                                        ((-one)**f_md) * Im(m_ind, n_md_ind))
+
+                ! Upper right quadrant
+                Re(n_m_ind, md_ind) = aimag( Im(m_ind, md_ind) - &
+                                        ((-one)**f_md) * Im(m_ind, n_md_ind))
+
+                ! Lower left quadrant
+                Re(m_ind, n_md_ind) = -aimag( Im(m_ind, md_ind) + &
+                                        ((-one)**f_md) * Im(m_ind, n_md_ind))
+          
+                ! D.159 a
+                Re(l+1, n_md_ind) = (two**half) * real(Im(l+1, md_ind))
+                ! D.160 a
+                Re(l+1, md_ind)   = (two**half) * aimag(Im(l+1, md_ind))
+
+            enddo 
+
+            Re(n_m_ind, ld+1) = (two**half)*real(Im(m_ind, ld+1))   !D.159 a 
+            Re(m_ind,   ld+1) = (two**half)*aimag(Im(m_ind, ld+1))   !D.160 a 
+        enddo 
+
+        ! D.161 
+        Re(l+1, ld+1) = Im(l+1, ld+1)
+
+
+    end subroutine convert_imag_to_real
+
+
 
 end module V_ani
 

@@ -213,12 +213,11 @@ contains
 
     real(kind=CUSTOM_REAL) function ylm_real(l, m, theta, phi)
     ! Calculates the real value of Ylm(theta, phi) following definition in 
-    ! Dahlen and Tromp 1998 Eqn. B.58: 
+    ! Dahlen and Tromp 1998 Eqn. B.72: 
     ! Theta should be between 0 and pi
     ! Phi should be between 0 and 2 pi
-    ! Y_lm(theta, phi) = X_{lm}(theta) e^{i m phi}
+        use math, only: cosp 
         implicit none
-        !include "constants.h"
 
         ! IO variables: 
         integer :: l, m 
@@ -249,7 +248,13 @@ contains
         mf = real(m, kind=CUSTOM_REAL)
 
         ! Real component is the cos phi part
-        ylm_real = cosp(mf*phi)*xlm(l,m,theta)
+        if(m==0)then 
+            ylm_real = xlm(l,0,theta)
+        elseif(m.lt.0 .and. m.ge.-l)then 
+            ylm_real = rt2 * xlm(l,abs(m),theta) * cosp(mf*phi)
+        else
+            ylm_real = rt2 * xlm(l,m,theta) * sinp(mf*phi)
+        endif
 
     end function ylm_real
 

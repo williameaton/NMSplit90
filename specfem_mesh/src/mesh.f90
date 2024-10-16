@@ -31,7 +31,7 @@ module specfem_mesh
         integer :: nglly
         integer :: ngllz
         real(kind=CUSTOM_REAL), allocatable :: xi(:), wgll(:), dgll(:,:)
-        real(kind=SPLINE_REAL), allocatable :: wglljac(:,:,:,:)
+        real(kind=CUSTOM_REAL), allocatable :: wglljac(:,:,:,:)
 
         ! GLL coordinates 
         real(kind=CUSTOM_REAL), allocatable :: xstore(:,:,:,:),    & 
@@ -50,6 +50,7 @@ module specfem_mesh
         real(kind=CUSTOM_REAL), allocatable    :: jac(:,:,:,:,:,:)
         real(kind=CUSTOM_REAL), allocatable    :: detjac(:,:,:,:)
         real(kind=CUSTOM_REAL), allocatable    :: jacinv(:,:,:,:,:,:)
+
 
         ! ibool
         integer, allocatable                :: ibool(:,:,:,:)
@@ -95,6 +96,7 @@ module specfem_mesh
             procedure :: rotate_complex_vector_rtp_to_xyz
             procedure :: rotate_complex_sym_matrix_rtp_to_xyz
             procedure :: compute_jacobian
+            procedure :: recalc_jacobian_gll3D
             procedure :: save_get_mesh_radii_results
             procedure :: load_get_mesh_radii_results  
             procedure :: load_rho_spline
@@ -678,27 +680,27 @@ module specfem_mesh
                                     do p = 1, self%ngllx
                                         if (j.eq.1) then     ! xi 
                                             if     (i .eq. 1) then 
-                                                val = real(val + self%xstore(p, t, n, ispec) * self%dgll(p, s), kind=CUSTOM_REAL)
+                                                val = val + self%xstore(p, t, n, ispec) * self%dgll(p, s)
                                             elseif (i .eq. 2) then 
-                                                val = real(val + self%ystore(p, t, n, ispec) * self%dgll(p, s), kind=CUSTOM_REAL)
+                                                val = val + self%ystore(p, t, n, ispec) * self%dgll(p, s)
                                             else
-                                                val = real(val + self%zstore(p, t, n, ispec) * self%dgll(p, s), kind=CUSTOM_REAL)
+                                                val = val + self%zstore(p, t, n, ispec) * self%dgll(p, s)
                                             endif 
                                         elseif (j.eq.2) then ! eta 
                                             if     (i .eq. 1) then 
-                                                val = real(val + self%xstore(s, p, n, ispec) * self%dgll(p, t), kind=CUSTOM_REAL)
+                                                val = val + self%xstore(s, p, n, ispec) * self%dgll(p, t)
                                             elseif (i .eq. 2) then 
-                                                val = real(val + self%ystore(s, p, n, ispec) * self%dgll(p, t), kind=CUSTOM_REAL)
+                                                val = val + self%ystore(s, p, n, ispec) * self%dgll(p, t)
                                             else
-                                                val = real(val + self%zstore(s, p, n, ispec) * self%dgll(p, t), kind=CUSTOM_REAL)
+                                                val = val + self%zstore(s, p, n, ispec) * self%dgll(p, t)
                                             endif
                                         else                 ! zeta
                                             if     (i .eq. 1) then 
-                                                val = real(val + self%xstore(s, t, p, ispec) * self%dgll(p, n), kind=CUSTOM_REAL)
+                                                val = val + self%xstore(s, t, p, ispec) * self%dgll(p, n)
                                             elseif (i .eq. 2) then 
-                                                val = real(val + self%ystore(s, t, p, ispec) * self%dgll(p, n), kind=CUSTOM_REAL)
+                                                val = val + self%ystore(s, t, p, ispec) * self%dgll(p, n)
                                             else
-                                                val = real(val + self%zstore(s, t, p, ispec) * self%dgll(p, n), kind=CUSTOM_REAL)
+                                                val = val + self%zstore(s, t, p, ispec) * self%dgll(p, n)
                                             endif
                                         endif 
                                     enddo              
@@ -720,8 +722,6 @@ module specfem_mesh
                             ! Compute the inverse jacobian: 
                             ! J^{-1}ij = del Xi_i/del x_j
                             self%jacinv(:,:,s,t,n,ispec) = mat_inv(jl)
-    
-
 
                         enddo ! n 
                     enddo !t
@@ -737,6 +737,157 @@ module specfem_mesh
                 call self%save_jacobian()
             endif 
         end subroutine compute_jacobian
+
+
+
+        ! This subroutine recomputes the 3D Jacobian for one element
+        ! based upon 125 GLL points
+        ! Hejun Zhu OCT16,2009
+
+        ! input: myrank,
+        !        xstore,ystore,zstore ----- input GLL point coordinate
+        !        xigll,yigll,zigll ----- GLL points position
+        !        ispec,nspec       ----- element number
+
+        ! output: xixstore, xiystore, xizstore,
+        !         etaxstore,etaystore,etazstore,
+        !         gammaxstore,gammaystore,gammazstore ------ parameters used to calculate Jacobian
+        subroutine recalc_jacobian_gll3D(self)
+            use params, only: verbose
+            implicit none
+            include "constants.h"
+            class(SetMesh) :: self
+
+            ! input parameter
+            integer :: ispec
+
+            ! local parameters for this subroutine
+            double precision,dimension(self%NGLLX) :: hxir,hpxir
+            double precision,dimension(self%NGLLY) :: hetar,hpetar
+            double precision,dimension(self%NGLLZ) :: hgammar,hpgammar
+
+            double precision :: xxi,xeta,xgamma,yxi,yeta,ygamma,zxi,zeta,zgamma
+            double precision :: xi1 ,eta,gamma
+            double precision :: hlagrange,hlagrange_xi,hlagrange_eta,hlagrange_gamma
+            double precision :: jacobian,jacobian_inv
+            double precision :: xix,xiy,xiz,etax,etay,etaz,gammax,gammay,gammaz
+            double precision :: x,y,z
+
+            integer :: i,j,k,i1,j1,k1
+                
+
+            if(verbose.ge.2)then
+                write(*,'(/,a)')'• Setting up jacobian'
+            endif 
+    
+            call allocate_if_unallocated(3, 3, self%ngllx, self%nglly, self%ngllz, self%nspec, self%jac)
+            call allocate_if_unallocated(3, 3, self%ngllx, self%nglly, self%ngllz, self%nspec, self%jacinv)
+            call allocate_if_unallocated(self%ngllx, self%nglly, self%ngllz, self%nspec, self%detjac)
+    
+            self%detjac = zero 
+            self%jac    = zero 
+    
+
+
+            ! first go over all 125 GLL points
+            do ispec = 1, self%nspec
+                do k = 1, self%NGLLZ
+                    do j = 1, self%NGLLY
+                        do i = 1, self%NGLLX
+
+                        ! Assumes ngll same in all directions
+                        xi1   = self%xi(i)
+                        eta   = self%xi(j)
+                        gamma = self%xi(k)
+
+
+                        ! calculate Lagrange polynomial and its derivative
+                        call lagrange_any(xi1,    self%NGLLX, self%xi, hxir,   hpxir)
+                        call lagrange_any(eta,   self%NGLLY,  self%xi, hetar,  hpetar)
+                        call lagrange_any(gamma, self%NGLLZ,  self%xi, hgammar,hpgammar)
+
+                        xxi     = ZERO
+                        xeta    = ZERO
+                        xgamma  = ZERO
+                        yxi     = ZERO
+                        yeta    = ZERO
+                        ygamma  = ZERO
+                        zxi     = ZERO
+                        zeta    = ZERO
+                        zgamma  = ZERO
+
+                        do k1 = 1, self%NGLLZ
+                            do j1 = 1, self%NGLLY
+                                do i1 = 1, self%NGLLX
+
+                                hlagrange = hxir(i1) * hetar(j1) * hgammar(k1)
+                                hlagrange_xi = hpxir(i1) * hetar(j1) * hgammar(k1)
+                                hlagrange_eta = hxir(i1) * hpetar(j1) * hgammar(k1)
+                                hlagrange_gamma = hxir(i1) * hetar(j1) * hpgammar(k1)
+
+                                x = self%xstore(i1,j1,k1,ispec)
+                                y = self%ystore(i1,j1,k1,ispec)
+                                z = self%zstore(i1,j1,k1,ispec)
+
+                                xxi     = xxi    + x * hlagrange_xi
+                                xeta    = xeta   + x * hlagrange_eta
+                                xgamma  = xgamma + x * hlagrange_gamma
+
+                                yxi     = yxi    + y * hlagrange_xi
+                                yeta    = yeta   + y * hlagrange_eta
+                                ygamma  = ygamma + y * hlagrange_gamma
+
+                                zxi     = zxi    + z * hlagrange_xi
+                                zeta    = zeta   + z * hlagrange_eta
+                                zgamma  = zgamma + z * hlagrange_gamma
+                                enddo
+                            enddo
+                        enddo
+
+                        ! Determinany of the Jacobian calculation
+                        self%detjac(i,j,k,ispec) = xxi*(yeta*zgamma-ygamma*zeta) - &
+                                                   xeta*(yxi*zgamma-ygamma*zxi)  + &
+                                                   xgamma*(yxi*zeta-yeta*zxi)
+
+                        ! invert the relation (Fletcher p. 50 vol. 2)
+                        jacobian_inv = ONE / self%detjac(i,j,k,ispec)
+
+                        xix    = (yeta*zgamma-ygamma*zeta) * jacobian_inv
+                        xiy    = (xgamma*zeta-xeta*zgamma) * jacobian_inv
+                        xiz    = (xeta*ygamma-xgamma*yeta) * jacobian_inv
+                        etax   = (ygamma*zxi-yxi*zgamma) * jacobian_inv
+                        etay   = (xxi*zgamma-xgamma*zxi) * jacobian_inv
+                        etaz   = (xgamma*yxi-xxi*ygamma) * jacobian_inv
+                        gammax = (yxi*zeta-yeta*zxi) * jacobian_inv
+                        gammay = (xeta*zxi-xxi*zeta) * jacobian_inv
+                        gammaz = (xxi*yeta-xeta*yxi) * jacobian_inv
+
+                        ! resave the derivatives and the Jacobian
+                        ! distinguish between single and double precision for reals
+                        self%jacinv(1,1,i,j,k,ispec) = real(xix,    kind=CUSTOM_REAL)
+                        self%jacinv(2,1,i,j,k,ispec) = real(etax,   kind=CUSTOM_REAL)
+                        self%jacinv(3,1,i,j,k,ispec) = real(gammax, kind=CUSTOM_REAL)
+
+                        self%jacinv(1,2,i,j,k,ispec) = real(xiy,    kind=CUSTOM_REAL)
+                        self%jacinv(2,2,i,j,k,ispec) = real(etay,   kind=CUSTOM_REAL)
+                        self%jacinv(3,2,i,j,k,ispec) = real(gammay, kind=CUSTOM_REAL)
+
+                        self%jacinv(1,3,i,j,k,ispec) = real(xiz,    kind=CUSTOM_REAL)
+                        self%jacinv(2,3,i,j,k,ispec) = real(etaz,   kind=CUSTOM_REAL)
+                        self%jacinv(3,3,i,j,k,ispec) = real(gammaz, kind=CUSTOM_REAL)
+
+                        enddo ! i
+                    enddo ! j
+                enddo ! k
+            enddo ! ispec
+
+        end subroutine recalc_jacobian_gll3D
+
+
+
+
+
+
 
 
 
@@ -1308,9 +1459,9 @@ module specfem_mesh
             use params, only: datadir, IIN
             implicit none 
             class(SetMesh)     :: self
+
             call deallocate_if_allocated(self%wglljac)
             allocate(self%wglljac(self%ngllx,self%nglly,self%ngllz,self%nspec))
-        
             open(IIN, file=trim(datadir)//'/store/jacobian/wglljac_'//self%set_str, form='unformatted')
             read(IIN)self%wglljac
             close(IIN)
@@ -1668,11 +1819,10 @@ module specfem_mesh
                 do i = 1, self%ngllx
                     do j = 1, self%nglly
                         do k = 1, self%ngllz 
-                            self%wglljac(i,j,k,ispec) =real(self%wgll(i) * & 
-                                                    self%wgll(j) * & 
-                                                    self%wgll(k) * & 
-                                                    self%detjac(i,j,k,ispec), & 
-                                                    kind=SPLINE_REAL)
+                            self%wglljac(i,j,k,ispec) = self%wgll(i) * & 
+                                                        self%wgll(j) * & 
+                                                        self%wgll(k) * & 
+                                                        self%detjac(i,j,k,ispec)
                         enddo 
                     enddo
                 enddo 
@@ -1688,7 +1838,7 @@ module specfem_mesh
 
         subroutine setup_gll(self)
             use params, only: verbose
-            use gll, only: get_gll, lagrange1st
+            use gll, only: get_gll, lagrange1st, zwgljd
             implicit none 
             class(SetMesh) :: self
 
@@ -1701,7 +1851,10 @@ module specfem_mesh
             call allocate_if_unallocated(self%ngllx, self%xi)
             call allocate_if_unallocated(self%ngllx, self%wgll)
 
-            call get_gll(self%ngllx-1, self%xi, self%wgll)
+            call zwgljd(self%xi,self%wgll,self%ngllx,zero,zero)
+
+
+            !call get_gll(self%ngllx-1, self%xi, self%wgll)
 
             if (verbose.ge.5)then 
                 write(*,'(/,a)')'• Setup GLL points'

@@ -37,7 +37,7 @@ program compute_vani_splitting
 
     ! KD tree: 
     type(KdTree)           :: tree
-    type(SetMesh)          :: sm 
+    type(SetMesh)          :: sm  
     type(Mode)             :: mode_1 
 
     ! Switches 
@@ -47,11 +47,11 @@ program compute_vani_splitting
     logical, parameter :: force_VTI     = .true.
 
     ! Modes: 
-    !integer, dimension(20), parameter :: modeNs = (/2, 3, 9, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27, 6/)
-    !integer, dimension(20), parameter :: modeLs = (/3, 2, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2, 10/)
+    integer, dimension(20), parameter :: modeNs = (/9, 2, 3, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27, 6/)
+    integer, dimension(20), parameter :: modeLs = (/2, 3, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2, 10/)
     
-    integer, dimension(16), parameter :: modeNs = (/6, 6, 6, 6, 6,  6,  6,  6, 6, 6, 6, 6, 6, 6, 6, 6 /)
-    integer, dimension(16), parameter :: modeLs = (/1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16/)
+    !integer, dimension(16), parameter :: modeNs = (/6, 6, 6, 6, 6, 6, 6, 6, 6,  6, 6, 6, 6, 6, 6, 6 /)
+    !integer, dimension(16), parameter :: modeLs = (/1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16/)
 
  
 #ifdef WITH_MPI
@@ -113,11 +113,11 @@ region = 3
 call load_voronoi_model()
 
 ! Benchmark value
-!vor_A =  0.4d0
-!vor_C = -0.2d0
-!vor_L =  0.3d0
-!vor_N = -0.5d0
-!vor_F =  0.1d0
+vor_A =  0.4d0
+vor_C = -0.2d0
+vor_L =  0.3d0
+vor_N = -0.5d0
+vor_F =  0.1d0
 
 
 tree = KdTree(vor_x, vor_y, vor_z) 
@@ -127,11 +127,9 @@ tree = KdTree(vor_x, vor_y, vor_z)
     call mineos%load_mineos_radial_info_MPI()
 #else
     ! Read mineos model 
-    call mineos%process_mineos_model(.false.) 
+    call mineos%process_mineos_model(.true.) 
 #endif
 mineos_ptr => mineos
-
-
 
 
 
@@ -226,8 +224,11 @@ do i_mode = 1, nmodes
     if(myrank.eq.0)then 
         call buffer_int(nstr, n1)
         call buffer_int(lstr, l1)
-        out_name =  './output/sem_fast_'//trim(nstr)//t1//trim(lstr)// '.txt'
-
+        if(force_VTI)then 
+            out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'_VTI.txt'
+        else 
+            out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
+        endif 
         Vani = Vani_modesum
         call save_Vani_matrix(l1, out_name)
         deallocate(Vani_modesum)
@@ -237,7 +238,12 @@ do i_mode = 1, nmodes
 #else
     call buffer_int(nstr, n1)
     call buffer_int(lstr, l1)
-    out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)// '.txt'
+    if(force_VTI)then 
+        out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'_VTI.txt'
+    else 
+        out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
+    endif 
+    
     call save_Vani_matrix(l1, out_name)
 #endif
     deallocate(Vani)

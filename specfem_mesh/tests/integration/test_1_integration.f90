@@ -19,9 +19,6 @@ program integrate_mesh_1
     type(SetMesh) :: sm 
 
 
-    ! Read mineos model 
-    call mineos%process_mineos_model(.false.)
-
     ! Initialise the integral
     totalint_1 = zero 
     totalint_r = zero 
@@ -32,17 +29,25 @@ program integrate_mesh_1
         call sm%read_proc_coordinates()
         call sm%load_ibool()
         call sm%setup_gll()
-        call sm%compute_jacobian(.false.)
-        call sm%get_unique_radii(.false.)
+        call sm%recalc_jacobian_gll3D()
         call sm%compute_rtp_from_xyz(.false.)
-        
-        
+        call sm%compute_wglljac(.false.)
+
         call allocate_if_unallocated(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, integrand)
 
 
         ! Just integration 1 over the whole IC 
-        integrand(:,:,:,:) = ONE
-        integral_1 = integrate_over_mesh(sm, integrand)
+        integral_1 = zero 
+        do ispec = 1, sm%nspec 
+            do i = 1, sm%ngllx 
+                do j = 1, sm%nglly 
+                    do k = 1, sm%ngllz 
+                        integral_1 = integral_1 + 1.0d0 * sm%wglljac(i,j,k,ispec)
+                    enddo 
+                enddo 
+            enddo 
+        enddo
+
         totalint_1 = totalint_1 + integral_1
 
         ! Set integral to = r for the IC 
@@ -50,7 +55,7 @@ program integrate_mesh_1
             do i = 1, sm%ngllx
                 do j = 1, sm%nglly
                     do k = 1, sm%ngllz
-                        integrand(i,j,k,ispec) =  real(sm%rstore(i,j,k,ispec),CUSTOM_REAL)
+                        integrand(i,j,k,ispec) =  sm%rstore(i,j,k,ispec)
                     enddo 
                 enddo 
             enddo 
