@@ -4,6 +4,7 @@ module spline
 
 
   contains 
+
  
 
   subroutine quad_spline_interp_3(x_in, y_in, n_in, x_out, y_out, n_out)
@@ -61,10 +62,17 @@ module spline
       b(4) = y1
       b(5) = y2
 
+      if(SPLINE_REAL.eq.4)then
+        call sgesv(6, 1, A, 6, junk, b, 6, info)
 
-      call sgesv(6, 1, A, 6, junk, b, 6, info)
+      elseif(SPLINE_REAL.eq.8)then 
+        call dgesv(6, 1, A, 6, junk, b, 6, info)
+      else 
+        write(*,*)'ERROR IN ?gtsv: we only programmed for SPLINE_REAL = 4, 8'
+        stop
+      endif 
       if(info.ne.0)then
-        write(*,*)'Error in quad_spline sgesv. stop'
+        write(*,*)'Error in quad_spline ?gesv. stop'
         stop
       endif
 
@@ -179,11 +187,18 @@ module spline
     dd(:) = A(2,:)
     bb(:) = b(:)
 
-    ! Solves tridiagional A eqn Ax = b for x and stores it in bb
-    call sgtsv(n, 1, dl, dd, du, bb, n, info)
+    ! Solves tridiagional A eqn Ax = b for x and stores it in bb)
+    if(SPLINE_REAL.eq.4)then
+      call sgtsv(n, 1, dl, dd, du, bb, n, info)
+    elseif(SPLINE_REAL.eq.8)then 
+      call dgtsv(n, 1, dl, dd, du, bb, n, info)
+    else 
+      write(*,*)'ERROR IN ?gtsv: we only programmed for SPLINE_REAL = 4, 8'
+      stop
+    endif 
 
     if (info.ne.0)then 
-      write(*,*)'Error in sgtsv, info =', info
+      write(*,*)'Error in ?gtsv, info =', info
       stop
     endif
 
@@ -216,6 +231,11 @@ module spline
 
 
   end subroutine cubic_spline_interp
+
+
+
+
+
 
 
 

@@ -76,12 +76,12 @@ module integrate
 
         ! IO variables
         integer :: n
-        real(kind=CUSTOM_REAL) r(n)
-        real(kind=SPLINE_REAL) f(n)
+        real(kind=8) r(n)
+        real(kind=4) f(n)
 
         ! Local variables
         integer :: i 
-        real(kind=SPLINE_REAL) sum, dr(n-1)
+        real(kind=4) sum, dr(n-1)
         
         if(n .lt. 2)then 
             write(*,*)'Error: must be at least 2 points to integrate'
@@ -102,37 +102,35 @@ end function integrate_r_traps_real_4
 
 
 real(kind=8) function integrate_r_traps_real_8(r, f, n)
-! integrates a radial function f(r) using a trapesoid method
+    ! integrates a radial function f(r) using a trapesoid method
 
-implicit none
-include "constants.h"
+    implicit none
+    include "constants.h"
 
-! IO variables
-integer :: n
-real(kind=CUSTOM_REAL) r(n)
-real(kind=CUSTOM_REAL) f(n)
+    ! IO variables
+    integer :: n
+    real(kind=8) r(n)
+    real(kind=8) f(n)
 
-! Local variables
-integer :: i 
-real(kind=CUSTOM_REAL) sum, dr(n-1)
+    ! Local variables
+    integer :: i 
+    real(kind=8) sum, dr(n-1)
 
-if(n .lt. 2)then 
-    write(*,*)'Error: must be at least 2 points to integrate'
-elseif(n.eq.2)then 
-    sum = real(r(2)-r(1),  kind=CUSTOM_REAL) *  (f(1)+f(2))/TWO 
-else
-    dr(:) = real(r(2:n)-r(1:n-1), kind=CUSTOM_REAL)
+    if(n .lt. 2)then 
+        write(*,*)'Error: must be at least 2 points to integrate'
+    elseif(n.eq.2)then 
+        sum = real(r(2)-r(1),  kind=8) *  (f(1)+f(2))/TWO 
+    else
+        dr(:) = real(r(2:n)-r(1:n-1), kind=8)
 
-    sum = zero
-    do i = 1, n-1
-        sum = sum +  dr(i)*(f(i) + f(i+1))/TWO
-    enddo 
-endif
+        sum = zero
+        do i = 1, n-1
+            sum = sum +  dr(i)*(f(i) + f(i+1))/TWO
+        enddo 
+    endif
 
-integrate_r_traps_real_8 = sum
+    integrate_r_traps_real_8 = sum
 end function integrate_r_traps_real_8
-
-
 
 
 

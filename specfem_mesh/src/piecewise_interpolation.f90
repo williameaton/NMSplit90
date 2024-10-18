@@ -401,9 +401,16 @@ module piecewise_interpolation
 
 
         subroutine cleanup(self)
+            use allocation_module, only: deallocate_if_allocated
             implicit none 
 
             class(InterpPiecewise) :: self
+
+                call deallocate_if_allocated(self%orig_id)
+                call deallocate_if_allocated(self%n_per_sec)
+                call deallocate_if_allocated(self%sec_rad)
+                call deallocate_if_allocated(self%sec_spl)
+                call deallocate_if_allocated(self%radial)
 
         end subroutine cleanup
 

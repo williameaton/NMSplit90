@@ -14,7 +14,7 @@ program tromp_1995
 
     integer :: i, j, k, l, m, n, n1, s, q, ispec, lentrim, iproc, region, m1, m2, knot_lower, knot_upper, is
     character(len=1)   :: t1
-    character(len=30)  :: out_name
+    character(len=250)  :: out_name, outfmt
     real(SPLINE_REAL)  :: sum
     integer :: npoints
     real(kind=CUSTOM_REAL) r_lower, r_upper
@@ -22,7 +22,7 @@ program tromp_1995
     real(SPLINE_REAL) :: val, lf, mf, kf
     integer, dimension(5), parameter :: I_n = (/ 5, 3, 3, 1, 1/)
     real(kind=CUSTOM_REAL) :: dA, dC, dL, dN, dF, thirty, twone
-
+    integer :: nl, ll 
     type(Mode)            :: mode_1
     type(InterpPiecewise) :: interp
 
@@ -39,7 +39,10 @@ program tromp_1995
     mineos_ptr => mineos
 
     ! Choose a mode: 
-    mode_1 = get_mode(6, 'S', 10, mineos_ptr)
+    nl = 6
+    ll = 2
+
+    mode_1 = get_mode(nl, 'S', ll, mineos_ptr)
 
     allocate(Vani(mode_1%tl1, mode_1%tl1))
     Vani = SPLINE_iZERO
@@ -108,7 +111,21 @@ program tromp_1995
         enddo 
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/radial_', mode_1%n, mode_1%t, mode_1%l, '.txt'
+    outfmt = '(a,' !i1,a,i1,a)'
+    if(nl.ge.10)then 
+        outfmt = trim(outfmt)//'i2'
+    else 
+        outfmt = trim(outfmt)//'i1'
+    endif 
+    outfmt = trim(outfmt)//',a,'
+    if(ll.ge.10)then 
+        outfmt = trim(outfmt)//'i2'
+    else 
+        outfmt = trim(outfmt)//'i1'
+    endif 
+    outfmt = trim(outfmt)//',a)'
+
+    write(out_name, trim(outfmt))'./v_ani_matrix/radial_', mode_1%n, mode_1%t, mode_1%l, '.txt'
     call save_Vani_matrix(mode_1%l, out_name)
 
 

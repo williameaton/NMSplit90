@@ -296,7 +296,8 @@ contains
         mf = real(m, kind=CUSTOM_REAL)
 
         ! Assign complex Ylm
-        ylm_complex =  cmplx(cosp(mf*phi), sinp(mf*phi)) * xlm(l,m,theta)
+        ylm_complex =  cmplx(cosp(mf*phi), sinp(mf*phi), kind=CUSTOM_REAL) & 
+                       * xlm(l,m,theta)
 
         
 
@@ -342,7 +343,8 @@ contains
         ! d Ylm / d phi:
         ! ylm_complex   = cmplx(cos(mf*phi)*xlm, sin(mf*phi)*xlm)
         ! d Ylm / d phi = Xlm(theta) * (-msin(m phi) + im cos(m phi) )
-        dylm_dphi = cmplx(-mf*sinp(mf*phi), mf*cosp(mf*phi)) * xlm(l,m,theta)
+        dylm_dphi = cmplx(-mf*sinp(mf*phi), mf*cosp(mf*phi), kind=CUSTOM_REAL) & 
+                     * xlm(l,m,theta)
 
         ! d Ylm / d theta:
         ! DT98 B.120
@@ -357,7 +359,7 @@ contains
                            xlm(l, m-1, theta) * ((lf+mf)*(lf-mf+one))**half    )
   
 
-        dylm_dth = cmplx(cosp(mf*phi), sinp(mf*phi)) * dxlm_dt
+        dylm_dth = cmplx(cosp(mf*phi), sinp(mf*phi), kind=CUSTOM_REAL) * dxlm_dt
 
         !write(*,*)'dylm_dth :', dylm_dth
         ! Wolfram alpha solution but note their Ylm doesnt contain the (-1)**m 

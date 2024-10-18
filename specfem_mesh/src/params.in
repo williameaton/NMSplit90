@@ -7,11 +7,13 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose      = 0
-logical, parameter :: all_warnings = .false.
+integer, parameter :: verbose       = 5
+logical, parameter :: all_warnings  = .false.
+logical, parameter :: safety_checks = .true.
 
 integer, parameter :: nprocs       = @n_sets@
 integer, parameter :: nmodes       = @n_modes@
+
 
 ! Specfem mesh files: 
 character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets@n_sets@/'
@@ -33,12 +35,13 @@ real(kind=CUSTOM_REAL), allocatable :: vp(:)         ! Non Dimensionalised
 
 
 ! Radial discontinuities
-!   ndisc: number of discontinuities
-!   rdisc: radius of discontinuities
+!   ndisc: number of discontinuities (plus 0 and surface)
+!   rdisc: radius of discontinuities (plus 0 and surface)
 !   disc: knot ID of discontinuity (-ve side)
 integer :: ndisc
 integer, allocatable                :: disc(:)  
 real(kind=CUSTOM_REAL), allocatable :: rdisc(:)  
+real(kind=CUSTOM_REAL), allocatable :: rdisc_norm(:)   ! between 0 and 1
 
 
 ! Mesh coordinates 
@@ -54,7 +57,6 @@ real(kind=CUSTOM_REAL), allocatable :: unique_r(:)
 integer :: n_unique_rad
 integer, allocatable :: rad_id(:, :, :, :)  ! Points to the unique radius
 integer, allocatable :: interp_id_r(:)
-integer, allocatable :: interp_map(:)
 
 
 ! GLL values
@@ -64,7 +66,7 @@ integer :: ngllx
 integer :: nglly
 integer :: ngllz
 real(kind=CUSTOM_REAL), allocatable :: xi(:), wgll(:), dgll(:,:)
-real(kind=SPLINE_REAL), allocatable :: wglljac(:,:,:,:)
+
 
 
 

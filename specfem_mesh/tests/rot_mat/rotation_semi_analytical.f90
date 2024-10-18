@@ -156,6 +156,5 @@ program semi_analytical_W_matrix
 
     call save_W_matrix(mode_1%l, mode_2%l, trim(out_name))
 
-    write(*,*)'wmat: ',wmat
 
 end program semi_analytical_W_matrix

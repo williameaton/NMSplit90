@@ -312,9 +312,14 @@ contains
             self_coupling = .false.
         endif 
 
+
+
         ! Load modes and interpolates eigenfunctions:  
         mode_1 =  get_mode(n1, t1, l1, mineos_ptr)
+
+
         call sm%interp%interpolate_mode_eigenfunctions(mode_1)
+
 
         if(.not.self_coupling)then 
             mode_2 =  get_mode(n2, t2, l2, mineos_ptr)
@@ -324,17 +329,33 @@ contains
             allocate(sm%strain2(6, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
         endif
 
+
+
         ! Allocate the strain for this proc. 
         call deallocate_if_allocated(sm%strain1)
         allocate(sm%strain1(6,sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
 
+
+
+
         do m1 = -l1, l1
             ! Compute strain and store if desired
+
+
             call sm%compute_mode_strain(m1, mode_1, sm%strain1)
+
+
+
             call sm%rotate_complex_sym_matrix_rtp_to_xyz(sm%strain1)
+
+
             if(store)then
+
+
                 call sm%save_mode_strain_binary(n1, t1, l1, m1, 1)
             endif      
+
+
 
             if(self_coupling) then 
                 ! Only need 1 strain 
@@ -389,6 +410,9 @@ contains
                 enddo ! m2 
             endif 
         enddo ! m1
+
+
+
 
     end subroutine compute_Vani_matrix
 
@@ -1146,12 +1170,12 @@ contains
 
     
         do m = 1, l
-            m_ind  = l+m+1
+            m_ind    = l+m+1
             n_m_ind  = l-m+1
 
             do md = 1, ld 
-                f_md   = real(md)
-                md_ind = ld+md+1
+                f_md     = real(md)
+                md_ind   = ld+md+1
                 n_md_ind = ld-md+1
             
                 ! Upper left quadrant
@@ -1167,13 +1191,13 @@ contains
                                         ((-one)**f_md) * Im(m_ind, n_md_ind))
 
                 ! Lower left quadrant
-                Re(m_ind, n_md_ind) = -aimag( Im(m_ind, md_ind) + &
+                Re(m_ind, n_md_ind) = - aimag( Im(m_ind, md_ind) + &
                                         ((-one)**f_md) * Im(m_ind, n_md_ind))
           
-                ! D.159 a
+                ! D.159 b
                 Re(l+1, n_md_ind) = (two**half) * real(Im(l+1, md_ind))
-                ! D.160 a
-                Re(l+1, md_ind)   = (two**half) * aimag(Im(l+1, md_ind))
+                ! D.160 b: note there is (I think) a sign error in the book
+                Re(l+1, md_ind)   = - (two**half) * aimag(Im(l+1, md_ind))
 
             enddo 
 
@@ -1181,7 +1205,7 @@ contains
             Re(m_ind,   ld+1) = (two**half)*aimag(Im(m_ind, ld+1))   !D.160 a 
         enddo 
 
-        ! D.161 
+        ! D.161 central value
         Re(l+1, ld+1) = Im(l+1, ld+1)
 
 

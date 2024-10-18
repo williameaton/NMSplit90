@@ -7,15 +7,15 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose       = 0 
+integer, parameter :: verbose       = 0
 logical, parameter :: all_warnings  = .false.
-logical, parameter :: safety_checks = .true.
+logical, parameter :: safety_checks = .false.
 
 integer, parameter :: nprocs       = 8
-integer, parameter :: nmodes       = 20
+integer, parameter :: nmodes       = 28
 
 ! Specfem mesh files: 
-character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX240/sliced/linear/sets8/'
+character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets8/'
 
 ! Mineos model parameters: 
 character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'

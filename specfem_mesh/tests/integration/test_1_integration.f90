@@ -29,9 +29,8 @@ program integrate_mesh_1
         call sm%read_proc_coordinates()
         call sm%load_ibool()
         call sm%setup_gll()
-        call sm%recalc_jacobian_gll3D()
-        call sm%compute_rtp_from_xyz(.false.)
-        call sm%compute_wglljac(.false.)
+        call sm%compute_jacobian(.false.)
+        call sm%compute_wglljac(.true.)
 
         call allocate_if_unallocated(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, integrand)
 
@@ -50,6 +49,8 @@ program integrate_mesh_1
 
         totalint_1 = totalint_1 + integral_1
 
+
+        call sm%compute_rtp_from_xyz(.false.)
         ! Set integral to = r for the IC 
         do ispec = 1, sm%nspec 
             do i = 1, sm%ngllx

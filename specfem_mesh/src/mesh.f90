@@ -1097,6 +1097,7 @@ module specfem_mesh
             ! Loop variables 
             integer :: ispec, i, j, k, h
         
+
             mf  = real(m, kind=SPLINE_REAL)           ! float m
 
             tl14p = ((SPLINE_TWO*m0de%lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2

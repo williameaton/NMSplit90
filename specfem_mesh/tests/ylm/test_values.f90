@@ -12,12 +12,12 @@ program test_ylm_values
     theta = 0.5 
     phi   = 0.124
 
-    ei1p = cmplx(cosp(phi), sinp(phi))
-    ei1m = cmplx(cosp(-phi), sinp(-phi))
-    ei2p = cmplx(cosp(two*phi), sinp(phi*two))
-    ei2m = cmplx(cosp(-phi*two), sinp(-phi*two))
-    ei3p = cmplx(cosp(three*phi), sinp(phi*three))
-    ei3m = cmplx(cosp(-phi*three), sinp(-phi*three))
+    ei1p = cmplx(cosp(phi), sinp(phi),kind=CUSTOM_REAL)
+    ei1m = cmplx(cosp(-phi), sinp(-phi),kind=CUSTOM_REAL)
+    ei2p = cmplx(cosp(two*phi), sinp(phi*two),kind=CUSTOM_REAL)
+    ei2m = cmplx(cosp(-phi*two), sinp(-phi*two),kind=CUSTOM_REAL)
+    ei3p = cmplx(cosp(three*phi), sinp(phi*three),kind=CUSTOM_REAL)
+    ei3m = cmplx(cosp(-phi*three), sinp(-phi*three),kind=CUSTOM_REAL)
 
     sinth = sinp(theta)
     costh = cosp(theta)
