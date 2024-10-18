@@ -6,6 +6,15 @@
 *.pytest_cache
 *__pycache__*
 *.DS_Store*
+*.dirstamp
+
+
+# Unwanted filetypes: 
+*.pdf 
+*.txt
+*slurm*
+*.Po
+
 
 # Some directories
 *DATABASES_MPI*
@@ -18,7 +27,12 @@ get_mode/*
 
 
 # AC generated stuff: 
-specfem_mesh/configure
+traces.* 
+output.*
+specfem_mesh/tests/autom4te* 
+specfem_mesh/Makefile 
+*Makefile.in
+specfem_mesh/*configure
 specfem_mesh/AUTHORS
 specfem_mesh/README
 specfem_mesh/ChangeLog
@@ -26,14 +40,14 @@ specfem_mesh/INSTALL
 specfem_mesh/Makefile.in
 specfem_mesh/aclocal.m4
 specfem_mesh/autom4te.cache/*
-specfem_mesh/config.log
-specfem_mesh/config.status
-specfem_mesh/depcomp
-specfem_mesh/install-sh
-specfem_mesh/NEWS
-specfem_mesh/COPYING
-specfem_mesh/missing
-specfem_mesh/fort.*
+specfem_mesh/*config.log
+specfem_mesh/*config.status
+specfem_mesh/*depcomp
+specfem_mesh/*install-sh
+specfem_mesh/*NEWS
+specfem_mesh/*COPYING
+specfem_mesh/*missing
+specfem_mesh/*fort.*
 
 
 
@@ -48,4 +62,24 @@ specfem_mesh/tests/v_ani_matrix/*.pdf
 integrate_mesh
 read_mesh
 split_mesh
-
+configure 
+kdtree
+plot_vani
+specfem_mesh/tests/test_1_integration
+specfem_mesh/tests/test_3j
+specfem_mesh/tests/test_cst_to_mat
+specfem_mesh/tests/test_mode_norm
+specfem_mesh/tests/test_plm_function
+specfem_mesh/tests/test_wrot
+specfem_mesh/tests/test_spline
+specfem_mesh/tests/test_tromp1995
+specfem_mesh/tests/test_vani_diag
+specfem_mesh/tests/test_vani_fast
+specfem_mesh/tests/test_xlm
+specfem_mesh/tests/test_wstored
+specfem_mesh/tests/test_ylm_values
+specfem_mesh/tests/test_ylm_integration
+specfem_mesh/tests/test_ylm_function
+specfem_mesh/tests/test_plm_values
+specfem_mesh/tests/test_plm_function
+specfem_mesh/tests/rotation_semi

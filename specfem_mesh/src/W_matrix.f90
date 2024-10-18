@@ -35,7 +35,6 @@ subroutine compute_W_matrix(SM, interp, n1, t1, l1, n2, t2, l2, store)
     allocate(rho_spl(interp%n_radial))
     call interp%interpolate_mineos_variable(real(interp%m%rho_mineos, kind=SPLINE_REAL), rho_spl)
 
-    write(*,*)'minmax of rho:', minval(rho_spl), maxval(rho_spl)
     
     if(store)then
         call save_rhospline_binary(sm%unique_r, rho_spl, sm%n_unique_rad, sm%iset)

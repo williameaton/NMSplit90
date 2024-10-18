@@ -13,8 +13,8 @@ module modes
         integer                    :: len
         integer                    :: spl_len
         character(len=1)           :: t 
-        real(kind=SPLINE_REAL)     :: wcom
-        real(kind=SPLINE_REAL)     :: qmod
+        real(kind=4)               :: wcom
+        real(kind=4)               :: qmod
         real(kind=SPLINE_REAL)     :: lf         ! float version of l
         real(kind=SPLINE_REAL)     :: kf         ! float of k = √(l(l+1))
         type(MineosModel), pointer :: mineos
@@ -205,22 +205,23 @@ module modes
         ! Format buffer into arrays 
         if(ntype.eq.1 .or. ntype.eq.4)then
             ! Toroidal only
-            self%w(1  : self%len) = buf(1 : self%len)
-            self%dw(1 : self%len) = buf(self%len + 1 : 2 * self%len)
+            self%w(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)
+            self%dw(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL)
         else
             ! Spheroidal 
-            self%u(1  : self%len) = buf(1 : self%len)
-            self%du(1 : self%len) = buf(self%len + 1 : 2 * self%len)
+            self%u(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)
+            self%du(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL)
             if (ntype == 2) then
                 ! Radial
-                self%v(1 : self%len)  = 0.
-                self%dv(1 : self%len) = 0.
+                self%v(1 : self%len)  = SPLINE_ZERO
+                self%dv(1 : self%len) = SPLINE_ZERO
             else if (ntype == 3) then
                 ! Spheroidal
-                self%v(1 : self%len)  = buf(2 * self%len + 1 : 3 * self%len)
-                self%dv(1 : self%len) = buf(3 * self%len + 1 : 4 * self%len)
+                self%v(1 : self%len)  = real(buf(2 * self%len + 1 : 3 * self%len), kind=SPLINE_REAL)
+                self%dv(1 : self%len) = real(buf(3 * self%len + 1 : 4 * self%len), kind=SPLINE_REAL)
             endif
         endif
+
     
     end subroutine get_mineos_mode
 

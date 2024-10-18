@@ -10,13 +10,13 @@ program test_ylm
     theta = 0.5 
     phi   = 0.124
 
-    ! Write Plms for testing
+    ! Write Ylms for testing
     open(unit=1,file='ylm/testylm.txt', &
     status='unknown',form='formatted',action='write')
     do l = 0,10
         do m = - l, + l
-            rr = ylm_real(l, m, theta, phi)
-            write(1,*)l, m, rr
+            rr = ylm_complex(l, m, theta, phi)
+            write(1,*)l, m, real(rr)
         enddo 
     enddo
     close(1)

@@ -31,7 +31,6 @@ program compute_vani_splitting
     character(len=2) nstr, lstr
     character(len=12) nprocstr, nmodestr, timing_fmt_vals
     character(len=250) :: out_name
-    real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
 
     complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
 
@@ -42,16 +41,13 @@ program compute_vani_splitting
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin = .true.
-    logical, parameter :: save_to_bin   = .false.
+    logical, parameter :: load_from_bin = .false.
+    logical, parameter :: save_to_bin   = .true.
     logical, parameter :: force_VTI     = .true.
 
     ! Modes: 
-    integer, dimension(20), parameter :: modeNs = (/9, 2, 3, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27, 6/)
-    integer, dimension(20), parameter :: modeLs = (/2, 3, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2, 10/)
-    
-    !integer, dimension(16), parameter :: modeNs = (/6, 6, 6, 6, 6, 6, 6, 6, 6,  6, 6, 6, 6, 6, 6, 6 /)
-    !integer, dimension(16), parameter :: modeLs = (/1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16/)
+    integer, dimension(28), parameter :: modeNs = (/5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
+    integer, dimension(28), parameter :: modeLs = (/3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
 
  
 #ifdef WITH_MPI
@@ -158,9 +154,9 @@ endif
 
 
 do i_mode = 1, nmodes
-    n1      = modeNs(i_mode)
+    n1      =  modeNs(i_mode)
     t1      = 'S'
-    l1      = modeLs(i_mode)
+    l1      =  modeLs(i_mode)
 
     mode_1  = get_mode(n1, t1, l1, mineos_ptr)
 
@@ -187,6 +183,7 @@ do i_mode = 1, nmodes
             call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, & 
                                                    vor_N, vor_F, glob_eta1, glob_eta2)
         endif 
+
 
 
 

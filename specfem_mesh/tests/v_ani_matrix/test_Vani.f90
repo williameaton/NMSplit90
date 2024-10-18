@@ -24,11 +24,11 @@ program test_constant_Vani_matrix
     ! Choose modes: 
     n1      = 6
     t1      = 'S'
-    l1      = 10
+    l1      = 2
 
     n2      = 6
     t2      = 'S'
-    l2      = 10
+    l2      = 2
 
     A =  0.4d0
     C = -0.2d0
