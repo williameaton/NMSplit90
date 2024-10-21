@@ -14,6 +14,7 @@ bin_PROGRAMS = test_plm_function    \
                test_ylm_integration \
                test_mode_norm       \
                rotation_semi        \
+               semi_whole           \
                test_wrot            \
                test_wstored         \
                test_spline          \
@@ -21,7 +22,9 @@ bin_PROGRAMS = test_plm_function    \
                test_xlm             \
                test_ylm_function    \
                test_ylm_values      \
-               test_cst_to_mat
+               test_cst_to_mat      \
+               tmat_semi            \
+               test_tmat
 
 d_cst  = cst
 d_plm  = plm
@@ -33,11 +36,12 @@ d_spl  = spline
 d_wig  = wj3
 d_xlm  = xlm
 d_ylm  = ylm
+d_tmat = Tmat
 
 
 # Define basic sources groups 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90  \
-             ylm_plm.f90 thrj.f90
+             ylm_plm.f90 thrj.f90 woodhouse.f90
 
 MED_SRCS =  $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90 \
                           mode.f90 piecewise_interpolation.f90  \
@@ -45,6 +49,7 @@ MED_SRCS =  $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90 \
 
 
 VANI_SRCS = $(MED_SRCS) cuda_proxies.f90 V_ani_matrix.f90
+TMAT_SRCS = $(MED_SRCS) cst.f90 $(d_tmat)/rho_st.f90 T_matrix.f90
 INT_SRCS  = $(MED_SRCS)
 WMAT_SRCS = $(MED_SRCS) W_matrix.f90
 SPL_SRCS  = $(MED_SRCS)
@@ -63,6 +68,7 @@ test_ylm_integration_SOURCES  = $(INT_SRCS)   $(d_int)/test_ylm_integration.f90
 test_mode_norm_SOURCES        = $(MED_SRCS)   $(d_norm)/test_mode_normalisation.f90
 test_wrot_SOURCES             = $(WMAT_SRCS)  $(d_wrm)/test_rotation_matrix.f90
 rotation_semi_SOURCES         = $(WMAT_SRCS)  $(d_wrm)/rotation_semi_analytical.f90
+semi_whole_SOURCES            = $(WMAT_SRCS)  $(d_wrm)/test_semi_whole.f90
 test_wstored_SOURCES          = $(WMAT_SRCS)  $(d_wrm)/test_stored_Wmat.f90
 test_spline_SOURCES           = $(SPL_SRCS)   $(d_spl)/test_spline.f90
 test_3j_SOURCES               = $(SETUP_SRCS) $(d_wig)/test_wj3.f90
@@ -70,6 +76,9 @@ test_xlm_SOURCES              = $(XLM_SRCS)   $(d_xlm)/test_xlm.f90
 test_ylm_function_SOURCES     = $(SHRM_SRCS)  $(d_ylm)/test_ylm.f90
 test_ylm_values_SOURCES       = $(SHRM_SRCS)  $(d_ylm)/test_values.f90
 test_cst_to_mat_SOURCES       = $(CST_SRCS)   $(d_cst)/test_cst_to_mat.f90
+tmat_semi_SOURCES             = $(TMAT_SRCS)  $(d_tmat)/tmat_radial.f90
+test_tmat_SOURCES             = $(TMAT_SRCS)  $(d_tmat)/tmat_sem.f90
+
 
 # Test groups: 
 plm_tests:  test_ylm_function test_ylm_values

@@ -338,7 +338,7 @@ module piecewise_interpolation
                 ! toroidal
                 allocate(Mmode%w_spl(self%n_radial))
                 allocate(Mmode%dw_spl(self%n_radial))
-                call self%interpolate_mineos_variable(Mmode%w, Mmode%w_spl)
+                call self%interpolate_mineos_variable(Mmode%w,  Mmode%w_spl)
                 call self%interpolate_mineos_variable(Mmode%dw, Mmode%dw_spl)
             else 
                 ! spheroidal 
@@ -347,10 +347,9 @@ module piecewise_interpolation
                 allocate(Mmode%du_spl(self%n_radial))
                 allocate(Mmode%dv_spl(self%n_radial))
 
-                call self%interpolate_mineos_variable(Mmode%u, Mmode%u_spl)
-
+                call self%interpolate_mineos_variable(Mmode%u,  Mmode%u_spl)
                 call self%interpolate_mineos_variable(Mmode%du, Mmode%du_spl)
-                call self%interpolate_mineos_variable(Mmode%v, Mmode%v_spl)
+                call self%interpolate_mineos_variable(Mmode%v,  Mmode%v_spl)
                 call self%interpolate_mineos_variable(Mmode%dv, Mmode%dv_spl)
 
             endif 
