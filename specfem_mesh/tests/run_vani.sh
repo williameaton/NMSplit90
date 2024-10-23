@@ -19,9 +19,9 @@ echo "Running test_tromp1995..."
 
 
 if [ "$skip_pytest" = false ]; then
-    pytest v_ani_matrix/test_vani.py
+    pytest Vani/test_vani.py
 fi
 if [ "$skip_cleanup" = false ]; then
-    cd v_ani_matrix/
+    cd Vani/
     bash cleanup.sh
 fi

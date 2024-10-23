@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 
 def test_vani():
-    ddir = "./v_ani_matrix/"
+    ddir = "./Vani/"
     t = 'S'
     ells = [2]
     ns = [6]

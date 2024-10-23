@@ -104,12 +104,8 @@ real(kind=CUSTOM_REAL), allocatable    :: Arad(:), Crad(:), Lrad(:), &
                                           Nrad(:), Frad(:)
 
 ! Spline arrays: 
-real(kind=SPLINE_REAL), allocatable :: u_spl(:),    &
-                                       udot_spl(:), &
-                                       v_spl(:),    &
-                                       vdot_spl(:), &
-                                       xx(:), zz(:),&
-                                       rho_spl(:),  &  
+real(kind=SPLINE_REAL), allocatable :: rho_spl(:),  &  
+                                       g_spl(:),  &  
                                        vp_spl(:),   & 
                                        A0(:)
 

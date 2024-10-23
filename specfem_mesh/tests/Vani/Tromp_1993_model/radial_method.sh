@@ -18,6 +18,7 @@ gfortran -llapack -lblas -I../../../src/ ./radial_method.f90 \
     ${src_dir}/ylm_plm.f90          \
     ${src_dir}/V_ani_matrix.f90  \
     ${src_dir}/gll.f90  \
+    ${src_dir}/thrj.f90  \
     ${src_dir}/output.f90              \
     -o radial_method
 ./radial_method

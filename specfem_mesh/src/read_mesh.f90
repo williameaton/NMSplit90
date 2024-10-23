@@ -10,7 +10,7 @@ implicit none
 type(SetMesh) :: sm 
 real(kind=8), allocatable :: proc_id(:)
 integer :: iset             
-integer, parameter :: region = 3
+integer, parameter :: region = 0
 
 ! Read mineos model 
 call mineos%process_mineos_model(.false.)

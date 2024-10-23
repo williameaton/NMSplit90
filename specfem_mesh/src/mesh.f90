@@ -64,14 +64,25 @@ module specfem_mesh
 
         ! Interpolation map for the mesh 
         type(InterpPiecewise) :: interp
-
         real(kind=CUSTOM_REAL),    allocatable :: Rmat(:,:,:)
 
         ! Field variables: 
         complex(kind=SPLINE_REAL), allocatable :: disp1(:,:, :, :, :)
         complex(kind=SPLINE_REAL), allocatable :: disp2(:,:, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: gradphi_1(:,:, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: gradphi_2(:,:, :, :, :)
         complex(kind=SPLINE_REAL), allocatable :: strain1(:, :, :, :, :)
         complex(kind=SPLINE_REAL), allocatable :: strain2(:, :, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: gradS_1(:, :, :, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: gradS_2(:, :, :, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: devE_1(:, :, :, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: devE_2(:, :, :, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: gSR_1( :, :, :, :, :)
+        complex(kind=SPLINE_REAL), allocatable :: gSR_2( :, :, :, :, :)
+
+        ! Magnitude of g 
+        real(kind=CUSTOM_REAL), allocatable :: gmag_at_r(:)
+
 
         contains 
              procedure :: get_unique_radii 
@@ -94,14 +105,20 @@ module specfem_mesh
             procedure :: compute_rtp_from_xyz
             procedure :: compute_rotation_matrix
             procedure :: rotate_complex_vector_rtp_to_xyz
+            procedure :: rotate_complex_matrix_rtp_to_xyz
             procedure :: rotate_complex_sym_matrix_rtp_to_xyz
             procedure :: compute_jacobian
             procedure :: recalc_jacobian_gll3D
             procedure :: save_get_mesh_radii_results
             procedure :: load_get_mesh_radii_results  
             procedure :: load_rho_spline
+            procedure :: compute_mode_gradphi
+            procedure :: compute_mode_grad_sr
             procedure :: compute_mode_displacement
             procedure :: compute_mode_strain
+            procedure :: compute_mode_gradS
+            procedure :: compute_strain_deviator
+            procedure :: compute_strain_deviator_congj
             procedure :: save_mode_disp_binary
             procedure :: load_mode_disp_binary
             procedure :: save_mode_strain_binary
@@ -116,6 +133,8 @@ module specfem_mesh
             procedure :: load_global_xyz
             procedure :: save_elem_rtp
             procedure :: load_elem_rtp
+            procedure :: compute_background_g
+
             procedure :: cleanup
     end type SetMesh
 
@@ -584,6 +603,29 @@ module specfem_mesh
                 enddo 
             enddo
         end subroutine rotate_complex_vector_rtp_to_xyz
+
+
+
+        subroutine rotate_complex_matrix_rtp_to_xyz(self, matrix)
+            implicit none  
+            class(SetMesh) :: self 
+            complex(kind=SPLINE_REAL) :: matrix(3,3,self%ngllx, self%nglly, self%ngllz, self%nspec)
+            complex(kind=SPLINE_REAL) :: RR(3,3)
+
+            integer :: i,j,k,ispec
+
+            do ispec = 1, self%nspec
+                do i = 1, self%ngllx
+                    do j = 1, self%nglly
+                        do k = 1, self%ngllz
+                            ! F' = R F R^t
+                            RR = real(self%Rmat(:,:,self%ibool(i,j,k,ispec)), kind=SPLINE_REAL)
+                            matrix(:,:,i,j,k,ispec) = matmul(matmul(RR,  matrix(:,:,i,j,k,ispec)), transpose(RR))
+                        enddo
+                    enddo
+                enddo 
+            enddo
+        end subroutine rotate_complex_matrix_rtp_to_xyz
 
 
 
@@ -1061,6 +1103,185 @@ module specfem_mesh
         
 
 
+        subroutine compute_mode_gradphi(self, m, m0de, gradphi)
+            use ylm_plm, only: ylm_complex, ylm_deriv
+            use mesh_utils, only: delta_spline
+            use math, only: sinp, sqrtp
+            
+            implicit none
+            include "constants.h"
+            
+            class(SetMesh) :: self
+            type(Mode)     :: m0de
+            integer        :: m
+        
+            complex(kind=SPLINE_REAL) :: gradphi(3, self%ngllx, self%nglly, &
+                                                    self%ngllz, self%nspec)      
+
+            ! Local variables: 
+            complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
+            real(kind=CUSTOM_REAL)    ::  theta, phi
+            integer :: i, j, k, ispec
+        
+            real(kind=SPLINE_REAL)    ::  mf, tl14p, mone_l, pref, p_r, dp_r, & 
+                                          w_r, dm0, dd1, sinth, unq_r
+            complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta
+        
+            ! Allocate the GLL displacement array
+            gradphi = SPLINE_iZERO
+        
+            ! Float version of m
+            mf = real(m, kind=SPLINE_REAL)
+            
+            if (m0de%t.eq.'S')then 
+                do ispec = 1, self%nspec
+                    do i = 1, self%ngllx
+                        do j = 1, self%nglly
+                            do k = 1, self%ngllz
+                            
+                                ! Get ylm and the partial derivatives
+                                unq_r = real(self%rstore(i,j,k,ispec),     kind=SPLINE_REAL)
+                                theta = real(self%thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
+                                phi   = real(self%phistore(i,j,k,ispec),   kind=CUSTOM_REAL)
+                                ylm   = ylm_complex(m0de%l, m, theta, phi)
+                                call ylm_deriv(m0de%l, m, theta, phi, dylm_theta, dylm_phi)
+        
+                                ! u, v at at the radius of this node
+                                p_r   = m0de%p_spl(self%rad_id(i,j,k,ispec))
+                                dp_r  = m0de%dp_spl(self%rad_id(i,j,k,ispec))
+                                sinth = real(sinp(theta), kind=SPLINE_REAL)
+        
+                                if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                                    ! North pole 
+                                    gradphi(:,i,j,k,ispec) = SPLINE_iZERO
+        
+                                elseif (abs(theta-PI).le.pole_tolerance) then
+                                    ! South pole
+                                    gradphi(:,i,j,k,ispec) = SPLINE_iZERO
+                                elseif (unq_r.eq.zero .or. sinth.eq.zero)then 
+                                    ! Set artificially at centre
+                                    gradphi(:,i,j,k,ispec) = SPLINE_iZERO
+                                else 
+                                    ! Convert to SPLINE_REAL precision
+                                    sp_ylm         = cmplx(ylm,        kind=SPLINE_REAL)
+                                    spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+        
+                                    ! radial
+                                    gradphi(1,i,j,k,ispec) = sp_ylm*dp_r  
+                                    ! theta 
+                                    gradphi(2,i,j,k,ispec) = p_r * spl_dylm_theta / unq_r
+                                    ! phi  
+                                    gradphi(3,i,j,k,ispec) = SPLINE_iONE * mf * p_r * sp_ylm / (sinth*unq_r)
+                                endif 
+                            enddo 
+                        enddo 
+                    enddo 
+                enddo 
+            elseif (m0de%t.eq.'T')then 
+                ! Since p is going to be zero so will the grad phi 
+                gradphi = SPLINE_iZERO
+            else
+                write(*,*)'ERROR: Mode type must be S or T but was ', m0de%t
+                stop
+            endif 
+        
+        end subroutine compute_mode_gradphi
+
+
+
+
+        subroutine compute_mode_grad_SR(self, m, m0de, gradSR)
+            use ylm_plm, only: ylm_complex, ylm_deriv
+            use mesh_utils, only: delta_spline
+            use math, only: sinp, sqrtp
+            
+            implicit none
+            include "constants.h"
+            
+            class(SetMesh) :: self
+            type(Mode)     :: m0de
+            integer        :: m
+        
+            complex(kind=SPLINE_REAL) :: gradSR(3, self%ngllx, self%nglly, &
+                                                    self%ngllz, self%nspec)      
+
+            ! Local variables: 
+            complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
+            real(kind=CUSTOM_REAL)    ::  theta, phi
+            integer :: i, j, k, ispec
+        
+            real(kind=SPLINE_REAL)    ::  mf, tl14p, mone_l, pref, u_r, du_r, & 
+                                          dm0, dd1, sinth, unq_r
+            complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta
+        
+            ! Allocate the GLL displacement array
+            gradSR = SPLINE_iZERO
+        
+            ! Float version of m
+            mf = real(m, kind=SPLINE_REAL)
+    
+            tl14p  = ((SPLINE_TWO*m0de%lf + SPLINE_ONE)/(SPLINE_FOUR*SPLINE_PI))**SPLINE_HALF    ! (2l+1/4π)^1/2
+            dm0    = delta_spline(m, 0)                                                          ! δ_{m0}
+            dd1    = delta_spline(m, -1) - delta_spline(m, 1)                                    ! δ_{m -1} - δ_{m 1}
+            mone_l = (-SPLINE_ONE)**m0de%lf                                                      ! -1 ^l 
+            pref   = SPLINE_HALF * tl14p * m0de%kf                                               ! 0.5 (2l+1/4π)^1/2  (l(l+1))^1/2
+        
+            if (m0de%t.eq.'S')then 
+                do ispec = 1, self%nspec
+                    do i = 1, self%ngllx
+                        do j = 1, self%nglly
+                            do k = 1, self%ngllz
+                            
+                                ! Get ylm and the partial derivatives
+                                unq_r = real(self%rstore(i,j,k,ispec),     kind=SPLINE_REAL)
+                                theta = real(self%thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
+                                phi   = real(self%phistore(i,j,k,ispec),   kind=CUSTOM_REAL)
+                                ylm   = ylm_complex(m0de%l, m, theta, phi)
+                                call ylm_deriv(m0de%l, m, theta, phi, dylm_theta, dylm_phi)
+        
+                                ! u, v at at the radius of this node
+                                u_r   = m0de%u_spl(self%rad_id(i,j,k,ispec))
+                                du_r  = m0de%du_spl(self%rad_id(i,j,k,ispec))
+                                sinth = real(sinp(theta), kind=SPLINE_REAL)
+        
+                                if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                                    ! North pole 
+                                    gradSR(:,i,j,k,ispec) = SPLINE_iZERO
+        
+                                elseif (abs(theta-PI).le.pole_tolerance) then
+                                    ! South pole
+                                    gradSR(:,i,j,k,ispec) = SPLINE_iZERO
+                                elseif (unq_r.eq.zero .or.sinth.eq.zero)then 
+                                    gradSR(:,i,j,k,ispec) = SPLINE_iZERO
+                                else 
+                                    ! Convert to SPLINE_REAL precision
+                                    sp_ylm         = cmplx(ylm,        kind=SPLINE_REAL)
+                                    spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+        
+                                    ! radial
+                                    gradSR(1,i,j,k,ispec) = sp_ylm*du_r  
+                                    ! theta 
+                                    gradSR(2,i,j,k,ispec) = u_r * spl_dylm_theta / unq_r
+                                    ! phi  
+                                    gradSR(3,i,j,k,ispec) = SPLINE_iONE * mf * u_r * sp_ylm / (unq_r*sinth)
+                                endif 
+                            enddo 
+                        enddo 
+                    enddo 
+                enddo 
+            elseif (m0de%t.eq.'T')then 
+                ! Since sr is radial, it is going to be zero 
+                gradSR = SPLINE_iZERO
+            else
+                write(*,*)'ERROR: Mode type must be S or T but was ', m0de%t
+                stop
+            endif 
+        
+        end subroutine compute_mode_grad_SR
+
+
+
+
 
         subroutine compute_mode_strain(self, m, m0de, strain)
             ! Strain ordering is as follows: 
@@ -1117,9 +1338,6 @@ module specfem_mesh
             ! If toroidal mode then u,v are zero but w, wdot are not
             !   --> x should be 0
             if (m0de%t.eq.'S')then 
-                call allocate_if_unallocated(m0de%len, m0de%aux_x)
-                m0de%aux_x = m0de%dv_spl/m0de%kf + (m0de%u_spl - m0de%v_spl/m0de%kf)/real(self%unique_r, kind=SPLINE_REAL)
-    
                 ! Loop over each GLL point: 
                 do ispec = 1, self%nspec
                     do i = 1, self%ngllx
@@ -1214,10 +1432,7 @@ module specfem_mesh
                 enddo
         
             elseif (m0de%t.eq.'T')then 
-                
-                call allocate_if_unallocated(m0de%len, m0de%aux_z)
-                m0de%aux_z = (m0de%dw_spl - m0de%w_spl/real(self%unique_r, kind=SPLINE_REAL))/m0de%kf
-        
+            
                 ! Loop over each GLL point: 
                 do ispec = 1, self%nspec
                     do i = 1, self%ngllx
@@ -1286,6 +1501,364 @@ module specfem_mesh
         
         
         end subroutine compute_mode_strain
+
+
+
+
+
+        subroutine compute_mode_gradS(self, m, m0de, gradS)
+            use params, only: all_warnings
+            use ylm_plm, only: ylm_complex, ylm_deriv
+            use mesh_utils, only: delta_spline
+            use math, only: sinp, tanp, sqrtp, cosp
+        
+            implicit none
+            include "constants.h"
+        
+            ! IO variables: 
+            class(SetMesh)   :: self
+            integer          :: m             ! m value (order)  of mode
+            type(Mode)       :: m0de          ! Mode of interest
+            complex(kind=SPLINE_REAL) :: gradS(3,3, self%ngllx, self%nglly, self%ngllz, self%nspec)
+        
+            ! Local variables: 
+            complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
+            real(kind=CUSTOM_REAL)    :: theta, phi
+            complex(kind=SPLINE_REAL) :: sp_ylm, spl_dylm_theta
+            real(kind=SPLINE_REAL)    :: sinth, tanth, costh, unq_r, du_r, u_r, & 
+                                         dv_r, v_r, w_r, dw_r, ff, &
+                                         dm0, dd1, dd2
+            ! GLL level variables
+            real(kind=SPLINE_REAL)  :: xx_r, zz_r, mf, lf, ll1, tl14p, kr2
+            integer :: rid 
+
+            ! Loop variables 
+            integer :: ispec, i, j, k, h, q
+        
+            mf  = real(m, kind=SPLINE_REAL)           ! float m
+
+            if (m0de%t.eq.'S')then 
+                ! Loop over each GLL point: 
+                do ispec = 1, self%nspec
+                    do i = 1, self%ngllx
+                        do j = 1, self%nglly
+                            do k = 1, self%ngllz
+                                ! Get ylm and the partial derivatives
+                                theta = self%thetastore(i,j,k,ispec)
+                                phi   = self%phistore(i,j,k,ispec)
+                                ylm   = ylm_complex(m0de%l, m, theta, phi)
+                                call ylm_deriv(m0de%l, m, theta, phi, dylm_theta, dylm_phi)
+                                
+                                ! u, v, udot, vdo, x, at at the radius of this node
+                                rid   = self%rad_id(i,j,k,ispec)
+                                u_r   = m0de%u_spl(rid)
+                                du_r  = m0de%du_spl(rid)
+                                
+                                v_r   = m0de%v_spl(rid)/m0de%kf
+                                dv_r  = m0de%dv_spl(rid)/m0de%kf
+                                xx_r  = m0de%aux_x(rid)
+        
+                                ! r and theta at the node  
+                                unq_r = real(self%rstore(i,j,k,ispec), kind=SPLINE_REAL)
+                                sinth = real(sinp(theta),              kind=SPLINE_REAL)
+                                tanth = real(tanp(theta),              kind=SPLINE_REAL)
+                                costh = real(cosp(theta),              kind=SPLINE_REAL)
+        
+        
+                                if(unq_r.eq.0)then 
+                                    if(all_warnings) write(*,*)'Warning: setting Grad S at centre to 0 artificially'
+                                    gradS(:,:,i,j,k,ispec) = SPLINE_iZERO
+                                else
+                                    if (theta.ge.zero .and. theta.le.pole_tolerance) then 
+                                        ! Values at the pole 
+                                        ! D.28
+                                        !ff = (SPLINE_TWO*u_r - m0de%kf*m0de%kf*v_r) / unq_r    
+                                        ! E_rr: DT98 D.22
+                                        gradS(:,:,i,j,k,ispec) = ZERO
+        
+                                    else 
+        
+                                        ! Convert to SPLINE_REAL precision
+                                        sp_ylm         = cmplx(ylm,        kind=SPLINE_REAL)
+                                        spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
+        
+                                        ! Values away from the pole
+                                        ! d_r S_r - same as  E_rr: DT98 D.14
+                                        gradS(1,1,i,j,k,ispec) = sp_ylm*du_r  
+                                        
+                                        ! d_r S_t  (4):
+                                        gradS(2,1,i,j,k,ispec) = dv_r*spl_dylm_theta 
+                                        
+                                        ! d_r S_p  (6):
+                                        gradS(3,1,i,j,k,ispec) = SPLINE_iONE*mf*dv_r*sp_ylm/sinth
+
+                                        ! d_t S_r  (5):
+                                        gradS(1,2,i,j,k,ispec) = (u_r - v_r)*spl_dylm_theta/unq_r
+                                        
+                                        ! d_t S_t - same as E_tt: DT98 D.15
+                                        gradS(2,2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  &
+                                                                  sp_ylm*(mf/sinth)**SPLINE_TWO + m0de%kf*m0de%kf*sp_ylm))/unq_r
+
+                                        ! d_t S_p  (8):
+                                        gradS(3,2,i,j,k,ispec) = SPLINE_iONE*mf*v_r *(spl_dylm_theta - sp_ylm*costh/sinth )/(unq_r*sinth)
+                                        
+
+                                        ! d_p S_r  (7):
+                                        gradS(1,3,i,j,k,ispec) = SPLINE_iONE * mf * sp_ylm * (u_r - v_r)/(unq_r*sinth)
+
+                                        ! d_p S_t  (9):
+                                        gradS(2,3,i,j,k,ispec) =  SPLINE_iONE*mf*v_r*(spl_dylm_theta - costh*sp_ylm/sinth)/(unq_r*sinth)
+
+                                        ! d_p S_p - same as E_pp: DT98 D.16
+                                        gradS(3,3,i,j,k,ispec) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  &
+                                                                  sp_ylm*(mf/sinth)**SPLINE_TWO))/unq_r
+
+
+
+                                    endif        
+                                endif !unique r
+                                
+                                do q = 1, 3
+                                    do h = 1, 3
+                                        if (abs(gradS(h,q,i,j,k,ispec)).gt. 100.0)then
+                                            gradS(h,q,i,j,k,ispec) = SPLINE_ZERO
+                                            if(all_warnings)write(*,*)'Setting strain values at pi to 0,'
+                                            !stop 
+                                        endif 
+                                    enddo 
+                                enddo 
+        
+                            enddo 
+                        enddo 
+                    enddo 
+                enddo
+        
+            elseif (m0de%t.eq.'T')then 
+                write(*,*)'Grad U not implemented yet for Toroidal modes.'
+                stop
+            else
+                write(*,*)'Error: mode_type must be S or T'
+                stop
+            endif 
+        
+        
+        end subroutine compute_mode_gradS
+
+
+
+
+        subroutine compute_strain_deviator(self, GradS, devE)
+            ! Computes the deviatoric strain based on the gradient of the mode 
+            ! displacement. Since d_ij = E_ij - 1/3 E_kk \delta_ij
+            ! d_ij = 1/2 (del_i s_j + del_j s_i) - 1/3 del_k s_k \delta_ij
+
+            class(SetMesh)   :: self
+            complex(kind=SPLINE_REAL), dimension(3, 3, self%ngllx, & 
+                                                       self%nglly, &
+                                                       self%ngllz, &
+                                                       self%nspec) :: GradS, devE
+            complex(kind=SPLINE_REAL) :: gs(3,3), trace
+
+            ! local variables: 
+            integer :: i,j,k,ispec, p, q
+
+            devE = SPLINE_iZERO
+
+            do i = 1, self%ngllx
+                do j = 1, self%nglly
+                    do k = 1, self%ngllz
+                        do ispec = 1, self%nspec
+
+                            gs(:,:) = GradS(:,:,i,j,k,ispec)
+                            trace   = (gs(1,1)+gs(2,2)+gs(3,3))/SPLINE_THREE
+
+                            do p = 1, 3
+                                do q = 1, 3
+                                    devE(p,q,i,j,k,ispec) =  half*(gs(p,q)+gs(q,p))
+                                    if(p.eq.q)then 
+                                        devE(p,q,i,j,k,ispec) = devE(p,q,i,j,k,ispec) - trace 
+                                    endif
+                                enddo ! q
+                            enddo ! p
+                            
+                        enddo ! i
+                    enddo ! j
+                enddo ! k
+            enddo ! ispec
+        end subroutine compute_strain_deviator
+
+
+        subroutine compute_strain_deviator_congj(self, GradS, devE)
+            ! Computes the deviatoric strain based on the gradient of the mode 
+            ! displacement. Since d_ij = E_ij - 1/3 E_kk \delta_ij
+            ! d_ij = 1/2 (del_i s_j + del_j s_i) - 1/3 del_k s_k \delta_ij
+
+            class(SetMesh)   :: self
+            complex(kind=SPLINE_REAL), dimension(3, 3, self%ngllx, & 
+                                                       self%nglly, &
+                                                       self%ngllz, &
+                                                       self%nspec) :: GradS, devE
+            complex(kind=SPLINE_REAL) :: gs(3,3), trace
+
+            ! local variables: 
+            integer :: i,j,k,ispec, p, q
+
+            devE = SPLINE_iZERO
+
+            do i = 1, self%ngllx
+                do j = 1, self%nglly
+                    do k = 1, self%ngllz
+                        do ispec = 1, self%nspec
+
+                            gs(:,:) = GradS(:,:,i,j,k,ispec)
+                            trace   = (conjg(gs(1,1)+gs(2,2)+gs(3,3)))/SPLINE_THREE
+
+                            do p = 1, 3
+                                do q = 1, 3
+                                    devE(p,q,i,j,k,ispec) =  half*(conjg(gs(p,q)+gs(q,p)))
+                                    if(p.eq.q)then 
+                                        devE(p,q,i,j,k,ispec) = devE(p,q,i,j,k,ispec) - trace 
+                                    endif
+                                enddo ! q
+                            enddo ! p
+                            
+                        enddo ! i
+                    enddo ! j
+                enddo ! k
+            enddo ! ispec
+        end subroutine compute_strain_deviator_congj
+
+
+
+
+
+
+
+        subroutine compute_background_g(self)
+            ! Computes the background gravity acceleraiton magnitude
+            !|g| at each point in g 
+            use piecewise_interpolation, only: InterpPiecewise, create_PieceInterp
+            use params, only: rho_spl, g_spl
+            use mineos_model, only: MineosModel, mineos
+            use gravitation, only: compute_background_g
+            implicit none
+            include "precision.h"
+            
+            class(SetMesh) :: self
+
+            real(kind=CUSTOM_REAL) :: temp_r, thisrad
+            integer :: temp_i, size, i, j, npoints, knot_lower, iknot, iout
+            integer, dimension(self%n_unique_rad) :: idx
+
+            real(kind=CUSTOM_REAL) :: r_lower, r_upper, store_unqr(self%n_unique_rad)
+            type(InterpPiecewise) :: minInterp
+
+            ! Store a copy
+            store_unqr = self%unique_r
+
+            ! First we want to sort the radial values into an order 
+            ! but keep track of their indices
+            size = self%n_unique_rad
+            idx = (/ (i, i=1, size) /)
+
+
+            ! Simple bubble sort (can be replaced by more efficient algorithms)
+            do i = 1, size-1
+                do j = 1, size-i
+                    if (self%unique_r(j) > self%unique_r(j+1)) then
+                        ! Swap values in arr
+                        temp_r =  self%unique_r(j)
+                        self%unique_r(j) = self%unique_r(j+1)
+                        self%unique_r(j+1) = temp_r
+                        
+                        ! Swap corresponding indices
+                        temp_i = idx(j)
+                        idx(j) = idx(j+1)
+                        idx(j+1) = temp_i
+                    end if
+                end do
+            end do
+
+    
+            ! Now the radii are in order and we can use the idx to map back 
+            ! let us now compute the gravity at 1500 points between 
+            ! the centre and surface, using the mineos model: 
+            npoints = 1500 
+            r_lower    = zero    
+            r_upper    = SCALE_R
+
+
+            minInterp = create_PieceInterp(npoints)
+
+
+            minInterp%radial = [((r_lower + (real(j-1)/real(npoints-1))*(r_upper-r_lower))/SCALE_R, &
+                               j = 1, npoints)] 
+
+
+            call minInterp%setup()
+            call minInterp%create_interpolation_radial_map()
+
+
+            call deallocate_if_allocated(rho_spl)
+            allocate(rho_spl(npoints))
+
+
+            call minInterp%interpolate_mineos_variable(real(mineos%rho_mineos, kind=SPLINE_REAL), rho_spl)
+            
+            ! Compute the g at these 1500 points
+            allocate(g_spl(npoints))
+
+
+            call compute_background_g(minInterp%radial, rho_spl, npoints, g_spl)
+
+            ! Now let us treat these 1500 points as the function which we will spline to 
+            ! get the values at each of the sorted 'unq rad' values
+            ! Since then function is continuous lets have a naive interpolation method: 
+
+            knot_lower = 0
+
+            allocate(self%gmag_at_r(self%n_unique_rad))
+
+            do iout = 1, self%n_unique_rad
+                thisrad = self%unique_r(iout)
+                do iknot = knot_lower, npoints
+                    ! loop until we hit the knot above the radii we want
+                    if (thisrad.lt.minInterp%radial(iknot)) exit
+                enddo 
+
+                knot_lower = iknot- 1
+                
+                self%gmag_at_r(idx(iout)) = g_spl(knot_lower) + & 
+                                       (thisrad - minInterp%radial(knot_lower)) *& 
+                                       (g_spl(knot_lower+1)-g_spl(knot_lower))
+            enddo 
+
+
+            ! Restore the original unique r: 
+            self%unique_r = store_unqr
+
+
+            deallocate(g_spl)
+        end subroutine compute_background_g
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
         
 
         subroutine save_mode_disp_binary(self, n, t, l, m, disp_id)
@@ -1935,8 +2508,23 @@ module specfem_mesh
 
             call deallocate_if_allocated(self%disp1)
             call deallocate_if_allocated(self%disp2)
+
             call deallocate_if_allocated(self%strain1)
             call deallocate_if_allocated(self%strain2)
+
+            call deallocate_if_allocated(self%gradS_1)
+            call deallocate_if_allocated(self%gradS_2)
+
+            call deallocate_if_allocated(self%devE_1)
+            call deallocate_if_allocated(self%devE_2)
+
+            call deallocate_if_allocated(self%gradphi_1)
+            call deallocate_if_allocated(self%gradphi_2)
+
+            call deallocate_if_allocated(self%gSR_1)
+            call deallocate_if_allocated(self%gSR_2)
+
+            call deallocate_if_allocated(self%gmag_at_r)
 
         end subroutine cleanup
 

@@ -138,7 +138,8 @@ do m1 = -l1, l1
     enddo ! m2 
 enddo ! m1
 
-call save_T_matrix(l1, l2,  'Tmat/radial.txt')
+write(outfile, '(a,i1,a,i1,a,i1,a,i1,a)')'Tmat/radial_', n1, t1, l1, '_', n2, t2, l2, '.txt'
+call save_T_matrix(l1, l2,  outfile)
 
 
 

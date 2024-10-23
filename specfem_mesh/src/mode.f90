@@ -19,22 +19,28 @@ module modes
         real(kind=SPLINE_REAL)     :: kf         ! float of k = √(l(l+1))
         type(MineosModel), pointer :: mineos
 
+        real(kind=SPLINE_REAL), allocatable :: p(:)
         real(kind=SPLINE_REAL), allocatable :: u(:)
         real(kind=SPLINE_REAL), allocatable :: v(:)
         real(kind=SPLINE_REAL), allocatable :: w(:)
+        real(kind=SPLINE_REAL), allocatable :: dp(:)
         real(kind=SPLINE_REAL), allocatable :: du(:)
         real(kind=SPLINE_REAL), allocatable :: dv(:)
         real(kind=SPLINE_REAL), allocatable :: dw(:)
 
+        real(kind=SPLINE_REAL), allocatable :: p_spl(:)
         real(kind=SPLINE_REAL), allocatable :: u_spl(:)
         real(kind=SPLINE_REAL), allocatable :: v_spl(:)
         real(kind=SPLINE_REAL), allocatable :: w_spl(:)
+        real(kind=SPLINE_REAL), allocatable :: dp_spl(:)
         real(kind=SPLINE_REAL), allocatable :: du_spl(:)
         real(kind=SPLINE_REAL), allocatable :: dv_spl(:)
         real(kind=SPLINE_REAL), allocatable :: dw_spl(:)
     
-        ! Auxillary spline variables for strain 
-        real(kind=SPLINE_REAL), allocatable :: aux_x(:), aux_z(:)
+        ! Auxillary spline variables for strain, Woodhouse kernels etc
+        real(kind=SPLINE_REAL), allocatable :: aux_x(:), &
+                                               aux_z(:), & 
+                                               aux_f(:)
    
         contains
             procedure :: get_mineos_mode
@@ -220,6 +226,9 @@ module modes
                 self%v(1 : self%len)  = real(buf(2 * self%len + 1 : 3 * self%len), kind=SPLINE_REAL)
                 self%dv(1 : self%len) = real(buf(3 * self%len + 1 : 4 * self%len), kind=SPLINE_REAL)
             endif
+
+            self%p(1 : self%len)  = real(buf(4 * self%len + 1 : 5 * self%len), kind=SPLINE_REAL)
+            self%dp(1 : self%len) = real(buf(5 * self%len + 1 : 6 * self%len), kind=SPLINE_REAL)
         endif
 
     
@@ -315,8 +324,10 @@ module modes
             allocate(m%w(m%len))
             allocate(m%dw(m%len))
         else 
+            allocate(m%p(m%len))
             allocate(m%u(m%len))
             allocate(m%v(m%len))
+            allocate(m%dp(m%len))
             allocate(m%du(m%len))
             allocate(m%dv(m%len))
         endif       
