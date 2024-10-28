@@ -1,5 +1,5 @@
 subroutine compute_Viso_matrix(SM, interp, delta_kap, delta_mu, delta_rho, & 
-                               n1, t1, l1, n2, t2, l2, store)
+                              delta_gradphi, n1, t1, l1, n2, t2, l2, store)
     use params, only: Viso, datadir, rho_spl
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use modes, only: Mode, get_mode
@@ -18,11 +18,14 @@ subroutine compute_Viso_matrix(SM, interp, delta_kap, delta_mu, delta_rho, &
     logical               :: store
     real(kind=CUSTOM_REAL), dimension(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec):: & 
                              delta_mu, delta_kap, delta_rho
-
+    real(kind=CUSTOM_REAL), dimension(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec):: & 
+                             delta_gradphi
     ! Local: 
-    integer               :: i, j, k, ispec, m1, m2, l_loop, pp, qq, rid
+    integer               :: i, j, k, ispec, m1, m2, l_loop, pp, qq, mm, rid
     logical               :: self_coupling
-    complex(SPLINE_REAL)  :: sum, kap_div1, kap_div2, mucont, rho_cont, ups_cont
+    complex(SPLINE_REAL)  :: sum, kap_div1, kap_div2, mucont, rho_cont, ups_cont, & 
+                             gp_cont, gp_cont_t1, gp_cont_t2,gp_cont_t3,gp_cont_t4, g2p_cont, & 
+                             tmpgrad(3), gradgradphi_ij
     type(Mode)            :: mode_1, mode_2
     complex(SPLINE_REAL), allocatable :: s_rad_1(:,:,:,:), s_rad_2(:,:,:,:)
 
@@ -39,6 +42,8 @@ subroutine compute_Viso_matrix(SM, interp, delta_kap, delta_mu, delta_rho, &
     allocate(rho_spl(interp%n_radial))
     call interp%interpolate_mineos_variable(real(interp%m%rho_mineos, kind=SPLINE_REAL), rho_spl)
 
+    write(*,*)'mode 1', n1, t1, l1
+    write(*,*)'mode 2', n2, t2, l2
 
     ! Load modes and interpolates eigenfunctions:  
     mode_1 =  get_mode(n1, t1, l1, mineos_ptr)
@@ -149,37 +154,90 @@ subroutine compute_Viso_matrix(SM, interp, delta_kap, delta_mu, delta_rho, &
                                              + conjg(sm%gradphi_1(pp,i,j,k,ispec))*sm%disp2(pp,i,j,k,ispec)
                                 
                                     ups_cont = ups_cont + (conjg(sm%disp1(pp,i,j,k,ispec)) * sm%gSR_2(pp,i,j,k,ispec)) + & 
-                                                          (conjg(sm%disp2(pp,i,j,k,ispec)) * sm%gSR_1(pp,i,j,k,ispec)) 
+                                                          (sm%disp2(pp,i,j,k,ispec) * conjg(sm%gSR_1(pp,i,j,k,ispec)) ) 
                                 enddo
                                 
-                                ups_cont = half*(ups_cont                   - &
+
+                                ! MORE RHO KERNEL 
+                                ups_cont = half*(ups_cont                                - &
                                                  conjg(s_rad_1(i,j,k,ispec)) * kap_div2  - &
                                                  s_rad_2(i,j,k,ispec) * kap_div1)        - & 
                                                 two*conjg(s_rad_1(i,j,k,ispec))*s_rad_2(i,j,k,ispec)/sm%rstore(i,j,k,ispec)
 
                                 if(sm%rstore(i,j,k,ispec).eq.zero)ups_cont=SPLINE_ZERO
-
                                 ! Add 4 pi G Rho term for rho knl: 
                                 rid = sm%rad_id(i,j,k,ispec)
-
                                 rho_cont = rho_cont  + sm%gmag_at_r(rid)*ups_cont + &    ! +  
-                                          (eight * rho_spl(rid)         * &
+                                          (four * rho_spl(rid)         * &
                                            conjg(s_rad_1(i,j,k,ispec)) * &
                                            s_rad_2(i,j,k,ispec)) 
                                 
 
+                                ! Contraction for grad phi terms: 
+                                gp_cont_t1 = SPLINE_iZERO
+                                gp_cont_t2 = SPLINE_iZERO
+                                gp_cont_t3 = SPLINE_iZERO
+                                gp_cont_t4 = SPLINE_iZERO
+
+                                do pp = 1, 3
+                                    do qq = 1,3 
+
+                                        gp_cont_t1 = gp_cont_t1 + (delta_gradphi(pp, i,j,k,ispec) * &
+                                                                   conjg(sm%disp1(qq,i,j,k,ispec))* &
+                                                                   sm%gradS_2(pp,qq,i,j,k,ispec))
+
+                                        gp_cont_t2 = gp_cont_t2 + (delta_gradphi(pp, i,j,k,ispec) * &
+                                                                   sm%disp2(qq,i,j,k,ispec)       * & 
+                                                                   conjg(sm%gradS_1(pp,qq,i,j,k,ispec)))
+                                    enddo 
+
+                                    gp_cont_t3 = gp_cont_t3 + delta_gradphi(pp, i,j,k,ispec)  * & 
+                                                              conjg(sm%disp1(pp,i,j,k,ispec)) * &
+                                                              kap_div2
+
+                                    gp_cont_t4 = gp_cont_t4 + (delta_gradphi(pp, i,j,k,ispec) * & 
+                                                              kap_div1                        * & 
+                                                              sm%disp2(pp,i,j,k,ispec))
+                                enddo 
+
+                                gp_cont = half * rho_spl(rid)  * (gp_cont_t1 + gp_cont_t2 - & 
+                                                                  gp_cont_t3 - gp_cont_t4  ) 
+
+
+                                ! CONTRACTION FOR GRAD GRAD PHI
+                                ! We will compute the gradient of delta_gradphi numerically using lagrange interpolation
+                                ! I think you could write it analytically for speedup but right now that is overkill 
+                                g2p_cont = SPLINE_iZERO
+                                do qq = 1, 3 
+                                    do pp = 1,3 
+
+                                        tmpgrad(:) = zero 
+                                        do mm = 1, sm%ngllx 
+                                            tmpgrad(1) = tmpgrad(1) +  delta_gradphi(pp,mm,j,k,ispec) * sm%dgll(mm, i)
+                                            tmpgrad(2) = tmpgrad(2) +  delta_gradphi(pp,i,mm,k,ispec) * sm%dgll(mm, j)
+                                            tmpgrad(3) = tmpgrad(3) +  delta_gradphi(pp,i,j,mm,ispec) * sm%dgll(mm, k)
+                                        enddo ! mm 
+
+                                        gradgradphi_ij =  tmpgrad(1) * sm%jacinv(1,qq,i,j,k,ispec) + &  ! d xi /d qq
+                                                          tmpgrad(2) * sm%jacinv(2,qq,i,j,k,ispec) + &  ! d eta /d qq
+                                                          tmpgrad(3) * sm%jacinv(3,qq,i,j,k,ispec)      ! d zeta /d qq                                
+
+                                        g2p_cont = g2p_cont +   (conjg(sm%disp1(qq,i,j,k,ispec)) * & 
+                                                                gradgradphi_ij                   * &
+                                                                sm%disp2(pp,i,j,k,ispec))
+                                    enddo  ! pp 
+                                enddo ! qq
+
+
+                                ! multiply by the density 
+                                g2p_cont = g2p_cont*rho_spl(rid)
+
+
                                 sum = sum + ((delta_kap(i,j,k,ispec)*kap_div1*kap_div2)  + & 
                                              (delta_mu(i,j,k,ispec)*mucont*SPLINE_TWO)   + &
-                                             (delta_rho(i,j,k,ispec)*rho_cont)             &
+                                             (delta_rho(i,j,k,ispec)*rho_cont)           + & 
+                                              gp_cont + g2p_cont                           & 
                                             ) * sm%wglljac(i,j,k,ispec)
-
-
-                            if(sum.ne.sum)then 
-                                write(*,*)rho_cont
-                                stop 
-                            endif 
-
-
 
                             enddo 
                         enddo

@@ -62,4 +62,109 @@ module rho_st_profiles
     end function single_r_rho_st
 
 
+    subroutine phist_from_rhost(s, phi_rad, rhost_radarray, phist_radarray, npoints)
+        ! DT98 Eqn. D.54 - computes phi st from rho st
+        use integrate, only: integrate_r_traps
+
+        implicit none 
+        integer :: s, npoints, ir 
+        real(kind=CUSTOM_REAL) :: phi_rad(npoints), fs, rr
+        complex(kind=CUSTOM_REAL) ::  b_integrand(npoints), a_integrand(npoints),&
+                                  rhost_radarray(npoints), & 
+                                  phist_radarray(npoints)
+        complex(kind=SPLINE_REAL) :: integral_below, integral_above
+
+        fs = real(s, kind=CUSTOM_REAL)
+                            
+        b_integrand = phi_rad**(fs+two)*rhost_radarray
+        a_integrand = phi_rad**(-fs+one)*rhost_radarray
+                          
+
+        do ir = 1, npoints
+                rr = phi_rad(ir)
+
+            if(ir.eq.1)then
+                integral_below = SPLINE_iZERO
+            else  
+                integral_below = rr**(-fs-one) * integrate_r_traps(phi_rad(1:ir) , & 
+                                                                b_integrand(1:ir), &
+                                                                ir)
+            endif 
+
+            if(ir.eq.npoints)then 
+                integral_above = SPLINE_iZERO
+            else 
+                integral_above = (rr**fs) * integrate_r_traps(phi_rad(ir:npoints),  & 
+                                                              a_integrand(ir:npoints), &
+                                                              npoints-ir+1)
+            endif 
+            phist_radarray(ir) = -four*(integral_above + integral_below)/(2*fs + one)
+
+
+            if(phi_rad(ir).eq.zero)phist_radarray(ir) = zero
+
+            if(phist_radarray(ir).ne.phist_radarray(ir))then 
+                write(*,*)'ir = ', ir
+                write(*,*)'Nan found'
+                stop 
+            endif
+        enddo 
+
+
+    end subroutine phist_from_rhost
+
+
+
+
+    subroutine Gradphist_from_rhost(s, phi_rad, rhost_radarray, Gradphist_radarray, npoints)
+        ! Radial gradient of DT98 Eqn. D.54 - computes phi st from rho st
+        use integrate, only: integrate_r_traps
+
+        implicit none 
+        integer :: s, npoints, ir 
+        real(kind=CUSTOM_REAL) :: phi_rad(npoints), fs, rr
+
+        complex(kind=CUSTOM_REAL) ::  b_integrand(npoints), a_integrand(npoints),&
+                                        rhost_radarray(npoints), & 
+                                        Gradphist_radarray(npoints)
+        complex(kind=SPLINE_REAL) :: integral_below, integral_above
+
+
+        fs = real(s, kind=CUSTOM_REAL)
+                            
+        b_integrand = phi_rad**(fs+two)*rhost_radarray
+        a_integrand = phi_rad**(-fs+one)*rhost_radarray
+                          
+
+        do ir = 1, npoints
+                rr = phi_rad(ir)
+
+            if(ir.eq.1)then
+                integral_below = SPLINE_iZERO
+            else  
+                integral_below = (fs+one)*(rr**(-fs-two)) * integrate_r_traps(phi_rad(1:ir) , & 
+                                                                b_integrand(1:ir), &
+                                                                ir)
+            endif 
+
+            if(ir.eq.npoints)then 
+                integral_above = SPLINE_iZERO
+            else 
+                integral_above = fs*(rr**(fs-one)) * integrate_r_traps(phi_rad(ir:npoints),  & 
+                                                                      a_integrand(ir:npoints), &
+                                                                      npoints-ir+1)
+            endif 
+            Gradphist_radarray(ir) = -four*(integral_above - integral_below)/(2*fs + one)
+
+            if(phi_rad(ir).eq.zero)Gradphist_radarray(ir) = zero
+
+            if(Gradphist_radarray(ir).ne.Gradphist_radarray(ir))then 
+                write(*,*)'ir = ', ir
+                write(*,*)'Nan found'
+                stop 
+            endif
+        enddo 
+
+    end subroutine Gradphist_from_rhost
+
 end module 

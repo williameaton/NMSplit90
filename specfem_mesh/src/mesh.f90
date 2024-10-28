@@ -104,6 +104,7 @@ module specfem_mesh
             procedure :: setup_global_coordinate_arrays
             procedure :: compute_rtp_from_xyz
             procedure :: compute_rotation_matrix
+            procedure :: rotate_realdp_vector_rtp_to_xyz
             procedure :: rotate_complex_vector_rtp_to_xyz
             procedure :: rotate_complex_matrix_rtp_to_xyz
             procedure :: rotate_complex_sym_matrix_rtp_to_xyz
@@ -585,6 +586,29 @@ module specfem_mesh
 
 
 
+        subroutine rotate_realdp_vector_rtp_to_xyz(self, vector)
+            implicit none  
+            class(SetMesh) :: self 
+            real(kind=CUSTOM_REAL) :: vector(3, self%ngllx, self%nglly, self%ngllz, self%nspec)
+
+            integer :: i,j,k,ispec
+
+            do ispec = 1, self%nspec
+                do i = 1, self%ngllx
+                    do j = 1, self%nglly
+                        do k = 1, self%ngllz
+                            vector(:,i,j,k,ispec) = matmul(self%Rmat(:,:,self%ibool(i,j,k,ispec)), & 
+                                                            vector(:,i,j,k,ispec))
+                        enddo
+                    enddo
+                enddo 
+            enddo
+        end subroutine rotate_realdp_vector_rtp_to_xyz
+
+
+
+
+
         subroutine rotate_complex_vector_rtp_to_xyz(self, vector)
             implicit none  
             class(SetMesh) :: self 
@@ -904,8 +928,6 @@ module specfem_mesh
                         gammay = (xeta*zxi-xxi*zeta) * jacobian_inv
                         gammaz = (xxi*yeta-xeta*yxi) * jacobian_inv
 
-                        ! resave the derivatives and the Jacobian
-                        ! distinguish between single and double precision for reals
                         self%jacinv(1,1,i,j,k,ispec) = real(xix,    kind=CUSTOM_REAL)
                         self%jacinv(2,1,i,j,k,ispec) = real(etax,   kind=CUSTOM_REAL)
                         self%jacinv(3,1,i,j,k,ispec) = real(gammax, kind=CUSTOM_REAL)

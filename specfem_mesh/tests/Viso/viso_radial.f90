@@ -3,12 +3,12 @@ program viso_radial
 use params, only: Viso, rho_spl, g_spl
 use w3j, only: thrj
 use modes, only: Mode, get_mode
-use rho_st_profiles, only: radial_rho_st
+use rho_st_profiles, only: radial_rho_st, phist_from_rhost, Gradphist_from_rhost
 use mineos_model, only: mineos, mineos_ptr
 use splitting_function, only: xi_kkst
 use piecewise_interpolation, only: InterpPiecewise, create_PieceInterp
 use integrate, only: integrate_r_traps
-use woodhouse_kernels, only: WK_Vkappa, WK_Vmu, WK_Vrho
+use woodhouse_kernels, only: WK_Vkappa, WK_Vmu, WK_Vrho, WK_Vphi, WK_Vphi_dot
 use gravitation, only: compute_background_g
 implicit none 
 include "constants.h"
@@ -22,11 +22,15 @@ complex(kind=CUSTOM_REAL) :: rad_int
 complex(kind=CUSTOM_REAL), allocatable :: kap_st(:,:), kapst_radarray(:)
 complex(kind=CUSTOM_REAL), allocatable :: mu_st(:,:), must_radarray(:)
 complex(kind=CUSTOM_REAL), allocatable :: rho_st(:,:), rhost_radarray(:)
+complex(kind=CUSTOM_REAL), allocatable :: Phist_radarray(:)
+complex(kind=CUSTOM_REAL), allocatable :: GradPhist_radarray(:)
 type(Mode)                :: mode_1, mode_2    
 type(InterpPiecewise)     :: interp
-complex(kind=SPLINE_REAL), allocatable :: Vk(:), Vmu(:), Vrho(:), integrand(:)
+complex(kind=SPLINE_REAL), allocatable :: Vk(:), Vmu(:), Vrho(:), integrand(:), Vphi(:), Vdotphi(:)
 
 logical, parameter :: only_IC = .true.
+logical, parameter :: USE_PHI_IN_RHO = .true.
+
 
 ! First mode: 
 n1 = 0
@@ -96,7 +100,6 @@ mode_2 = get_mode(n2, t2, l2, mineos_ptr)
 call interp%interpolate_mode_eigenfunctions(mode_1)
 call interp%interpolate_mode_eigenfunctions(mode_2)
 
-
 ! Need to get the density spline and the gravity magnitude: 
 allocate(rho_spl(npoints))
 call interp%interpolate_mineos_variable(real(mineos%rho_mineos, kind=SPLINE_REAL), rho_spl)
@@ -111,12 +114,18 @@ Viso = SPLINE_iZERO
 allocate(Vk(npoints))
 allocate(Vmu(npoints))
 allocate(Vrho(npoints))
+if(.not.USE_PHI_IN_RHO)then
+    allocate(Vdotphi(npoints))
+    allocate(Vphi(npoints))
+endif
 
 allocate(integrand(npoints))
 
 allocate(kapst_radarray(npoints))
 allocate(must_radarray(npoints))
 allocate(rhost_radarray(npoints))
+allocate(Phist_radarray(npoints))
+allocate(GradPhist_radarray(npoints))
 
 do m1 = -l1, l1 
     do m2 = -l2, l2 
@@ -134,7 +143,13 @@ do m1 = -l1, l1
             Vrho = zero
             call WK_Vkappa(mode_1, mode_2, s, interp%radial, Vk)
             call WK_Vmu(mode_1, mode_2, s, interp%radial, Vmu)
-            call WK_Vrho(mode_1, mode_2, s, interp%radial, rho_spl, g_spl, Vrho)
+            call WK_Vrho(mode_1, mode_2, s, interp%radial, rho_spl, g_spl, Vrho, USE_PHI_IN_RHO)
+
+
+            if(.not.USE_PHI_IN_RHO)then
+                call WK_Vphi(mode_1, mode_2, s,  interp%radial, rho_spl, Vphi)
+                call WK_Vphi_dot(mode_1, mode_2, s, interp%radial, rho_spl, Vdotphi)
+            endif 
 
             do it = 1, 2*s + 1
                 t = it - 1 - s
@@ -151,11 +166,26 @@ do m1 = -l1, l1
                 rhost_radarray = SPLINE_iZERO
                 call radial_rho_st(s, npoints, rho_st(s, it), rhost_radarray, interp%radial)
 
+                if(USE_PHI_IN_RHO)then
+                    integrand =  ( Vmu  * must_radarray  +  & 
+                                Vk   * kapst_radarray +  & 
+                                Vrho * rhost_radarray)   &
+                                * interp%radial * interp%radial
+                else 
+                    ! Explicitly have phi and phidot kernels 
+                    Phist_radarray     = SPLINE_iZERO
+                    GradPhist_radarray = SPLINE_iZERO
+                    call phist_from_rhost(s,     interp%radial, rhost_radarray, Phist_radarray, npoints )
+                    call Gradphist_from_rhost(s, interp%radial, rhost_radarray, GradPhist_radarray, npoints )
 
-                integrand =  ( Vmu  * must_radarray  +  & 
-                               Vk   * kapst_radarray +  & 
-                               Vrho * rhost_radarray)   &
-                             * interp%radial * interp%radial
+
+                    integrand =  ( Vmu  * must_radarray  +  & 
+                                   Vk   * kapst_radarray +  & 
+                                   Vrho * rhost_radarray +  &
+                                   Vphi * phist_radarray +  & 
+                                   Vdotphi * GradPhist_radarray) &
+                                   * interp%radial * interp%radial
+                endif 
 
                 rad_int   =  integrate_r_traps(interp%radial, integrand, npoints)
 
