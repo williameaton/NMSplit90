@@ -12,7 +12,7 @@ logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
 
 integer, parameter :: nprocs       = 8
-integer, parameter :: nmodes       = 28
+integer, parameter :: nmodes       = 27
 
 ! Specfem mesh files: 
 character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets8/'
@@ -37,6 +37,8 @@ real(kind=CUSTOM_REAL), allocatable    :: eta2(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: glob_eta1(:)
 real(kind=CUSTOM_REAL), allocatable    :: glob_eta2(:)
 
+! Optimisation stuff: 
+integer, parameter :: max_tl1 = 21 !17
 
 
 ! Perturbed elastic tensor in xyz at each GLL (6 x 6) voigt notation

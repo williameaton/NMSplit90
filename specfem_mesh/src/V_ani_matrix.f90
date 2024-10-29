@@ -210,7 +210,7 @@ contains
         integer :: i, j, k, ispec, radmap(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), r_id
 
         call deallocate_if_allocated(Cxyz)
-        allocate(Cxyz(6, 6, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
+        allocate(Cxyz(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 6, 6))
 
 
         ! Compute rotation matrix per GLL in xyz
@@ -226,7 +226,7 @@ contains
 
                         call compute_bond_matrix_explicit(n1, n2, M)
 
-                        Cxyz(:,:,i,j,k,ispec) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
+                        Cxyz(i,j,k,ispec,:,:) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
 
                     enddo
                 enddo
@@ -253,7 +253,7 @@ contains
 
 
         call deallocate_if_allocated(Cxyz)
-        allocate(Cxyz(6, 6, sm%ngllx,  sm%nglly,  sm%ngllz,  sm%nspec))
+        allocate(Cxyz(sm%ngllx,  sm%nglly,  sm%ngllz,  sm%nspec, 6, 6))
 
         ! Transversly isotropic matrix 
         call setup_Cnatural(Cnat, A, C, L, N, F)
@@ -266,7 +266,7 @@ contains
                         ib =  sm%ibool(i,j,k,ispec)
                         call compute_bond_matrix_explicit(n1(ib), n2(ib), M)
 
-                        Cxyz(:,:,i,j,k,ispec) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
+                        Cxyz(i,j,k,ispec,:,:) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
 
                     enddo
                 enddo
@@ -326,14 +326,14 @@ contains
             call sm%interp%interpolate_mode_eigenfunctions(mode_2)
     
             call deallocate_if_allocated(sm%strain2)
-            allocate(sm%strain2(6, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
+            allocate(sm%strain2(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 6))
         endif
 
 
 
         ! Allocate the strain for this proc. 
         call deallocate_if_allocated(sm%strain1)
-        allocate(sm%strain1(6,sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
+        allocate(sm%strain1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 6))
 
 
 
@@ -367,9 +367,9 @@ contains
                                 cont = SPLINE_iZERO
                                 do p = 1, 9
                                     do q = 1, 9
-                                        cont = cont + ( conjg(sm%strain1(Vcont(p),i,j,k,ispec)) * & 
-                                                        Cxyz(Vcont(p),Vcont(q),i,j,k,ispec)     * & 
-                                                        sm%strain1(Vcont(q),i,j,k,ispec) ) 
+                                        cont = cont + ( conjg(sm%strain1(i,j,k,ispec,Vcont(p))) * & 
+                                                        Cxyz(i,j,k,ispec,Vcont(p),Vcont(q))     * & 
+                                                        sm%strain1(i,j,k,ispec,Vcont(q)) ) 
                                     enddo
                                 enddo 
                                 sum = sum  +  sm%wglljac(i,j,k,ispec) * cont 
@@ -396,9 +396,9 @@ contains
                                     cont = SPLINE_iZERO
                                     do p = 1, 9
                                         do q = 1, 9
-                                            cont = cont + ( conjg(sm%strain1(Vcont(p),i,j,k,ispec)) * & 
-                                                            Cxyz(Vcont(p),Vcont(q),i,j,k,ispec)     * & 
-                                                            sm%strain2(Vcont(q),i,j,k,ispec) ) 
+                                            cont = cont + ( conjg(sm%strain1(i,j,k,ispec,Vcont(p))) * & 
+                                                            Cxyz(i,j,k,ispec,Vcont(p),Vcont(q))     * & 
+                                                            sm%strain2(i,j,k,ispec,Vcont(q)) ) 
                                         enddo
                                     enddo 
                                     sum = sum  +  sm%wglljac(i,j,k,ispec) * cont 
@@ -442,14 +442,14 @@ contains
 
         ! Allocate the strain for this proc. 
         call deallocate_if_allocated(strains1)
-        allocate(strains1(6, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l1+1))
+        allocate(strains1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l1+1, 6))
 
         ! Load all strains once and for all for each m value
         ! m is an integer from -l to +l
         ! In this case l is some integer between 1 and ~20
         do im =  -l1, l1 
             call sm%load_mode_strain_binary(n1, t1, l1, im, &  
-                                            strains1(:,:,:,:,:,l1+im+1))
+                                            strains1(:,:,:,:,l1+im+1,:))
         enddo 
 
 
@@ -459,10 +459,10 @@ contains
         else
             self_coupling = .false.
             call deallocate_if_allocated(strains2)
-            allocate(strains2(6, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l2+1)) 
+            allocate(strains2(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l2+1, 6)) 
             do im =  -l2, l2
                 call sm%load_mode_strain_binary(n2, t2, l2, im, &
-                                               strains2(:,:,:,:,:,l2+im+1)) 
+                                               strains2(:,:,:,:,l2+im+1,:)) 
             enddo    
         endif 
 
@@ -483,9 +483,9 @@ contains
                                     do p = 1, 9
                                         do q = 1, 9
                                             cont = cont +                                          &
-                                                   (conjg(strains1(Vcont(p),i,j,k,ispec,m1+l1+1)) * & 
-                                                    Cxyz(Vcont(p),Vcont(q),i,j,k,ispec)          * & 
-                                                    strains2(Vcont(q),i,j,k,ispec,m2+l2+1) ) 
+                                                   (conjg(strains1(i,j,k,ispec,m1+l1+1,Vcont(p))) * & 
+                                                    Cxyz(i,j,k,ispec,Vcont(p),Vcont(q))          * & 
+                                                    strains2(i,j,k,ispec,m2+l2+1, Vcont(q)) ) 
                                         enddo ! q
                                     enddo ! p 
                     
@@ -529,154 +529,18 @@ contains
 
         ! Allocate the strain for this proc. 
         call deallocate_if_allocated(strains1)
-        allocate(strains1(6, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l1+1))
+        allocate(strains1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l1+1, 6))
 
         ! Load all strains once and for all for each m value
         do im =  -l1, l1 
             call sm%load_mode_strain_binary(n1, t1, l1, im, &  
-                                            strains1(:,:,:,:,:,l1+im+1))
+                                            strains1(:,:,:,:,l1+im+1,:))
         enddo 
 
         call compute_vani_sc_cuda(l1, sm%ngllx, sm%nspec, sm%wglljac)
 
 
     end subroutine cuda_Vani_matrix_stored_selfcoupling
-
-
-
-!     subroutine compute_Vani_kernel_example(t1, l1, n1, m1, t2, l2, n2, m2, knl, store, iproc)
-!         ! This is a copied version of the normal Vani matrix computation that
-!         ! i am using just to compute the kernel (e : C : e* ) for an example 
-!         ! visualisation -- shouldnt be used for real computations
-!         use params, only: NL, IC_ID, n_unique_rad, unique_r, interp_id_r, strain1, ngllx, & 
-!                         nglly, ngllz, nspec, strain2, ngllx, nglly, ngllz, & 
-!                         nspec, Cxyz, Vani, wglljac, nglob, ibool, thetastore
-!         use allocation_module, only: deallocate_if_allocated
-!         use spline, only: interpolate_mode_eigenfunctions
-!         use mesh_utils, only: rotate_complex_sym_matrix_rtp_to_xyz
-!         implicit none 
-!         include "constants.h"
-
-!         ! IO variables
-!         integer   :: l1, n1, l2, n2, m1, m2
-!         character :: t1, t2
-!         logical   :: store
-!         integer, optional :: iproc
-!         complex(kind=SPLINE_REAL) :: knl(nglob)
-
-!         ! Local variables 
-!         logical :: self_coupling
-!         real(SPLINE_REAL) :: wcom, qmod
-!         real(SPLINE_REAL):: u1(NL), v1(NL), du1(NL), dv1(NL)
-!         real(SPLINE_REAL):: u2(NL), v2(NL), du2(NL), dv2(NL)
-
-!         real(SPLINE_REAL)::  u_spl_1(n_unique_rad),  v_spl_1(n_unique_rad),& 
-!                             du_spl_1(n_unique_rad), dv_spl_1(n_unique_rad)
-
-!         real(SPLINE_REAL), allocatable :: u_spl_2(:), v_spl_2(:), du_spl_2(:), dv_spl_2(:)
-
-!         integer :: i, j, k, ispec, p, q
-!         complex(SPLINE_REAL) :: sum, cont
-
-!         integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
-
-!         ! Check if self_coupling because it determines if we need to get
-!         ! strain for two modes or just one
-!         if (t1.eq.t2 .and. l1.eq.l2 .and. n1.eq.n2)then 
-!             self_coupling = .true.
-!         else
-!             self_coupling = .false.
-!         endif 
-
-!         ! Load modes and interpolates eigenfunctions:  
-!         call get_mode(t1, n1, l1, wcom, qmod, u1, du1, v1, dv1, .false.)
-!         call interpolate_mode_eigenfunctions(t1, u1, v1, du1, dv1, 1, IC_ID,      &  
-!                                             unique_r, n_unique_rad, interp_id_r, & 
-!                                             u_spl_1, v_spl_1, du_spl_1, dv_spl_1)
-
-!         if(.not.self_coupling)then 
-!             call get_mode(t2, n2, l2, wcom, qmod, u2, du2, v2, dv2, .false.)
-!             allocate( u_spl_2(n_unique_rad),  v_spl_2(n_unique_rad))
-!             allocate(du_spl_2(n_unique_rad), dv_spl_2(n_unique_rad))
-!             call interpolate_mode_eigenfunctions(t2, u2, v2, du2, dv2, 1, IC_ID,      &  
-!                                                 unique_r, n_unique_rad, interp_id_r, & 
-!                                                 u_spl_2, v_spl_2, du_spl_2, dv_spl_2)
-!             ! We will need this strain also 
-!             call deallocate_if_allocated(strain2)
-!             allocate(strain2(6, ngllx, nglly, ngllz, nspec))
-!         endif
-        
-
-
-!         ! Allocate the strain for this proc. 
-!         call deallocate_if_allocated(strain1)
-!         allocate(strain1(6, ngllx, nglly, ngllz, nspec))
-
-
-
-!         ! Compute strain and store if desired
-!         call compute_gll_mode_strain(t1, n1, l1, m1, u_spl_1, v_spl_1, du_spl_1, & 
-!                                      dv_spl_1, n_unique_rad, strain1)
-
-
-
-!         call rotate_complex_sym_matrix_rtp_to_xyz(strain1)
-!         if(store)then
-!             call save_mode_strain_binary(n1, t1, l1, m1, strain1, iproc)
-!         endif
-
-
-!         if(self_coupling) then 
-!             ! Only need 1 strain 
-!             sum = SPLINE_iZERO
-!             do ispec = 1, nspec 
-!                 do i = 1, ngllx
-!                     do j = 1, nglly
-!                         do k = 1, ngllz
-!                             cont = SPLINE_iZERO
-!                             do p = 1, 9
-!                                 do q = 1, 9
-!                                     cont = cont + ( conjg(strain1(Vcont(p),i,j,k,ispec)) * & 
-!                                                     Cxyz(Vcont(p),Vcont(q),i,j,k,ispec)  * & 
-!                                                     strain1(Vcont(q),i,j,k,ispec) ) 
-!                                 enddo
-!                             enddo 
-!                             knl(ibool(i,j,k,ispec)) = cont
-!                         enddo 
-!                     enddo
-!                 enddo
-!             enddo
-
-!         else 
-!             ! Not self coupling so need 2 strains 
-!             call compute_gll_mode_strain(t2, n2, l2, m2, u_spl_2, v_spl_2, & 
-!                                             du_spl_2, dv_spl_2, n_unique_rad, strain2)
-!             call rotate_complex_sym_matrix_rtp_to_xyz(strain2)
-!             if(store)then
-!                 call save_mode_strain_binary(n2, t2, l2, m2, strain2, iproc)
-!             endif
-
-!             sum = SPLINE_iZERO
-!             do ispec = 1, nspec 
-!                 do i = 1, ngllx
-!                     do j = 1, nglly
-!                         do k = 1, ngllz
-!                             cont = SPLINE_iZERO
-!                             do p = 1, 9
-!                                 do q = 1, 9
-!                                     cont = cont + ( conjg(strain1(Vcont(p),i,j,k,ispec)) * & 
-!                                                     Cxyz(Vcont(p),Vcont(q),i,j,k,ispec) * & 
-!                                                     strain2(Vcont(q),i,j,k,ispec) ) 
-!                                 enddo
-!                             enddo 
-!                             knl(ibool(i,j,k,ispec)) = cont
-!                         enddo 
-!                     enddo
-!                 enddo
-!             enddo
-!         endif 
-
-!     end subroutine compute_Vani_kernel_example
 
 
     
