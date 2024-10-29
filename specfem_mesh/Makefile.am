@@ -5,7 +5,7 @@ VPATH  = src
 # -cpp allows linknig to the .cuf file
 # -D WITH_CUDA to set preprocessor WITH_CUDA = true
 if USE_CUDA
-    AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -D WITH_CUDA -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
+    AM_FCFLAGS = -cpp -Wall -O0 -g  -llapack -lblas -cuda -lcudart -D WITH_CUDA -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 else
     AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 endif
