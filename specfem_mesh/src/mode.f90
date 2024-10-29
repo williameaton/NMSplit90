@@ -19,22 +19,28 @@ module modes
         real(kind=SPLINE_REAL)     :: kf         ! float of k = √(l(l+1))
         type(MineosModel), pointer :: mineos
 
+        real(kind=SPLINE_REAL), allocatable :: p(:)
         real(kind=SPLINE_REAL), allocatable :: u(:)
         real(kind=SPLINE_REAL), allocatable :: v(:)
         real(kind=SPLINE_REAL), allocatable :: w(:)
+        real(kind=SPLINE_REAL), allocatable :: dp(:)
         real(kind=SPLINE_REAL), allocatable :: du(:)
         real(kind=SPLINE_REAL), allocatable :: dv(:)
         real(kind=SPLINE_REAL), allocatable :: dw(:)
 
+        real(kind=SPLINE_REAL), allocatable :: p_spl(:)
         real(kind=SPLINE_REAL), allocatable :: u_spl(:)
         real(kind=SPLINE_REAL), allocatable :: v_spl(:)
         real(kind=SPLINE_REAL), allocatable :: w_spl(:)
+        real(kind=SPLINE_REAL), allocatable :: dp_spl(:)
         real(kind=SPLINE_REAL), allocatable :: du_spl(:)
         real(kind=SPLINE_REAL), allocatable :: dv_spl(:)
         real(kind=SPLINE_REAL), allocatable :: dw_spl(:)
     
-        ! Auxillary spline variables for strain 
-        real(kind=SPLINE_REAL), allocatable :: aux_x(:), aux_z(:)
+        ! Auxillary spline variables for strain, Woodhouse kernels etc
+        real(kind=SPLINE_REAL), allocatable :: aux_x(:), &
+                                               aux_z(:), & 
+                                               aux_f(:)
    
         contains
             procedure :: get_mineos_mode
@@ -78,6 +84,8 @@ module modes
     
         eps = 1.0d-4
     
+
+
         ! File IDs 
         iomod   = 9
         iocat   = 10
@@ -177,24 +185,24 @@ module modes
             write(*,*)
         endif
     
-        
-        if(save_mode)then
-            ! Save eigenfunctions to text file in column format 
-            write(eigstring,'(i0,a,i0,a)')n4,type1,l4,'.txt'
-            open(ieigtxt,file=trim(trim(out_dir)//eigstring), iostat=ios)
-            write(ieigtxt,*)n4,  type1, l4
-            do i =1, self%len
-               if(type1=='S')then 
-                ! Radius, U, U', V, V', P, P'
-                  write(ieigtxt,'(7e18.8)')self%mineos%rad_mineos(i), buf(i), buf(i + self%len), buf(i + 2*self%len), & 
-                                           buf(i + 3*self%len), buf(i + 4*self%len), buf(i + 5*self%len)
-               elseif (type1=='T' .or. type1=='C')then 
-                ! Radius, W, W' ?
-                  write(ieigtxt,'(7e15.8)' )self%mineos%rad_mineos(i), buf(i), buf(i + self%len)
-               endif 
-            enddo 
-            close(ieigtxt)
-        endif
+        ! USED TO SAVE IN COLUMNS ASCII 
+        ! if(save_mode)then
+        !     ! Save eigenfunctions to text file in column format 
+        !     write(eigstring,'(i0,a,i0,a)')n4,type1,l4,'.txt'
+        !     open(ieigtxt,file=trim(trim(out_dir)//eigstring), iostat=ios)
+        !     write(ieigtxt,*)n4,  type1, l4
+        !     do i =1, self%len
+        !        if(type1=='S')then 
+        !         ! Radius, U, U', V, V', P, P'
+        !           write(ieigtxt,'(7e18.8)')self%mineos%rad_mineos(i), buf(i), buf(i + self%len), buf(i + 2*self%len), & 
+        !                                    buf(i + 3*self%len), buf(i + 4*self%len), buf(i + 5*self%len)
+        !        elseif (type1=='T' .or. type1=='C')then 
+        !         ! Radius, W, W' ?
+        !           write(ieigtxt,'(7e15.8)' )self%mineos%rad_mineos(i), buf(i), buf(i + self%len)
+        !        endif 
+        !     enddo 
+        !     close(ieigtxt)
+        ! endif
     
         ! Compare the freq in mHz (wwmhz) to ang freq read from binaries
         ! as well as Q values as a sanity check
@@ -220,9 +228,13 @@ module modes
                 self%v(1 : self%len)  = real(buf(2 * self%len + 1 : 3 * self%len), kind=SPLINE_REAL)
                 self%dv(1 : self%len) = real(buf(3 * self%len + 1 : 4 * self%len), kind=SPLINE_REAL)
             endif
+
+            self%p(1 : self%len)  = real(buf(4 * self%len + 1 : 5 * self%len), kind=SPLINE_REAL)
+            self%dp(1 : self%len) = real(buf(5 * self%len + 1 : 6 * self%len), kind=SPLINE_REAL)
         endif
 
-    
+
+
     end subroutine get_mineos_mode
 
 
@@ -304,6 +316,7 @@ module modes
         m%mineos => mineos
         m%len    = m%mineos%NR 
 
+
         ! Float versions 
         ! DT98 below D.1: k = sqrt(l(l+1))
         m%lf  = real(m%l, kind=SPLINE_REAL)
@@ -315,12 +328,17 @@ module modes
             allocate(m%w(m%len))
             allocate(m%dw(m%len))
         else 
+            allocate(m%p(m%len))
             allocate(m%u(m%len))
             allocate(m%v(m%len))
+            allocate(m%dp(m%len))
             allocate(m%du(m%len))
             allocate(m%dv(m%len))
         endif       
         
+
+   
+
         ! If outdir then will save: 
         if (present(out_dir)) then
             write(*,*)'Saving mode to: ', trim(out_dir)

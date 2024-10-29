@@ -508,7 +508,7 @@ contains
 
     subroutine cuda_Vani_matrix_stored_selfcoupling(sm, n1, t1, l1)
         !use omp_lib
-        use params, only: strains1, Cxyz, Vani
+        use params, only: strains1, Cxyz, Vani, myrank
         use allocation_module, only: deallocate_if_allocated
         use specfem_mesh, only: SetMesh
 #ifdef WITH_CUDA
@@ -532,10 +532,13 @@ contains
         allocate(strains1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l1+1, 6))
 
         ! Load all strains once and for all for each m value
+
         do im =  -l1, l1 
             call sm%load_mode_strain_binary(n1, t1, l1, im, &  
                                             strains1(:,:,:,:,l1+im+1,:))
         enddo 
+
+
 
         call compute_vani_sc_cuda(l1, sm%ngllx, sm%nspec, sm%wglljac)
 

@@ -60,7 +60,7 @@ do i_mode = 1, 1! nmodes
     call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
     allocate(cst(num_s, ncols))
 
-    call H_to_cst(Vani_real, l1, l1, cst, ncols, num_s, t1, t1)
+    call H_to_cst(Vani_real, l1, l1, cst, ncols, num_s, t1, t1, 1)
 
     out_name = 'output/cst_'//trim(nstr)//trim(t1)//trim(lstr)//trim(model_ti)//'.txt'
     call write_cst_to_file(out_name, cst, ncols, num_s, smin, 2)

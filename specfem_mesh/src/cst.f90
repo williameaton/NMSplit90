@@ -121,12 +121,14 @@ module splitting_function
 
 
 
-    subroutine H_to_cst(H, ld, l, cst, ncols, nrows, type1, type2)
+    subroutine H_to_cst(H, ld, l, cst, ncols, nrows, type1, type2, s_step)
         ! Computes splitting coefficients from the matrix H
+        ! s_step of 1 will compute all values of s even if some are invalid
+        ! 2 would compute very second s e.g. smin, smin+2 etc
         implicit none 
 
-        integer :: l, ld, ncols, nrows
-        real(kind=SPLINE_REAL)   :: cst(nrows, ncols)
+        integer :: l, ld, ncols, nrows, s_step
+        real(kind=SPLINE_REAL):: cst(nrows, ncols)
         real(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
         character :: type1, type2
 
@@ -134,8 +136,6 @@ module splitting_function
         ! Local: 
         integer :: smin, smax, num_s, max_num_t, is, s, it, t, m, & 
                    r0, rs, Nd, rt, ct, N, R, im, j, md
-        
-        
 
         if(ld.lt.l)then
             write(*,*)"ERROR: l' (ld) must be greater than l: "
@@ -143,8 +143,6 @@ module splitting_function
             write(*,*)"ERROR: l  = ", l  
             stop
         endif
-
-            
 
         ! j = 0 for S-S or T-T coupling and 1 for mixed
         if(type1.eq.type2)then
@@ -168,7 +166,7 @@ module splitting_function
         r0 = 1 + ld - l       ! starting row for t = 0
         Nd = 2*l +1           ! Maximum diagonal length 
   
-        do is = 1, num_s 
+        do is = 1, num_s, s_step 
             s = smin + is - 1
             do it = 1, 2*s + 1
                 t = it - 1 - s
@@ -197,7 +195,6 @@ module splitting_function
                     cst(is,it) = cst(is,it) + F_mst(m, s, t, l, ld, j) * & 
                                               H(md+ld+1, m+l+1)
                 enddo 
-
             enddo 
         enddo 
 
