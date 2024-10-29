@@ -66,7 +66,7 @@ program test_cst_to_mat
     call save_Vani_real_matrix(l1, Hmat, './cst/Hmat.txt')
 
 
-    call H_to_cst(Hmat, l1, l2, cst, ncols, num_s, t1, t2)
+    call H_to_cst(Hmat, l1, l2, cst, ncols, num_s, t1, t2, 1)
     
     !Print Cst matrix:
     do is = 1, num_s 
