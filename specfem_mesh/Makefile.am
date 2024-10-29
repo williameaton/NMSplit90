@@ -5,7 +5,7 @@ VPATH  = src
 # -cpp allows linknig to the .cuf file
 # -D WITH_CUDA to set preprocessor WITH_CUDA = true
 if USE_CUDA
-    AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -D WITH_CUDA -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
+    AM_FCFLAGS = -cpp -Wall -O0 -llapack -lblas -cuda -lcudart -D WITH_CUDA -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 else
     AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 endif
@@ -19,7 +19,7 @@ endif
 
 
 bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh plot_vani \
-               break_mesh 
+               break_mesh opt_vani
 
 # Basic files for all programs 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90 ylm_plm.f90 thrj.f90
@@ -67,6 +67,14 @@ compute_vani_SOURCES = $(MED_SRCS)       \
                         vani_kernel.o    \
                         compute_ani_splitting.f90
 
+opt_vani_SOURCES = $(MED_SRCS)       \
+                        cuda_proxies.f90 \
+                        V_ani_matrix.f90 \
+                        cst.f90          \
+                        voronoi.f90      \
+                        vani_kernel.o    \
+                        optimised_vani.f90
+
 plot_vani_SOURCES =     $(MED_SRCS)       \
                         cuda_proxies.f90 \
                         V_ani_matrix.f90 \
@@ -77,6 +85,7 @@ plot_vani_SOURCES =     $(MED_SRCS)       \
                         plot_vani_matrix_to_ensight.f90
 
                         
+opt_vani_LDADD = vani_kernel.o -lcoretran 
 compute_vani_LDADD = vani_kernel.o -lcoretran 
 plot_vani_LDADD = vani_kernel.o -lcoretran 
 
