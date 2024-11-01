@@ -20,9 +20,9 @@ module specfem_mesh
         ! mesh 
     
         ! Set id
-        integer   :: iset
-        integer   :: region 
-        character :: set_str 
+        integer      :: iset
+        integer      :: region 
+        character(5) :: set_str 
 
         ! GLL values
         integer :: nglob
@@ -897,7 +897,7 @@ module specfem_mesh
 
             class(SetMesh) :: self
 
-            call self%interp%save(trim(datadir)//'/store/mesh_radii_data/data_'//self%set_str)
+            call self%interp%save(trim(datadir)//'/store/mesh_radii_data/data_'//trim(self%set_str))
         end subroutine save_get_mesh_radii_results
 
 
@@ -906,7 +906,7 @@ module specfem_mesh
             implicit none 
             class(SetMesh) :: self
 
-            call self%interp%load(trim(datadir)//'/store/mesh_radii_data/data_'//self%set_str)
+            call self%interp%load(trim(datadir)//'/store/mesh_radii_data/data_'//trim(self%set_str))
     
         end subroutine load_get_mesh_radii_results
 
@@ -1424,7 +1424,7 @@ module specfem_mesh
             call allocate_if_unallocated(self%ngllx, self%nglly, self%ngllz, self%nspec, self%detjac)
         
             ! Density
-            open(IIN, file=trim(datadir)//'/store/jacobian/jacdata_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/jacobian/jacdata_'//trim(self%set_str), form='unformatted')
             read(IIN)self%jac
             read(IIN)self%detjac
             read(IIN)self%jacinv
@@ -1438,7 +1438,7 @@ module specfem_mesh
             implicit none 
             class(SetMesh)     :: self
 
-            open(IOUT, file=trim(datadir)//'/store/jacobian/jacdata_'//self%set_str, form='unformatted')
+            open(IOUT, file=trim(datadir)//'/store/jacobian/jacdata_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%jac
             write(IOUT)self%detjac
             write(IOUT)self%jacinv
@@ -1449,7 +1449,7 @@ module specfem_mesh
             use params, only: datadir, IOUT
             implicit none 
             class(SetMesh)     :: self
-            open(IOUT, file=trim(datadir)//'/store/jacobian/wglljac_'//self%set_str, form='unformatted')
+            open(IOUT, file=trim(datadir)//'/store/jacobian/wglljac_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%wglljac
             close(IOUT)
         end subroutine save_wglljac
@@ -1462,7 +1462,7 @@ module specfem_mesh
 
             call deallocate_if_allocated(self%wglljac)
             allocate(self%wglljac(self%ngllx,self%nglly,self%ngllz,self%nspec))
-            open(IIN, file=trim(datadir)//'/store/jacobian/wglljac_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/jacobian/wglljac_'//trim(self%set_str), form='unformatted')
             read(IIN)self%wglljac
             close(IIN)
         end subroutine load_wglljac
@@ -1472,7 +1472,9 @@ module specfem_mesh
             use params, only: datadir, IOUT
             implicit none         
             class(SetMesh)     :: self
-            open(IOUT, file=trim(datadir)//'/store/global_xyz/coords_'//self%set_str, form='unformatted')
+            write(*,*)'saving to '//trim(datadir)//'/store/global_xyz/coords_'//trim(self%set_str)
+
+            open(IOUT, file=trim(datadir)//'/store/global_xyz/coords_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%x_glob
             write(IOUT)self%y_glob
             write(IOUT)self%z_glob
@@ -1489,7 +1491,7 @@ module specfem_mesh
             call allocate_if_unallocated(self%nglob, self%y_glob)
             call allocate_if_unallocated(self%nglob, self%z_glob)
         
-            open(IIN, file=trim(datadir)//'/store/global_xyz/coords_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/global_xyz/coords_'//trim(self%set_str), form='unformatted')
             read(IIN)self%x_glob
             read(IIN)self%y_glob
             read(IIN)self%z_glob
@@ -1503,7 +1505,7 @@ module specfem_mesh
             implicit none 
             class(SetMesh) :: self
 
-            open(IOUT, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//self%set_str, form='unformatted')
+            open(IOUT, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%rstore
             write(IOUT)self%thetastore
             write(IOUT)self%phistore
@@ -1520,7 +1522,7 @@ module specfem_mesh
             call allocate_if_unallocated(self%ngllx, self%nglly, self%ngllz, self%nspec, self%thetastore)
             call allocate_if_unallocated(self%ngllx, self%nglly, self%ngllz, self%nspec, self%phistore)
         
-            open(IIN, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//trim(self%set_str), form='unformatted')
             read(IIN)self%rstore
             read(IIN)self%thetastore
             read(IIN)self%phistore
