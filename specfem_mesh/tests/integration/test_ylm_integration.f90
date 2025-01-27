@@ -1,7 +1,6 @@
 program test_ylm_integration
     use params, only: nprocs
     use allocation_module, only: allocate_if_unallocated
-    use integrate, only: integrate_over_mesh, integrate_complex_mesh_scalar
     use ylm_plm, only: ylm_complex
     use mineos_model, only: mineos
     use specfem_mesh, only: SetMesh, create_SetMesh
@@ -60,7 +59,7 @@ program test_ylm_integration
                 enddo 
             enddo 
 
-            integral = integrate_complex_mesh_scalar(sm, integrand)
+            call sm%integrate_complex_mesh_scalar_8(integrand, integral)
             totalint = totalint + integral
             call sm%cleanup()
         enddo 

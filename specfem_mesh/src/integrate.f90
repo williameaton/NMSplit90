@@ -3,13 +3,6 @@ module integrate
     implicit none 
     include "constants.h"
 
-
-    ! interface integrate_over_mesh
-    !     module procedure integrate_real_mesh_scalar     
-    !     module procedure integrate_complex_mesh_scalar
-    ! end interface
-
-
     interface integrate_r_traps
         module procedure integrate_r_traps_real_4
         module procedure integrate_r_traps_real_8
@@ -19,54 +12,6 @@ module integrate
 
 
     contains
-
-    !  real(kind=CUSTOM_REAL) function integrate_real_mesh_scalar(SM, scalar)
-    !     ! Integrates a real scalar, defined at each GLL point, over the mesh
-    !     implicit none 
-    !     ! IO variables: 
-    !     type(SetMesh) :: SM 
-    !     real(kind=CUSTOM_REAL) :: scalar(SM%ngllx, SM%nglly, SM%ngllz, SM%nspec)
-    !     ! Local 
-    !     real(kind=CUSTOM_REAL) :: sum
-    !     integer :: i, j, k, ispec
-
-    !     sum = zero 
-    !     do ispec = 1, SM%nspec 
-    !         do i = 1, SM%ngllx 
-    !             do j = 1, SM%nglly
-    !                 do k = 1, SM%ngllz 
-    !                     sum = sum + scalar(i, j, k, ispec) * SM%detjac(i, j, k, ispec) * SM%wgll(i) * SM%wgll(j) *SM%wgll(k)
-    !                 enddo 
-    !             enddo 
-    !         enddo 
-    !     enddo 
-    !     integrate_real_mesh_scalar = sum 
-    !     return
-    ! end function  integrate_real_mesh_scalar
-
-    
-    ! complex(kind=CUSTOM_REAL) function integrate_complex_mesh_scalar(SM, compl_scal)
-    !     ! Integrates a complex scalar, defined at each GLL point, over the mesh
-    !     implicit none 
-    !     type(SetMesh) :: SM 
-    !     complex(kind=CUSTOM_REAL) :: compl_scal(SM%ngllx, SM%nglly, SM%ngllz, SM%nspec) 
-    !     complex(kind=CUSTOM_REAL) :: sum
-    !     integer :: i, j, k, ispec
-
-    !     sum = (zero, zero) 
-    !     do ispec = 1, SM%nspec 
-    !         do i = 1, SM%ngllx 
-    !             do j = 1, SM%nglly
-    !                 do k = 1, SM%ngllz 
-    !                     sum = sum + compl_scal(i, j, k, ispec) * SM%detjac(i, j, k, ispec) * SM%wgll(i) * SM%wgll(j) * SM%wgll(k)
-    !                 enddo 
-    !             enddo 
-    !         enddo 
-    !     enddo 
-    !     integrate_complex_mesh_scalar = sum 
-    !     return
-    ! end function  integrate_complex_mesh_scalar
-
 
     real(kind=4) function integrate_r_traps_real_4(r, f, n)
         ! integrates a radial function f(r) using a trapesoid method

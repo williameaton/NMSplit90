@@ -3,7 +3,6 @@ program integrate_mesh_1
     ! f = 1 and f = r
     use params, only: nprocs
     use allocation_module, only: allocate_if_unallocated
-    use integrate, only: integrate_over_mesh
     use ylm_plm, only: ylm_complex
     use mineos_model, only: mineos
     use specfem_mesh, only: SetMesh, create_SetMesh
@@ -61,7 +60,7 @@ program integrate_mesh_1
                 enddo 
             enddo 
         enddo 
-        integral_r = integrate_over_mesh(sm, integrand)
+        call sm%integrate_real_mesh_scalar_8(integrand, integral_r)
         totalint_r = totalint_r + integral_r
 
         call sm%cleanup()

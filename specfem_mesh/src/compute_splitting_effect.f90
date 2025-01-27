@@ -37,10 +37,10 @@ program compute_splitting_effect
 
 
     ! Read text 3D model:  
-    Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+    Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/gladm35/perturbation/dvp.txt"
     call Model3D%read_model_from_file()
 
-    stop 
+
 
     ! Create a KD tree based on the points in the 3D model
     call Model3D%create_KDtree()

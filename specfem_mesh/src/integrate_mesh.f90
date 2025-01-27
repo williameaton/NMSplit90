@@ -5,7 +5,6 @@ program integrate_mesh
                           compute_jacobian, cleanup_for_mode, &
                           compute_rtp_from_xyz
     use gll, only: setup_gll
-    use integrate, only: integrate_over_mesh, integrate_complex_mesh_scalar
     use ylm_plm, only: ylm_complex
     implicit none 
     include "constants.h"

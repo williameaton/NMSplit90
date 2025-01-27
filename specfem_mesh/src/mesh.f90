@@ -96,6 +96,9 @@ module specfem_mesh
             procedure map_local_global_complex_4
             procedure map_local_global_complex_8
             
+            procedure integrate_real_mesh_scalar_8 
+            procedure integrate_complex_mesh_scalar_8 
+
             procedure :: setup_mesh_sem_details
             procedure :: check_ibool_is_defined
             procedure :: load_ibool
@@ -2398,6 +2401,55 @@ module specfem_mesh
             endif  
         end subroutine map_complex_vector_8
 
+
+        subroutine integrate_real_mesh_scalar_8(self, scalar, sum)
+            ! Integrates scalar field over SM to give sum 
+            implicit none 
+            include "precision.h"
+            class(SetMesh) :: self
+
+            ! IO variables:
+            real(kind=8) :: scalar(self%ngllx, self%nglly, self%ngllz, self%nspec)
+            real(kind=8) :: sum
+            
+            ! Local: 
+            integer :: ispec, i, j, k 
+            sum = zero 
+            do ispec = 1, self%nspec 
+                do i = 1, self%ngllx 
+                    do j = 1, self%nglly
+                        do k = 1, self%ngllz 
+                            sum = sum + scalar(i, j, k, ispec) * self%detjac(i, j, k, ispec) * self%wgll(i) * self%wgll(j) *self%wgll(k)
+                        enddo 
+                    enddo 
+                enddo 
+            enddo 
+        end subroutine integrate_real_mesh_scalar_8
+
+
+    
+        subroutine integrate_complex_mesh_scalar_8(self, scalar, sum)
+            ! Integrates scalar field over SM to give sum 
+            implicit none 
+            include "precision.h"
+            class(SetMesh) :: self
+            ! IO variables:
+            complex(kind=8) :: scalar(self%ngllx, self%nglly, self%ngllz, self%nspec)
+            complex(kind=8) :: sum
+        
+            ! Local: 
+            integer :: ispec, i, j, k 
+            sum = zero 
+            do ispec = 1, self%nspec 
+                do i = 1, self%ngllx 
+                    do j = 1, self%nglly
+                        do k = 1, self%ngllz 
+                            sum = sum + scalar(i, j, k, ispec) * self%detjac(i, j, k, ispec) * self%wgll(i) * self%wgll(j) *self%wgll(k)
+                        enddo 
+                    enddo 
+                enddo 
+            enddo 
+        end subroutine integrate_complex_mesh_scalar_8
 
 
 

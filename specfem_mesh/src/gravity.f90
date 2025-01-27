@@ -28,8 +28,6 @@ module gravitation
 
         enddo 
 
-
-
     end subroutine
 
 end module gravitation
