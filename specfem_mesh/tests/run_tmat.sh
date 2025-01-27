@@ -9,19 +9,15 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-
-echo "Running test_vani_diag..."
-./test_vani_diag
-echo "Running test_vani_fast..."
-./test_vani_fast
-echo "Running test_tromp1995..."
-./test_tromp1995
-
+echo "Running tmat_semi..."
+./tmat_semi
+echo "Running test_tmat..."
+./test_tmat
 
 if [ "$skip_pytest" = false ]; then
-    pytest Vani/test_vani.py
+    pytest test_tmat_ic.py
 fi
 if [ "$skip_cleanup" = false ]; then
-    cd Vani/
+    cd Tmat/
     bash cleanup.sh
 fi

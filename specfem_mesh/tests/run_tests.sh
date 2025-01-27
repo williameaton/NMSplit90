@@ -13,6 +13,7 @@ bash run_ylm.sh --nc --np
 bash run_rotmat.sh --nc --np
 bash run_integration.sh --nc --np
 bash run_mode_norm.sh --nc --np
+bash run_tmat.sh --nc --np
 
 # -------------------------------------------------------
 # Run the pytests

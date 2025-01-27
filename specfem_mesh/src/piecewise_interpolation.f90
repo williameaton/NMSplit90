@@ -331,32 +331,70 @@ module piecewise_interpolation
             implicit none
 
             class(InterpPiecewise) :: self
-            type(Mode) :: Mmode  
+            type(Mode)             :: Mmode  
+            integer                :: i 
 
             if(Mmode%t.eq.'T' .or. Mmode%t.eq.'C')then
                 write(*,*)'Toroidal mode'  
                 ! toroidal
                 allocate(Mmode%w_spl(self%n_radial))
                 allocate(Mmode%dw_spl(self%n_radial))
-                call self%interpolate_mineos_variable(Mmode%w, Mmode%w_spl)
+                call self%interpolate_mineos_variable(Mmode%w,  Mmode%w_spl)
                 call self%interpolate_mineos_variable(Mmode%dw, Mmode%dw_spl)
+
+                ! Auxillary variables:  z (DT98 D.20)
+                allocate(Mmode%aux_z(self%n_radial))
+                Mmode%aux_z = (Mmode%dw_spl - Mmode%w_spl/real(self%radial, kind=SPLINE_REAL))/Mmode%kf
+
+
+                ! If radius is zero then the auxillary value x will be
+                ! NaN so need safety check
+                do i = 1, self%n_radial
+                    if(self%radial(i).eq.zero)then 
+                        Mmode%aux_z(i) = SPLINE_ZERO
+                    endif 
+                enddo 
+
             else 
                 ! spheroidal 
+                allocate(Mmode%p_spl(self%n_radial))
                 allocate(Mmode%u_spl(self%n_radial))
                 allocate(Mmode%v_spl(self%n_radial))
+                allocate(Mmode%dp_spl(self%n_radial))
                 allocate(Mmode%du_spl(self%n_radial))
                 allocate(Mmode%dv_spl(self%n_radial))
 
-                call self%interpolate_mineos_variable(Mmode%u, Mmode%u_spl)
+                call self%interpolate_mineos_variable(Mmode%p,  Mmode%p_spl)
+                call self%interpolate_mineos_variable(Mmode%dp, Mmode%dp_spl)
 
+                call self%interpolate_mineos_variable(Mmode%u,  Mmode%u_spl)
                 call self%interpolate_mineos_variable(Mmode%du, Mmode%du_spl)
-                call self%interpolate_mineos_variable(Mmode%v, Mmode%v_spl)
+
+                call self%interpolate_mineos_variable(Mmode%v,  Mmode%v_spl)
                 call self%interpolate_mineos_variable(Mmode%dv, Mmode%dv_spl)
 
+                ! Auxillary variables: x (DT98 D.20), f (DT98 D.28)
+                allocate(Mmode%aux_f(self%n_radial))
+                allocate(Mmode%aux_x(self%n_radial))
+
+                Mmode%aux_f = (SPLINE_TWO*Mmode%u_spl & 
+                               - Mmode%kf*Mmode%v_spl)/real(self%radial, kind=SPLINE_REAL)
+
+                Mmode%aux_x = Mmode%dv_spl/Mmode%kf + & 
+                             (Mmode%u_spl - Mmode%v_spl/Mmode%kf)/real(self%radial, kind=SPLINE_REAL)
+
+                ! If radius is zero then the auxillary value x will be
+                ! NaN so need safety check
+                do i = 1, self%n_radial
+                    if(self%radial(i).eq.zero)then 
+                        Mmode%aux_f(i) = SPLINE_ZERO
+                        Mmode%aux_x(i) = SPLINE_ZERO
+                    endif 
+                enddo 
             endif 
 
             Mmode%spl_len = self%n_radial
-
+        
         end subroutine interpolate_mode_eigenfunctions
 
 

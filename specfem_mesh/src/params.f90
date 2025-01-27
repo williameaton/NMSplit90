@@ -26,11 +26,14 @@ character(len=60),  parameter  :: model_fname = 'model'
 real(kind=CUSTOM_REAL),    allocatable :: rho(:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: strain1(:,:,:,:,:), strain2(:,:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: strains1(:,:,:,:,:,:), strains2(:,:,:,:,:,:)
+complex(kind=SPLINE_REAL), allocatable :: gradS_1(:,:,:,:,:,:), gradS_2(:,:,:,:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 
 ! Matrices: 
 complex(kind=SPLINE_REAL), allocatable :: Wmat(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vani(:,:)
+complex(kind=SPLINE_REAL), allocatable :: Tmat(:,:)
+complex(kind=SPLINE_REAL), allocatable :: Viso(:,:)
 
 ! Angles of rotation for VTI 
 real(kind=CUSTOM_REAL), allocatable    :: eta1(:,:,:,:)
@@ -49,6 +52,7 @@ real(kind=CUSTOM_REAL), allocatable    :: Arad(:), Crad(:), Lrad(:), &
 
 ! Spline arrays: 
 real(kind=SPLINE_REAL), allocatable :: rho_spl(:),  &  
+                                       g_spl(:),  &  
                                        vp_spl(:),   & 
                                        A0(:)
 

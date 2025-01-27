@@ -6,10 +6,52 @@ module splitting_function
     contains 
 
 
-    real(kind=CUSTOM_REAL) function gamma_kkst(md, m, s, t, l, ld, j)
+
+    real(kind=CUSTOM_REAL) function xi_kkst(md, m, s, t, ld, l)
+        ! I made this one up. Its the same as Gilbert and Masters 2000
+        ! Eqn 5 but without the second Wj3 symbol. If you look at 
+        ! the woodhouse kernels in DT98 they have things written using 
+        ! just the first wj3 so its easier to have this also 
+        ! E.g. Apx eqn D.43 
+        use w3j, only: thrj
+        implicit none
+        integer :: m, md, s, t, l, ld, j
+        real(kind=CUSTOM_REAL) :: f_md, f_s, f_l, f_ld
+
+        ! Convert integers to floats: 
+        f_md = real(md, kind=CUSTOM_REAL)
+        f_s  = real(s,  kind=CUSTOM_REAL)
+        f_ld = real(ld, kind=CUSTOM_REAL)
+        f_l  = real(l,  kind=CUSTOM_REAL)
+
+        xi_kkst = (-ONE)**f_md                      * & 
+                    ((TWO*f_ld+ONE)*(TWO*f_s+ONE)   * & 
+                    (TWO*f_l+ONE)/(FOUR*PI))**HALF  * &
+                    thrj(ld, s, l, -md, t, m)       
+    end function
+
+
+
+    real(kind=CUSTOM_REAL) function gamma_kkst_alt(md, m, s, t, ld, l, j)
         ! Gilbert & Woodhouse 2000 
-        ! Determination of structure coe¤cients from splitting matrices
+        ! Determination of structure coefcients from splitting matrices
         ! Eqn 5
+        ! NOTE THE SECOND w3j compared to the function above 
+        use w3j, only: thrj
+        implicit none
+        integer :: m, md, s, t, l, ld, j
+
+        gamma_kkst_alt = xi_kkst(md, m, s, t, ld, l) * &
+                         thrj(ld+j, s+j, l+j, 0, 0, 0) 
+    end function
+
+
+
+    real(kind=CUSTOM_REAL) function gamma_kkst(md, m, s, t, ld, l, j)
+        ! Gilbert & Woodhouse 2000 
+        ! Determination of structure coefcients from splitting matrices
+        ! Eqn 5
+        ! NOTE THE SECOND w3j compared to the function above 
         use w3j, only: thrj
         implicit none
         integer :: m, md, s, t, l, ld, j
