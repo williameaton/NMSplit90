@@ -9,6 +9,7 @@ program compute_splitting_effect
     use mineos_model, only: mineos, mineos_ptr
     use specfem_mesh, only: SetMesh, create_SetMesh
 
+
     use model3d, only: M3D
     
     use modes, only: Mode, get_mode
@@ -25,6 +26,9 @@ program compute_splitting_effect
     
     type(M3D) :: model3D
     
+    real(kind=8), allocatable :: gpsi(:,:,:,:,:)
+    real(kind=8) :: ggpsi(3,3)
+
     ! Read mineos model 
     call mineos%process_mineos_model(.false.)
     mineos_ptr => mineos
@@ -37,13 +41,11 @@ program compute_splitting_effect
 
 
     ! Read text 3D model:  
-    Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/gladm35/perturbation/dvp.txt"
-    call Model3D%read_model_from_file()
-
-
+    !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/gladm35/perturbation/dvp.txt"
+    !call Model3D%read_model_from_file()
 
     ! Create a KD tree based on the points in the 3D model
-    call Model3D%create_KDtree()
+    !call Model3D%create_KDtree()
     
     
     write(*,*)'number of procs: ', nprocs
@@ -54,11 +56,15 @@ program compute_splitting_effect
             ! Read the mesh info and coordinates
             call sm%read_proc_coordinates()
             call sm%load_ibool()
+            call sm%setup_gll()
+            call sm%compute_jacobian(.false.)
             call sm%setup_global_coordinate_arrays(.false.)
             call sm%compute_rtp_from_xyz(.false.)
             call sm%get_unique_radii(.true.)
     
 
+            allocate(gpsi(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
+            call compute_grad_centrifugal(sm, gpsi, ggpsi)
 
             call create_ensight_file_prefix(iset, region)
             call create_proc_case_file()

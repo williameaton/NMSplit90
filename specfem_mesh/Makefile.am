@@ -26,7 +26,7 @@ SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90 ylm_plm.f90 thrj.
 MED_SRCS   = $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90  \
                            mode.f90 piecewise_interpolation.f90 \
                            lagrange_any.f90 integrate.f90 gravity.f90 mesh.f90 \
-                           output.f90 model3D_reader.f90
+                           centrifugal.f90 output.f90 model3D_reader.f90
 
 
 
