@@ -6,106 +6,414 @@ module vani_kernel
 
     ! Subroutine on host that drives vknl
     subroutine compute_vani_sc_cuda(l, ngll, nspec, wglljac)
-        use params, only: strains1, Cxyz, vani
+        use params, only: strains1, Cxyz, vani, myrank
         implicit none 
         ! IO variables
         integer :: ngll, nspec
-        integer :: l, i, j, k, ispec, tl1
+        integer :: l, i, j, k, m, p,q, ispec, tl1, igll
         real(kind=CUSTOM_REAL) :: wglljac(ngll, ngll, ngll, nspec)
 
         ! Local host variables
         real :: Vloc_r(2*l+1 , 2*l+1), Vloc_i(2*l+1 , 2*l+1)
+        integer :: nblocks_for_all_elems
+        integer :: nelem_in_block
+        integer :: ngll_in_block, ngll_per_loop
+        
+        real(kind=4),  dimension(nspec, ngll*ngll*ngll, 2*l+1, 6)     :: strains_real
+        real(kind=4),  dimension(nspec, ngll*ngll*ngll, 2*l+1, 6)     :: strains_imag
+        real(kind=4),  dimension(nspec, ngll*ngll*ngll, 6, 6)         :: Cxyz_reordered
+        real(kind=4),  dimension(nspec, ngll*ngll*ngll)               :: wglljac_reordered
+
 
         ! Local device variables
-        real(kind=4),    device, dimension(ngll, ngll, ngll, nspec)             :: d_wglljac
-        real(kind=4),    device, dimension(6, 6, ngll, ngll, ngll, nspec)         :: d_Cxyz
-        real(kind=4),    device, dimension(2*l+1, 2*l+1)                             :: d_vani_real, d_vani_imag
-        complex(kind=4), device, dimension(6, ngll, ngll, ngll, nspec, 2*l+1)     :: d_strains
+        real(kind=4),    device, dimension(nspec, ngll*ngll*ngll)            :: d_wglljac
+        real(kind=4),    device, dimension(nspec, ngll*ngll*ngll, 6, 6)      :: d_Cxyz
+        real(kind=4),    device, dimension(2*l+1, 2*l+1)                     :: d_vani_real, d_vani_imag
+        real(kind=4), device, dimension(nspec, ngll*ngll*ngll, 2*l+1, 6)     :: d_strains_real
+        real(kind=4), device, dimension(nspec, ngll*ngll*ngll, 2*l+1, 6)     :: d_strains_imag
 
-        ! Currently not connected to constants.h
+
 
         ! Copy to the device: 
         Vloc_r = 0.0_4
         d_vani_real = Vloc_r   ! Zero these
         d_vani_imag = Vloc_r   ! Zero these
-        d_strains   = strains1
-        d_wglljac   = real(wglljac, kind=4)
-        d_Cxyz      = Cxyz
 
+        ! We want to cast the arrays in a different order for now -- can make this
+        ! how they are stored/loaded later: 
+        if(myrank.eq.0)write(*,*)'Copying to device'
         tl1 = 2*l + 1
+        do ispec = 1, nspec 
+            igll = 0 
+            do i = 1, ngll 
+                do j = 1, ngll 
+                    do k = 1, ngll 
+                        igll = igll + 1 
 
-        ! Launching m1 x m2 x nspec blocks so that each block 
-        ! deals with one m1, m2 combination for a single element
+                        do p = 1,6
+                            do m = 1, tl1
+                                    strains_real(ispec, igll, m, p) =  real(strains1(i, j, k, ispec, m, p), kind=4)
+                                    strains_imag(ispec, igll, m, p) = aimag(strains1(i, j, k, ispec, m, p))
+                            enddo !m 
+                            do q = 1,6
+                                Cxyz_reordered(ispec, igll, p, q)   = Cxyz(i,j,k,ispec, p, q)
+                            enddo ! q
+                        enddo ! p
+
+                        wglljac_reordered(ispec, igll) = real(wglljac(i,j,k,ispec), kind=4)
+                    enddo 
+                enddo 
+            enddo 
+        enddo 
+
+        d_cxyz         = Cxyz_reordered
+        d_wglljac      = wglljac_reordered
+        d_strains_real = strains_real
+        d_strains_imag = strains_imag
+
+        nelem_in_block        = 32
+        ngll_in_block         = 16
+        nblocks_for_all_elems = ceiling(real(nspec)/real(nelem_in_block))
+        ngll_per_loop         = ceiling(125.d0/real(ngll_in_block))
+
+        if(myrank.eq.0)then 
+            write(*,*) 'Dimensions for calculation: '
+            write(*,*) '    - Nspec                     :', nspec
+            write(*,*) '    - tl1                       :', tl1
+            write(*,*) 'Grid dimensions: '
+            write(*,*) '    - To cover all elements     : ', nblocks_for_all_elems
+            write(*,*) '    - To cover all m1, m2       : ', tl1*tl1
+            write(*,*) '    - To cover all contractions : ', 9*9
+            write(*,*) 
+            write(*,*) 'Block dimensions: '
+            write(*,*) '    - Elements in a block       : ', nelem_in_block
+            write(*,*) '    - Ngll covered in the block : ', ngll_in_block
+            write(*,*) '    - Ngll in loop              : ', ngll_per_loop
+        endif 
+
+
         if(ngll.eq.5)then
-        call vani_knl_NGLL5<<<dim3(tl1,tl1,nspec), dim3(ngll,ngll,ngll)>>> & 
-             (l, tl1, ngll, nspec, d_wglljac, d_strains, d_Cxyz, d_vani_real, d_vani_imag)
+                call vani_knl_NGLL5<<<dim3(nblocks_for_all_elems, tl1*tl1,  81), dim3(nelem_in_block, ngll_in_block, 1)>>> & 
+                                (nelem_in_block, ngll_per_loop, tl1, nspec, d_wglljac, d_strains_real, d_strains_imag, & 
+                                d_Cxyz, d_vani_real, d_vani_imag)
         else 
             write(*,*)'Error. hardcoded for ngll = 5'
             stop
         endif 
 
 
+        
         Vloc_r = d_vani_real        
         Vloc_i = d_vani_imag
-
         ! Add the real and imaginary components to the global Vani
-        vani = vani + Vloc_r + SPLINE_iONE*Vloc_i
+        vani(1:tl1, 1:tl1) =  Vloc_r + SPLINE_iONE*Vloc_i
+
 
     end subroutine compute_vani_sc_cuda
 
 
 
-    attributes(global) subroutine vani_knl_NGLL5(l1, tl1, ngll, nspec, d_wglljac, & 
-                                          d_strains, d_Cxyz, d_Vani_r, d_Vani_i)
-        integer, value                                      :: l1, ngll, nspec, tl1
-        real(kind=4), dimension(ngll, ngll, ngll, nspec)            :: d_wglljac
-        real(kind=4), dimension(6,6, ngll, ngll, ngll, nspec)       :: d_Cxyz
-        complex(kind=4), dimension(6, ngll, ngll, ngll, nspec, tl1) :: d_strains
-        real(kind=4), dimension(tl1, tl1)                   :: d_Vani_r, d_Vani_i
+    attributes(global) subroutine vani_knl_NGLL5(nspec_per_block, ngll_per_thread, tl1, nspec, d_wglljac, & 
+                                                d_strains_r, d_strains_i, d_Cxyz, d_Vani_r, d_Vani_i)
+        integer, value                                :: nspec, tl1, nspec_per_block, ngll_per_thread
+        real(kind=4), dimension(nspec, 125)           :: d_wglljac
+        real(kind=4), dimension(nspec, 125, 6, 6)     :: d_Cxyz
+        real(kind=4), dimension(nspec, 125, tl1, 6)   :: d_strains_r, d_strains_i
+        real(kind=4), dimension(tl1, tl1)             :: d_Vani_r, d_Vani_i
 
         ! internal variables
-        integer         :: i, j, k, ispec, m1, m2, p, q, istat
-        complex(kind=4) :: cont
+        integer         :: i, j, k, ispec, m1, m2, p, q, istat, start_gll,end_gll
+        real(kind=4)    :: cont_r, cont_i
         real(kind=4)    :: trash
         integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
 
         ! In shared memory: 
-        complex, dimension(6,5,5,5),   shared :: s_strain_1, s_strain_2
-        real,    dimension(6,6,5,5,5), shared :: s_c
+        real, shared :: s_block_sum_real, s_block_sum_imag
 
-        i = threadidx%x 
-        j = threadidx%y
-        k = threadidx%z
+        ! Get ispec
+        ispec = ((blockidx%x-1) * nspec_per_block) + threadidx%x 
+        if(ispec.gt.nspec)return
 
-        m1    = blockidx%x 
-        m2    = blockidx%y 
-        ispec = blockidx%z
+        ! Vani matrix element
+        m1    = (blockidx%y-1)/tl1 +1
+        m2    = blockidx%y - tl1*(m1-1)
 
-        if (i.gt.ngll .or. j.gt.ngll .or. k.gt.ngll) return
+        ! Contraction indices
+        p    = (blockidx%z-1)/9 + 1
+        q    =  blockidx%z - 9*(p-1)
 
-        ! Copy some stuff to close shared memory
-        s_strain_1(:, i, j, k) = d_strains(:, i, j, k, ispec, m1)
-        s_strain_2(:, i, j, k) = d_strains(:, i, j, k, ispec, m2)
-        s_c(:,:, i, j, k)      = d_Cxyz(:, :, i, j, k, ispec)
+        ! Get gll limits for this thread
+        start_gll = ngll_per_thread*(threadidx%y-1) + 1
+        end_gll   = start_gll + ngll_per_thread - 1
+
+        ! Initialise for this thread       
+        cont_r = 0.0_4      
+        cont_i = 0.0_4      
+        if (threadidx%x.eq.1.and.threadidx%y.eq.1.and.threadidx%z.eq.1) then
+            s_block_sum_real = 0.0_4
+            s_block_sum_imag = 0.0_4
+        endif
         call syncthreads()
 
-        cont = (0.0_4, 0.0_4) 
-        
-        do p = 1, 9
-            do q =1,9
-                cont = cont  +  conjg(s_strain_1(Vcont(p),i,j,k)) * &
-                                s_c(Vcont(p), Vcont(q),i,j,k)     * & 
-                                s_strain_2(Vcont(q),i,j,k)
-                enddo 
+
+        do igll = start_gll, end_gll 
+            ! Compute real and imag
+            cont_r = cont_r + (((d_strains_r(ispec, igll, m1, Vcont(p))  * &
+                                 d_strains_r(ispec, igll, m2, Vcont(q))) + & 
+                                (d_strains_i(ispec, igll, m1, Vcont(p))  * &
+                                 d_strains_i(ispec, igll, m2, Vcont(q)))&
+                               ) * & 
+                               d_cxyz(ispec, igll, Vcont(p), Vcont(q))   * & 
+                               d_wglljac(ispec, igll))
+
+            ! Note here the negative is because we are using the conjugate of
+            ! the m1 strain 
+            !cont_i = cont_i - (d_strains_i(ispec, igll, m1, Vcont(p))   * &
+            !                  d_cxyz(ispec, igll, Vcont(p), Vcont(q))  * & 
+            !                  d_strains_i(ispec, igll, m2, Vcont(q))   * & 
+            !                  d_wglljac(ispec, igll))
         enddo 
 
-        cont = cont * d_wglljac(i,j,k,ispec)
-
-        ! Extract the real and imaginary parts: 
-        ! atomic add not available for complex. 
-        trash = atomicadd(d_Vani_r(m1, m2),  real(cont,kind=4))
-        trash = atomicadd(d_Vani_i(m1, m2),  aimag(cont))  
+        call syncthreads()
+        trash = atomicadd(s_block_sum_real,  cont_r)
+        trash = atomicadd(s_block_sum_imag,  cont_i)  
+        call syncthreads()
         
-        end subroutine vani_knl_NGLL5
+
+        !s_elem_m1m2_sum should now hold the value for this elements
+        !contribution to m1, m2
+        !Only 1 thread writes it to the device-level sum 
+        if (threadidx%x.eq.1.and.threadidx%y.eq.1.and.threadidx%z.eq.1)then
+          trash = atomicadd(d_Vani_r(m1, m2),  s_block_sum_real)
+          trash = atomicadd(d_Vani_i(m1, m2),  s_block_sum_imag) 
+        endif
+    end subroutine vani_knl_NGLL5
+
+
+
+
+
+
+
+
+
+    ! subroutine ORIGINAL_compute_vani_sc_cuda(l, ngll, nspec, wglljac)
+    !     use params, only: strains1, Cxyz, vani, myrank
+    !     implicit none 
+    !     ! IO variables
+    !     integer :: ngll, nspec
+    !     integer :: l, i, j, k, ispec, tl1, p, m, igll
+    !     real(kind=CUSTOM_REAL) :: wglljac(ngll, ngll, ngll, nspec)
+
+    !     ! Local host variables
+    !     real :: Vloc_r(2*l+1 , 2*l+1), Vloc_i(2*l+1 , 2*l+1)
+    !     integer :: upper_diag_elem
+
+
+    !     real(kind=4),  dimension(ngll*ngll*ngll,nspec, 2*l+1, 6)     :: strains_real
+    !     real(kind=4),  dimension(ngll*ngll*ngll,nspec, 2*l+1, 6)     :: strains_imag
+    !     real(kind=4),  dimension(ngll*ngll*ngll,nspec, 6, 6)         :: Cxyz_reordered
+    !     real(kind=4),  dimension(ngll*ngll*ngll,nspec)               :: wglljac_reordered
+
+    !     ! Local device variables
+    !     real(kind=4),    device, dimension(ngll*ngll*ngll, nspec)               :: d_wglljac
+    !     real(kind=4),    device, dimension(ngll*ngll*ngll, nspec,6, 6)          :: d_Cxyz
+    !     real(kind=4),    device, dimension(2*l+1, 2*l+1)                        :: d_vani_real, d_vani_imag
+    !     real(kind=4),    device, dimension(ngll*ngll*ngll, nspec, 2*l+1, 6)     :: d_strains_real, d_strains_imag
+    !     logical, parameter :: use_hermitian = .false.
+
+    !     ! Copy to the device: 
+    !     Vloc_r = 0.0_4
+    !     d_vani_real = Vloc_r   ! Zero these
+    !     d_vani_imag = Vloc_r   ! Zero these
+
+    !     do ispec = 1, nspec 
+    !         igll = 1
+    !         do i = 1, ngll
+    !             do j = 1, ngll 
+    !                 do k = 1, ngll
+
+    !                     do m = 1, 2*l + 1 
+    !                         do p = 1, 6
+    !                             strains_real(igll, ispec, m, p) =  real(strains1(i,j,k,ispec, m, p))
+    !                             strains_imag(igll, ispec, m, p) = aimag(strains1(i,j,k,ispec, m, p))
+    !                         enddo 
+    !                     enddo 
+
+    !                     Cxyz_reordered(igll, ispec, :, :) = Cxyz(i,j,k,ispec, :, :)
+    !                     wglljac_reordered(igll, ispec) = wglljac(i,j,k,ispec)
+
+    !                     igll = igll + 1
+    !                 enddo 
+    !             enddo 
+    !         enddo 
+    !     enddo 
+        
+    !     d_strains_real   = strains_real
+    !     d_strains_imag   = strains_imag
+    !     d_wglljac        = real(wglljac_reordered, kind=4)
+    !     d_Cxyz           = Cxyz_reordered
+
+    !     tl1 = 2*l + 1
+    !     upper_diag_elem = (tl1+1)*tl1/2
+
+    !     ! nsys profile -o mpi_cuda_profile --mpi mpirun -np 4 ./mpi_cuda_app
+    !     ! Launching m1 x m2 x nspec blocks so that each block 
+    !     ! deals with one m1, m2 combination for a single element
+    !     if(ngll.eq.5)then
+    !         if(use_hermitian)then 
+    !         else 
+    !             call ORIGINAL_vani_knl_NGLL5<<<dim3(nspec,tl1,tl1), dim3(ngll*ngll*ngll,1,1)>>> & 
+    !             (tl1, ngll*ngll*ngll, nspec, d_wglljac, d_strains_real, d_strains_imag, d_Cxyz, d_vani_real, d_vani_imag)
+    !         endif 
+    !     else 
+    !         write(*,*)'Error. hardcoded for ngll = 5'
+    !         stop
+    !     endif 
+
+
+    !     Vloc_r = d_vani_real        
+    !     Vloc_i = d_vani_imag
+
+    !     ! Add the real and imaginary components to the global Vani
+    !     vani(1:tl1, 1:tl1) = vani(1:tl1, 1:tl1) + Vloc_r + SPLINE_iONE*Vloc_i
+
+    !     if(use_hermitian)then
+    !         do j = 2, tl1 
+    !             do i = 1, j-1
+    !                 vani(i,j)  = conjg(vani(j,i))
+    !             enddo 
+    !         enddo
+    !     endif 
+
+
+
+    ! end subroutine ORIGINAL_compute_vani_sc_cuda
+
+
+
+    ! attributes(global) subroutine ORIGINAL_vani_knl_NGLL5(tl1, ngllcubed, nspec, d_wglljac, & 
+    !                                                       d_strains_real, d_strains_imag, d_Cxyz, d_Vani_r, d_Vani_i)
+    !     integer, value                                      :: ngll, nspec, tl1, ngllcubed
+    !     real(kind=4), dimension(ngllcubed, nspec)           :: d_wglljac
+    !     real(kind=4), dimension(ngllcubed, nspec,6,6)       :: d_Cxyz
+    !     real(kind=4), dimension(ngllcubed, nspec, tl1, 6)   :: d_strains_real, d_strains_imag
+    !     real(kind=4), dimension(tl1, tl1)                   :: d_Vani_r, d_Vani_i
+
+    !     ! internal variables
+    !     integer         :: i, j, k, ispec, m1, m2, p, q, istat
+    !     complex(kind=4) :: cont
+    !     real(kind=4)    :: trash
+    !     integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+    !     ! In shared memory: 
+    !     real, dimension(125,6),   shared :: s_strain_1_real, s_strain_2_real
+    !     real, dimension(125,6),   shared :: s_strain_1_imag, s_strain_2_imag
+    !     real,    dimension(125,6,6), shared :: s_c
+
+    !     igll = threadidx%x
+    !     if(igll.gt.125)return 
+
+    !     ispec = blockidx%x
+    !     m1    = blockidx%y
+    !     m2    = blockidx%z
+
+
+    !     ! Copy some stuff to close shared memory
+    !     s_strain_1_real(igll, :) = d_strains_real(igll, ispec, m1, :)
+    !     s_strain_2_real(igll, :) = d_strains_real(igll, ispec, m2, :)
+
+    !     s_strain_1_imag(igll, :) = d_strains_imag(igll, ispec, m1, :)
+    !     s_strain_2_imag(igll, :) = d_strains_imag(igll, ispec, m2, :)
+
+    !     s_c(igll, :, :)    = d_Cxyz(igll, ispec, :, :)
+
+    !     call syncthreads()
+
+    !     cont = (0.0_4, 0.0_4) 
+        
+    !     do p = 1, 9
+    !         do q =1,9
+    !             cont = cont  +  (s_strain_1_real(igll,Vcont(p))*s_strain_2_real(igll,Vcont(q)) + & 
+    !                              s_strain_1_imag(igll,Vcont(p))*s_strain_2_imag(igll,Vcont(q)))   * & 
+    !                             s_c(igll,Vcont(p), Vcont(q))     
+                                
+    !             enddo 
+    !     enddo 
+
+    !     cont = cont * d_wglljac(igll,ispec)
+
+    !     ! Extract the real and imaginary parts: 
+    !     ! atomic add not available for complex. 
+    !     trash = atomicadd(d_Vani_r(m1, m2),  real(cont,kind=4))
+
+        
+    ! end subroutine ORIGINAL_vani_knl_NGLL5
+
+
+
+
+
+    ! attributes(global) subroutine ORIGIALCUDA_Vani_Herm(l1, tl1, ngll, nspec, d_wglljac, & 
+    !                                                  d_strains, d_Cxyz, d_Vani_r, d_Vani_i)
+
+    !     integer, value :: l1, ngll, nspec, tl1
+    !     real(kind=4), dimension(ngll, ngll, ngll, nspec)            :: d_wglljac
+    !     real(kind=4), dimension(ngll, ngll, ngll, nspec,6,6)       :: d_Cxyz
+    !     real(kind=4), dimension(tl1, tl1)                           :: d_Vani_r, d_Vani_i
+    !     complex(kind=4), dimension(ngll, ngll, ngll, nspec, tl1, 6) :: d_strains
+
+    !     ! Local: 
+    !     integer         :: i, j, k, ispec, m1, m2, p, q, istat, idx, start_idx
+    !     complex(kind=4) :: cont
+    !     real(kind=4)    :: trash
+    !     integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+    !     ! In shared memory: 
+    !     complex, dimension(5,5,5,6),   shared :: s_strain_1, s_strain_2
+    !     real,    dimension(5,5,5,6,6), shared :: s_c
+
+    !     i = threadidx%x 
+    !     j = threadidx%y
+    !     k = threadidx%z
+    !     ! Get block index
+    !     idx = blockIdx%x
+    !     ispec = blockidx%y
+        
+    !     if (i.gt.ngll .or. j.gt.ngll .or. k.gt.ngll) return
+    
+    !     ! Compute the row and column this index relates to: 
+    !     ! ROW VALUE IS m1 
+    !     m1 = floor((((8*(idx-1) + 1)**0.5) - 1) / 2) + 1
+    !     start_idx = m1 * (m1 + 1) / 2
+    !     ! COL value is m2
+    !     m2 = idx - ((m1*(m1 + 1))/2) + m1
+
+    !     ! Copy some stuff to close shared memory
+    !     s_strain_1(i, j, k, :) = d_strains(i, j, k, ispec, m1, :)
+    !     s_strain_2(i, j, k, :) = d_strains(i, j, k, ispec, m2, :)
+    !     s_c(i, j, k, :, :) = d_Cxyz(i, j, k, ispec, :, :)
+        
+    !     call syncthreads()
+
+    !     cont = (0.0_4, 0.0_4) 
+    !     do p = 1, 9
+    !         do q =1,9
+    !             cont = cont  +  conjg(s_strain_1(i,j,k,Vcont(p))) * &
+    !                             s_c(i,j,k,Vcont(p), Vcont(q))     * & 
+    !                             s_strain_2(i,j,k,Vcont(q))
+    !             enddo 
+    !     enddo 
+    !     cont = cont * d_wglljac(i,j,k,ispec)
+
+    !     ! Extract the real and imaginary parts: 
+    !     ! atomic add not available for complex. 
+    !     trash = atomicadd(d_Vani_r(m1, m2),  real(cont,kind=4))
+    !     trash = atomicadd(d_Vani_i(m1, m2),  aimag(cont))
+
+    ! end subroutine ORIGIALCUDA_Vani_Herm
+
+
+
 
 end module vani_kernel

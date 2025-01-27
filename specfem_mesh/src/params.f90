@@ -7,15 +7,16 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose       = 0
+integer, parameter :: verbose       = 3
 logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
 
-integer, parameter :: nprocs       = 8
-integer, parameter :: nmodes       = 28
+integer, parameter :: nprocs       = 1
+integer, parameter :: nmodes       = 1
 
 ! Specfem mesh files: 
-character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets8/'
+!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
+character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
 
 ! Mineos model parameters: 
 character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'
@@ -37,6 +38,8 @@ real(kind=CUSTOM_REAL), allocatable    :: eta2(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: glob_eta1(:)
 real(kind=CUSTOM_REAL), allocatable    :: glob_eta2(:)
 
+! Optimisation stuff: 
+integer, parameter :: max_tl1 = 21 !17
 
 
 ! Perturbed elastic tensor in xyz at each GLL (6 x 6) voigt notation

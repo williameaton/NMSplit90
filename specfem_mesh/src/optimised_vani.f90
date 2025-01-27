@@ -149,9 +149,9 @@ program optimised_vani
     endif 
 
     ! Loop for each mode to compute the splitting and the Cst value
-    do i_mode = 1, nmodes
-        n1       =  modeNs(i_mode)
-        l1       =  modeLs(i_mode)
+    do i_mode = 1, 1!nmodes
+        n1       =  6  !modeNs(i_mode)
+        l1       =  10 !modeLs(i_mode)
         this_tl1 = 2*l1 +1
 
         Vani         = SPLINE_iZERO
@@ -162,25 +162,22 @@ program optimised_vani
         ! Compute the Vani matrix
         call cuda_Vani_matrix_stored_selfcoupling(sm, n1, t1, l1)
 
-        ! Reduce the matrices across all of the MPI procs
+        !Reduce the matrices across all of the MPI procs
         call MPI_Reduce(Vani, Vani_modesum, max_tl1**2, MPI_SPLINE_COMPLEX, &
                         MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-
-        ! Compute Hermitian
-
 
         ! USE Vani_modesum to output/compute CSTs
         if(myrank.eq.0)then 
 
             call buffer_int(nstr, n1)
             call buffer_int(lstr, l1)
-            ! if(force_VTI)then 
-            !     out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'_VTI.txt'
-            ! else 
-            !     out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
-            ! endif 
-            ! Vani = Vani_modesum
-            ! call save_Vani_matrix(l1, out_name)
+            if(force_VTI)then 
+                out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'_VTI.txt'
+            else 
+                out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
+            endif 
+            Vani = Vani_modesum
+            call save_Vani_matrix(l1, out_name)
    
             call convert_imag_to_real(l1, l1, Vani_modesum(1:this_tl1, 1:this_tl1), Vani_real(1:this_tl1, 1:this_tl1))
             call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)

@@ -19,13 +19,13 @@ endif
 
 
 bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh plot_vani \
-               break_mesh 
+               break_mesh opt_vani comp_split
 
 # Basic files for all programs 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90 ylm_plm.f90 thrj.f90
 MED_SRCS   = $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90  \
                            mode.f90 piecewise_interpolation.f90 \
-                           lagrange_any.f90 mesh.f90 integrate.f90 output.f90 
+                           lagrange_any.f90 mesh.f90 integrate.f90 output.f90 model3D_reader.f90
 
 
 
@@ -58,6 +58,7 @@ split_mesh_SOURCES    = $(SETUP_SRCS) split_mesh.f90
 
 read_mesh_SOURCES     = $(MED_SRCS)  visual.f90  read_mesh.f90 
 
+
 break_mesh_SOURCES    = $(MED_SRCS) break_mesh.f90
 
 compute_vani_SOURCES = $(MED_SRCS)       \
@@ -66,6 +67,14 @@ compute_vani_SOURCES = $(MED_SRCS)       \
                         voronoi.f90      \
                         vani_kernel.o    \
                         compute_ani_splitting.f90
+
+opt_vani_SOURCES = $(MED_SRCS)       \
+                        cuda_proxies.f90 \
+                        V_ani_matrix.f90 \
+                        cst.f90          \
+                        voronoi.f90      \
+                        vani_kernel.o    \
+                        optimised_vani.f90
 
 plot_vani_SOURCES =     $(MED_SRCS)       \
                         cuda_proxies.f90 \
@@ -76,9 +85,16 @@ plot_vani_SOURCES =     $(MED_SRCS)       \
                         visual.f90       \
                         plot_vani_matrix_to_ensight.f90
 
-                        
+
+comp_split_SOURCES     = $(MED_SRCS)  visual.f90  compute_splitting_effect.f90 
+
+
+
+
+opt_vani_LDADD = vani_kernel.o -lcoretran 
 compute_vani_LDADD = vani_kernel.o -lcoretran 
 plot_vani_LDADD = vani_kernel.o -lcoretran 
+comp_split_LDADD = vani_kernel.o -lcoretran 
 
 # Specify where to find the object file (if necessary)
 EXTRA_DIST = vani_kernel.o

@@ -20,9 +20,9 @@ module specfem_mesh
         ! mesh 
     
         ! Set id
-        integer   :: iset
-        integer   :: region 
-        character :: set_str 
+        integer      :: iset
+        integer      :: region 
+        character(5) :: set_str 
 
         ! GLL values
         integer :: nglob
@@ -595,7 +595,7 @@ module specfem_mesh
             implicit none 
             class(SetMesh) :: self
 
-            complex(kind=SPLINE_REAL) :: symmat(6, self%ngllx, self%nglly, self%ngllz, self%nspec), M(3,3)
+            complex(kind=SPLINE_REAL) :: symmat(self%ngllx, self%nglly, self%ngllz, self%nspec, 6), M(3,3)
             real(kind=SPLINE_REAL) ::  R(3,3)
             integer :: i, j, k, ispec
 
@@ -607,28 +607,28 @@ module specfem_mesh
                             R = real(self%Rmat(:,:, self%ibool(i,j,k,ispec)), kind=SPLINE_REAL)
 
                             ! Build back to 3 x 3
-                            M(1,1) = symmat(1, i, j, k, ispec)
-                            M(2,2) = symmat(2, i, j, k, ispec)
-                            M(3,3) = symmat(3, i, j, k, ispec)
+                            M(1,1) = symmat(i, j, k, ispec, 1)
+                            M(2,2) = symmat(i, j, k, ispec, 2)
+                            M(3,3) = symmat(i, j, k, ispec, 3)
 
-                            M(2,3) = symmat(4, i, j, k, ispec)
-                            M(3,2) = symmat(4, i, j, k, ispec)
+                            M(2,3) = symmat(i, j, k, ispec, 4)
+                            M(3,2) = symmat(i, j, k, ispec, 4)
 
-                            M(1,3) = symmat(5, i, j, k, ispec)
-                            M(3,1) = symmat(5, i, j, k, ispec)
+                            M(1,3) = symmat(i, j, k, ispec, 5)
+                            M(3,1) = symmat(i, j, k, ispec, 5)
 
-                            M(1,2) = symmat(6, i, j, k, ispec)
-                            M(2,1) = symmat(6, i, j, k, ispec)
+                            M(1,2) = symmat(i, j, k, ispec, 6)
+                            M(2,1) = symmat(i, j, k, ispec, 6)
 
                             M = matmul(matmul(R, M), transpose(R))
 
                             ! Store back in symmat
-                            symmat(1, i, j, k, ispec) = M(1,1) ! xx
-                            symmat(2, i, j, k, ispec) = M(2,2) ! yy
-                            symmat(3, i, j, k, ispec) = M(3,3) ! zz
-                            symmat(4, i, j, k, ispec) = M(2,3) ! yz
-                            symmat(5, i, j, k, ispec) = M(1,3) ! xz
-                            symmat(6, i, j, k, ispec) = M(1,2) ! xy
+                            symmat(i, j, k, ispec, 1) = M(1,1) ! xx
+                            symmat(i, j, k, ispec, 2) = M(2,2) ! yy
+                            symmat(i, j, k, ispec, 3) = M(3,3) ! zz
+                            symmat(i, j, k, ispec, 4) = M(2,3) ! yz
+                            symmat(i, j, k, ispec, 5) = M(1,3) ! xz
+                            symmat(i, j, k, ispec, 6) = M(1,2) ! xy
                         enddo
                     enddo
                 enddo 
@@ -897,7 +897,7 @@ module specfem_mesh
 
             class(SetMesh) :: self
 
-            call self%interp%save(trim(datadir)//'/store/mesh_radii_data/data_'//self%set_str)
+            call self%interp%save(trim(datadir)//'/store/mesh_radii_data/data_'//trim(self%set_str))
         end subroutine save_get_mesh_radii_results
 
 
@@ -906,7 +906,7 @@ module specfem_mesh
             implicit none 
             class(SetMesh) :: self
 
-            call self%interp%load(trim(datadir)//'/store/mesh_radii_data/data_'//self%set_str)
+            call self%interp%load(trim(datadir)//'/store/mesh_radii_data/data_'//trim(self%set_str))
     
         end subroutine load_get_mesh_radii_results
 
@@ -1081,7 +1081,7 @@ module specfem_mesh
             class(SetMesh)   :: self
             integer          :: m             ! m value (order)  of mode
             type(Mode)       :: m0de          ! Mode of interest
-            complex(kind=SPLINE_REAL) :: strain(6, self%ngllx, self%nglly, self%ngllz, self%nspec)
+            complex(kind=SPLINE_REAL) :: strain(self%ngllx, self%nglly, self%ngllz, self%nspec, 6)
         
             ! Local variables: 
             complex(kind=CUSTOM_REAL) :: ylm, dylm_theta, dylm_phi
@@ -1147,7 +1147,7 @@ module specfem_mesh
         
                                 if(unq_r.eq.0)then 
                                     if(all_warnings) write(*,*)'Warning: setting strain at centre to 0 artificially'
-                                    strain(:,i,j,k,ispec) = SPLINE_iZERO
+                                    strain(i,j,k,ispec,:) = SPLINE_iZERO
                                 else
                                     if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                                         ! Values at the pole 
@@ -1155,26 +1155,26 @@ module specfem_mesh
                                         ff = (SPLINE_TWO*u_r - m0de%kf*m0de%kf*v_r) / unq_r    
                                         
                                         ! E_rr: DT98 D.22
-                                        strain(1,i,j,k,ispec) = tl14p * du_r * dm0
+                                        strain(i,j,k,ispec,1) = tl14p * du_r * dm0
         
                                         ! E_tt: DT98 D.23
-                                        strain(2,i,j,k,ispec) = SPLINE_HALF * tl14p * &
+                                        strain(i,j,k,ispec,2) = SPLINE_HALF * tl14p * &
                                                                 (ff*dm0 + & 
                                                                 kr2*SPLINE_TWO*v_r * & 
                                                                 dd2/(SPLINE_FOUR*unq_r))
         
                                         ! E_pp: DT98 D.24
-                                        strain(3,i,j,k,ispec) = SPLINE_HALF * tl14p * &
+                                        strain(i,j,k,ispec,3) = SPLINE_HALF * tl14p * &
                                                                 (ff*dm0 - & 
                                                                 kr2*SPLINE_TWO*v_r * & 
                                                                 dd2/(SPLINE_FOUR*unq_r))
         
                                         ! E_rt: DT98 D.25
-                                        strain(6,i,j,k,ispec) = tl14p * m0de%kf * xx_r * dd1/SPLINE_FOUR
+                                        strain(i,j,k,ispec,6) = tl14p * m0de%kf * xx_r * dd1/SPLINE_FOUR
                                         ! E_rp: DT98 D.26
-                                        strain(5,i,j,k,ispec) = tl14p * m0de%kf * SPLINE_iONE * mf * xx_r/SPLINE_FOUR
+                                        strain(i,j,k,ispec,5) = tl14p * m0de%kf * SPLINE_iONE * mf * xx_r/SPLINE_FOUR
                                         ! E_tp: DT98 D.27
-                                        strain(4,i,j,k,ispec) = tl14p * kr2 * SPLINE_iONE * mf * v_r * dd2/(SPLINE_EIGHT*unq_r)
+                                        strain(i,j,k,ispec,4) = tl14p * kr2 * SPLINE_iONE * mf * v_r * dd2/(SPLINE_EIGHT*unq_r)
                                     else 
         
                                         ! Convert to SPLINE_REAL precision
@@ -1183,26 +1183,26 @@ module specfem_mesh
         
                                         ! Values away from the pole
                                         ! E_rr: DT98 D.14
-                                        strain(1,i,j,k,ispec) = sp_ylm*du_r  
+                                        strain(i,j,k,ispec,1) = sp_ylm*du_r  
                                         ! E_tt: DT98 D.15
-                                        strain(2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  &
+                                        strain(i,j,k,ispec,2) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  &
                                                                 sp_ylm*(mf/sinth)**SPLINE_TWO + m0de%kf*m0de%kf*sp_ylm))/unq_r
                                         ! E_pp: DT98 D.16
-                                        strain(3,i,j,k,ispec) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  &
+                                        strain(i,j,k,ispec,3) = (sp_ylm*u_r + v_r*(spl_dylm_theta/tanth -  &
                                                                  sp_ylm*(mf/sinth)**SPLINE_TWO))/unq_r
                                         ! E_rt: DT98 D.17
-                                        strain(6,i,j,k,ispec) = SPLINE_HALF * xx_r * spl_dylm_theta
+                                        strain(i,j,k,ispec,6) = SPLINE_HALF * xx_r * spl_dylm_theta
                                         ! E_rp: DT98 D.18
-                                        strain(5,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * xx_r * sp_ylm/sinth
+                                        strain(i,j,k,ispec,5) = SPLINE_HALF * SPLINE_iONE * mf * xx_r * sp_ylm/sinth
                                         ! E_tp: DT98 D.19
-                                        strain(4,i,j,k,ispec) = SPLINE_iONE * mf * v_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r * sinth)
+                                        strain(i,j,k,ispec,4) = SPLINE_iONE * mf * v_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r * sinth)
                                     endif        
                                 endif !unique r
         
                                 
                                 do h = 1, 6
-                                    if (abs(strain(h,i,j,k,ispec)).gt. 100.0)then
-                                        strain(h,i,j,k,ispec) = SPLINE_ZERO
+                                    if (abs(strain(i,j,k,ispec,h)).gt. 100.0)then
+                                        strain(i,j,k,ispec,h) = SPLINE_ZERO
                                         if(all_warnings)write(*,*)'Setting strain values at pi to 0,'
                                         !stop 
                                     endif 
@@ -1243,35 +1243,34 @@ module specfem_mesh
                                 if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                                     ! Values at the pole 
                                     ! E_rr: DT98 D.22
-                                    strain(1,i,j,k,ispec) = SPLINE_iZERO
+                                    strain(i,j,k,ispec,1) = SPLINE_iZERO
                                     ! E_tt: DT98 D.23
-                                    strain(2,i,j,k,ispec) = SPLINE_HALF * tl14p * SPLINE_iONE * mf * w_r * dd2 * kr2/(SPLINE_FOUR * unq_r)
+                                    strain(i,j,k,ispec,2) = SPLINE_HALF * tl14p * SPLINE_iONE * mf * w_r * dd2 * kr2/(SPLINE_FOUR * unq_r)
                                     ! E_pp: DT98 D.24
-                                    strain(3,i,j,k,ispec) = -SPLINE_HALF * tl14p * SPLINE_iONE * mf * w_r * dd2 * kr2/(SPLINE_FOUR * unq_r)
+                                    strain(i,j,k,ispec,3) = -SPLINE_HALF * tl14p * SPLINE_iONE * mf * w_r * dd2 * kr2/(SPLINE_FOUR * unq_r)
                                     ! E_rt: DT98 D.25
-                                    strain(6,i,j,k,ispec) = tl14p * ll1 * SPLINE_iONE * mf * zz_r * dd1 / SPLINE_FOUR
+                                    strain(i,j,k,ispec,6) = tl14p * ll1 * SPLINE_iONE * mf * zz_r * dd1 / SPLINE_FOUR
                                     ! E_rp: DT98 D.26
-                                    strain(5,i,j,k,ispec) = - tl14p * ll1 * zz_r * dd1 / SPLINE_FOUR
+                                    strain(i,j,k,ispec,5) = - tl14p * ll1 * zz_r * dd1 / SPLINE_FOUR
                                     ! E_tp: DT98 D.27
-                                    strain(4,i,j,k,ispec) = - tl14p * kr2 * w_r * dd2 / (unq_r * SPLINE_FOUR)
+                                    strain(i,j,k,ispec,4) = - tl14p * kr2 * w_r * dd2 / (unq_r * SPLINE_FOUR)
                                 else
-        
                                     ! Convert to SPLINE_REAL precision
                                     sp_ylm         = cmplx(ylm, kind=SPLINE_REAL)
                                     spl_dylm_theta = cmplx(dylm_theta, kind=SPLINE_REAL)
         
                                     ! E_rr: DT98 D.14
-                                    strain(1,i,j,k,ispec) = SPLINE_iZERO
+                                    strain(i,j,k,ispec,1) = SPLINE_iZERO
                                     ! E_tt: DT98 D.15
-                                    strain(2,i,j,k,ispec) = SPLINE_iONE * mf * w_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r*sinth)
+                                    strain(i,j,k,ispec,2) = SPLINE_iONE * mf * w_r * (spl_dylm_theta - sp_ylm/tanth) / (unq_r*sinth)
                                     ! E_pp: DT98 D.16
-                                    strain(3,i,j,k,ispec) = - strain(2,i,j,k,ispec)
+                                    strain(i,j,k,ispec,3) = - strain(i,j,k,ispec,2)
                                     ! E_rt: DT98 D.17
-                                    strain(6,i,j,k,ispec) = SPLINE_HALF * SPLINE_iONE * mf * zz_r * sp_ylm / sinth
+                                    strain(i,j,k,ispec,6) = SPLINE_HALF * SPLINE_iONE * mf * zz_r * sp_ylm / sinth
                                     ! E_rp: DT98 D.18
-                                    strain(5,i,j,k,ispec) =  - SPLINE_HALF * zz_r * spl_dylm_theta
+                                    strain(i,j,k,ispec,5) =  - SPLINE_HALF * zz_r * spl_dylm_theta
                                     ! E_tp: DT98 D.19
-                                    strain(4,i,j,k,ispec) = (spl_dylm_theta/tanth + & 
+                                    strain(i,j,k,ispec,4) = (spl_dylm_theta/tanth + & 
                                                                  (SPLINE_HALF*m0de%kf*m0de%kf - (mf/sinth)**SPLINE_TWO)*sp_ylm & 
                                                                  )* w_r / unq_r
                                 endif 
@@ -1365,7 +1364,7 @@ module specfem_mesh
             integer     :: m, n, l, ios, mode_id
             character   :: t
             character(len = 250) :: binname
-            complex(kind=SPLINE_REAL) :: strain_arr(6, self%ngllx, self%nglly, self%ngllz, self%nspec)
+            complex(kind=SPLINE_REAL) :: strain_arr(self%ngllx, self%nglly, self%ngllz, self%nspec, 6)
             
             call create_mode_binary_fname(n, t, l, m, self%iset, binname)
         
@@ -1425,7 +1424,7 @@ module specfem_mesh
             call allocate_if_unallocated(self%ngllx, self%nglly, self%ngllz, self%nspec, self%detjac)
         
             ! Density
-            open(IIN, file=trim(datadir)//'/store/jacobian/jacdata_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/jacobian/jacdata_'//trim(self%set_str), form='unformatted')
             read(IIN)self%jac
             read(IIN)self%detjac
             read(IIN)self%jacinv
@@ -1439,7 +1438,7 @@ module specfem_mesh
             implicit none 
             class(SetMesh)     :: self
 
-            open(IOUT, file=trim(datadir)//'/store/jacobian/jacdata_'//self%set_str, form='unformatted')
+            open(IOUT, file=trim(datadir)//'/store/jacobian/jacdata_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%jac
             write(IOUT)self%detjac
             write(IOUT)self%jacinv
@@ -1450,7 +1449,7 @@ module specfem_mesh
             use params, only: datadir, IOUT
             implicit none 
             class(SetMesh)     :: self
-            open(IOUT, file=trim(datadir)//'/store/jacobian/wglljac_'//self%set_str, form='unformatted')
+            open(IOUT, file=trim(datadir)//'/store/jacobian/wglljac_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%wglljac
             close(IOUT)
         end subroutine save_wglljac
@@ -1463,7 +1462,7 @@ module specfem_mesh
 
             call deallocate_if_allocated(self%wglljac)
             allocate(self%wglljac(self%ngllx,self%nglly,self%ngllz,self%nspec))
-            open(IIN, file=trim(datadir)//'/store/jacobian/wglljac_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/jacobian/wglljac_'//trim(self%set_str), form='unformatted')
             read(IIN)self%wglljac
             close(IIN)
         end subroutine load_wglljac
@@ -1473,7 +1472,9 @@ module specfem_mesh
             use params, only: datadir, IOUT
             implicit none         
             class(SetMesh)     :: self
-            open(IOUT, file=trim(datadir)//'/store/global_xyz/coords_'//self%set_str, form='unformatted')
+            write(*,*)'saving to '//trim(datadir)//'/store/global_xyz/coords_'//trim(self%set_str)
+
+            open(IOUT, file=trim(datadir)//'/store/global_xyz/coords_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%x_glob
             write(IOUT)self%y_glob
             write(IOUT)self%z_glob
@@ -1490,7 +1491,7 @@ module specfem_mesh
             call allocate_if_unallocated(self%nglob, self%y_glob)
             call allocate_if_unallocated(self%nglob, self%z_glob)
         
-            open(IIN, file=trim(datadir)//'/store/global_xyz/coords_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/global_xyz/coords_'//trim(self%set_str), form='unformatted')
             read(IIN)self%x_glob
             read(IIN)self%y_glob
             read(IIN)self%z_glob
@@ -1504,7 +1505,7 @@ module specfem_mesh
             implicit none 
             class(SetMesh) :: self
 
-            open(IOUT, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//self%set_str, form='unformatted')
+            open(IOUT, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//trim(self%set_str), form='unformatted')
             write(IOUT)self%rstore
             write(IOUT)self%thetastore
             write(IOUT)self%phistore
@@ -1521,7 +1522,7 @@ module specfem_mesh
             call allocate_if_unallocated(self%ngllx, self%nglly, self%ngllz, self%nspec, self%thetastore)
             call allocate_if_unallocated(self%ngllx, self%nglly, self%ngllz, self%nspec, self%phistore)
         
-            open(IIN, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//self%set_str, form='unformatted')
+            open(IIN, file=trim(datadir)//'/store/elemental_rtp/elem_coords_'//trim(self%set_str), form='unformatted')
             read(IIN)self%rstore
             read(IIN)self%thetastore
             read(IIN)self%phistore

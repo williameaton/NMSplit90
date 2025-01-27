@@ -41,13 +41,13 @@ program compute_vani_splitting
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin = .false.
-    logical, parameter :: save_to_bin   = .true.
+    logical, parameter :: load_from_bin = .true.
+    logical, parameter :: save_to_bin   = .false.
     logical, parameter :: force_VTI     = .true.
 
     ! Modes: 
-    integer, dimension(28), parameter :: modeNs = (/5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
-    integer, dimension(28), parameter :: modeLs = (/3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
+    integer, dimension(29), parameter :: modeNs = (/ 6, 5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
+    integer, dimension(29), parameter :: modeLs = (/10, 3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
 
  
 #ifdef WITH_MPI
@@ -128,14 +128,11 @@ tree = KdTree(vor_x, vor_y, vor_z)
 mineos_ptr => mineos
 
 
-
 if(ONLY_ONE_TASK_PER_SET)then 
     iset = myset_start
     sm = create_SetMesh(iset, region)
 
-
     call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
-
 
 
     allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
@@ -153,7 +150,7 @@ endif
 
 
 
-do i_mode = 1, nmodes
+do i_mode = 1, 10 !nmodes
     n1      =  modeNs(i_mode)
     t1      = 'S'
     l1      =  modeLs(i_mode)
