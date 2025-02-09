@@ -195,23 +195,24 @@ contains
 
 
 
-    subroutine compute_Cxyz_at_gll_radialACLNF(sm, n1, n2, radmap)
+    subroutine compute_Cxyz_at_gll_radialACLNF(sm, nlenspl, Aspl, Cspl, Lspl, Nspl, Fspl, n1, n2)
         ! Nlen is the length of the array of unique A,C,L,N,F values
         ! probably = unique_r
         ! radmap is the map from the GLL to the unique radius
-        use params, only: Cxyz, Arad, Crad, Lrad, Nrad, Frad
+        use params, only: Cxyz
         use allocation_module, only: deallocate_if_allocated
         implicit none 
         include "constants.h"
 
         type(SetMesh) :: sm 
+        integer :: nlenspl
+        real(kind=CUSTOM_REAL), dimension(nlenspl) :: Aspl, Cspl, Lspl, Nspl, Fspl
         real(kind=CUSTOM_REAL) :: n1, n2
         real(kind=CUSTOM_REAL) :: M(6,6), Cnat(6,6)
         integer :: i, j, k, ispec, radmap(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), r_id
 
         call deallocate_if_allocated(Cxyz)
         allocate(Cxyz(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 6, 6))
-
 
         ! Compute rotation matrix per GLL in xyz
         do ispec = 1, sm%nspec 
@@ -220,9 +221,9 @@ contains
                     do k = 1, sm%ngllz 
 
                         ! Get C matrix in natural orientation for this gll
-                        r_id = radmap(i,j,k,ispec)
-                        call setup_Cnatural(Cnat, Arad(r_id), Crad(r_id), Lrad(r_id), &
-                                             Nrad(r_id), Frad(r_id))
+                        r_id = sm%rad_id(i,j,k,ispec)
+                        call setup_Cnatural(Cnat, Aspl(r_id), Cspl(r_id), Lspl(r_id), &
+                                             Nspl(r_id), Fspl(r_id))
 
                         call compute_bond_matrix_explicit(n1, n2, M)
 
@@ -237,9 +238,14 @@ contains
 
 
 
-    subroutine compute_Cxyz_at_gll_constantACLNF(sm, A, C, L, N, F, n1, n2)
+    subroutine compute_Cxyz_at_gll_constantACLNF(sm, A, C, L, N, F, n1, n2, perturbation_on_PREM)
+        ! if perturbation_on_PREM then treates A, C, L, N, F as a perturbation on the
+        ! PREM model at that point
+        ! NOTE THIS WILL SLOW THINGS DOWN A LOT because the Cnat computation is at each GLL 
+        
         use params, only: Cxyz, verbose
         use allocation_module, only: deallocate_if_allocated
+        use PREMModel, only: get_PREM_ACLNF_at_radius
         implicit none 
         include "constants.h"
 
@@ -248,6 +254,12 @@ contains
         real(kind=CUSTOM_REAL) :: A, C, L, N, F
         real(kind=CUSTOM_REAL) :: M(6,6), Cnat(6,6)
         integer :: i, j, k, ispec, ib
+        logical :: perturbation_on_PREM
+
+        ! Local: 
+        real(kind=CUSTOM_REAL) :: r, Aprem, Cprem, Lprem, Nprem, Fprem
+
+
 
         if(verbose.ge.2)write(*,'(/,a)')'• Computing elastic tensor for constant ACLNF'
 
@@ -256,13 +268,21 @@ contains
         allocate(Cxyz(sm%ngllx,  sm%nglly,  sm%ngllz,  sm%nspec, 6, 6))
 
         ! Transversly isotropic matrix 
-        call setup_Cnatural(Cnat, A, C, L, N, F)
+        if(.not.perturbation_on_PREM)then
+            call setup_Cnatural(Cnat, A, C, L, N, F)
+        endif 
 
         ! Compute rotation matrix per GLL in xyz
         do ispec = 1,  sm%nspec 
             do i = 1,  sm%ngllx
                 do j = 1,  sm%nglly 
                     do k = 1,  sm%ngllz 
+
+                        if(perturbation_on_PREM)then
+                            call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)                            
+                            call setup_Cnatural(Cnat, A*Aprem, C*Cprem, L*Lprem, N*Nprem, F*Fprem)
+                        endif 
+
                         ib =  sm%ibool(i,j,k,ispec)
                         call compute_bond_matrix_explicit(n1(ib), n2(ib), M)
 
@@ -512,9 +532,9 @@ contains
         use allocation_module, only: deallocate_if_allocated
         use specfem_mesh, only: SetMesh
 #ifdef WITH_CUDA
-        use vani_kernel, only: compute_vani_sc_cuda
+        use vani_kernel, only: compute_vani_sc_cuda, original_compute_vani_sc_cuda
 # else 
-        use cuda_proxies, only: compute_vani_sc_cuda
+        use cuda_proxies, only: compute_vani_sc_cuda,  original_compute_vani_sc_cuda
 #endif
         implicit none 
         include "constants.h"
@@ -527,10 +547,14 @@ contains
         integer           :: m1, m2, im
             
 
+
+
         ! Allocate the strain for this proc. 
         call deallocate_if_allocated(strains1)
         allocate(strains1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 2*l1+1, 6))
 
+
+    
         ! Load all strains once and for all for each m value
 
         do im =  -l1, l1 
@@ -540,7 +564,8 @@ contains
 
 
 
-        call compute_vani_sc_cuda(l1, sm%ngllx, sm%nspec, sm%wglljac)
+
+        call ORIGINAL_compute_vani_sc_cuda(l1, sm%ngllx, sm%nspec, sm%wglljac)
 
 
     end subroutine cuda_Vani_matrix_stored_selfcoupling

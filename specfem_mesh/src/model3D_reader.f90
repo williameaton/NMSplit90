@@ -51,12 +51,148 @@ module model3d
 
         contains
             procedure :: read_model_from_file
+            procedure :: re_readmodel
             procedure :: create_KDtree
             procedure :: project_to_gll
     end type  M3D
 
 
     contains 
+
+
+
+
+
+    subroutine re_readmodel(self)
+        ! Reads a model file that has the same setup (just different numbers)
+        ! if the 3D model object is already created 
+        ! px(npts) py(npts) pz(npts)  v1(npts)  v2(npts) ... vm(npts) 
+        implicit none
+        include "constants.h"
+        class(M3D) :: self
+
+        character(len=350) :: trash
+        integer :: i, ios, npts, nspat, nconst
+        character(len=20) :: fmtstr
+
+        real(kind=SPLINE_REAL) :: t1, t2
+
+
+
+        if (verbose.ge.2)then
+            if(myrank.eq.0)write(*,*)' - Re-reading 3D model'
+        endif 
+
+        ! Open the model file: 
+        open(1, file=trim(self%filename), form='formatted', iostat=ios)
+        if (ios.ne.0) then
+           write(*, *) "Error: Unable to open file ", trim(self%filename)
+           stop
+        endif 
+
+        ! First line should be a comment line: 
+        read(1, *)trash  
+
+        ! Number of model grid points: 
+        read(1, *)npts
+        if(npts.ne.self%npts)then 
+            write(*,*)'Error: this file has npts of ', npts, ' but original model had npts of ', self%npts, '. Stop.'
+            stop 
+        endif  
+
+        ! Check the nspat
+        read(1, *)nspat
+        if(nspat.ne.self%nspat)then 
+            write(*,*)'Error: this file has nspat of ', nspat, ' but original model had nspat of ', self%nspat, '. Stop.'
+            stop 
+        endif  
+
+
+        ! Check if the number of spatially varying is >= 0
+        ! if so then all fine. if less than 0 then throw error
+        if (self%nspat.gt.0) then 
+            !allocate(self%idspats(self%nspat))
+            do i = 1, self%nspat
+                read(1,*)self%idspats(i)
+            enddo 
+            self%exists_spat = .true.
+
+        elseif(self%nspat.eq.0) then 
+            ! No spatially-varying variables: 
+            self%exists_spat = .false.
+        else 
+            write(*,*)'Error reading 3D model. Nspat should be >= 0 but was "', self%nspat,' " ' 
+        endif 
+
+
+
+        ! Same for variables that are constant but also load their values: 
+        read(1, *)nconst
+        if(nconst.ne.self%nconst)then 
+            write(*,*)'Error: this file has nconst of ', nconst, ' but original model had nconst of ', self%nconst, '. Stop.'
+            stop 
+        endif 
+
+        if(self%nconst.gt.0)then 
+            do i = 1, self%nconst
+                read(1,*)self%idconsts(i), self%valconsts(i)
+            enddo 
+            self%exists_const = .true.
+        elseif(self%nconst.eq.0)then
+            self%exists_const = .false.
+        else 
+            write(*,*)'Error reading 3D model. Nconst should be >= 0 but was "', self%nconst,' " ' 
+        endif 
+
+
+        if (verbose.gt.2)then
+            if(myrank.eq.0)then
+                write(*,*)
+                write(*,*)'3D Model parameters: '
+                write(*,*)' -- Number of points  ', self%npts
+                write(*,'(a, i3)')' -- Number of constant variables: ', self%nconst
+                do i = 1, self%nconst
+                    write(*,'(a, i2, a, f12.6)')'     --> Value: '// trim(self%varIDcodes(self%idconsts(i)))//" (", self%idconsts(i) ,") --",  self%valconsts(i)
+                enddo 
+                write(*,'(a, i2)')' -- Number of spatially-variable variables:  ', self%nspat
+                write(*,*)'     --> IDs:  '
+                do i = 1, self%nspat
+                    write(*,'(a)') '              '//trim(self%varIDcodes(self%idspats(i)))
+                enddo
+
+                write(*,*)' -- Reading spatially variable content ... '
+
+            endif 
+        endif 
+
+
+        ! Read in each of the coordinates and it associated values:
+
+        ! Check at least one variable is meant to be read -- could make this a warning: 
+        ! Use this loop to distinguish how the variable/coord part is read
+        if(.not.self%exists_spat)then
+            ! ERROR check here: 
+            if(.not.self%exists_const)then
+                write(*,*)'Error in reading 3D model: there are no variables for either spatially-varying or constant. Stop.'
+                stop 
+            endif 
+            ! Read with no spatially varying variables: 
+            do i = 1, self%npts
+                read(1, *)self%xcoord(i), self%ycoord(i), self%zcoord(i)
+            enddo 
+        else 
+            ! Read with variables! 
+            do i = 1, self%npts
+                read(1, *)self%xcoord(i), self%ycoord(i), self%zcoord(i), self%valspats(i, :)
+            enddo 
+        endif
+
+
+
+        close(1)
+    end subroutine re_readmodel
+
+
 
 
 
@@ -200,7 +336,18 @@ module model3d
         endif
 
 
+        close(1)
+
     end subroutine read_model_from_file
+
+
+
+
+
+
+
+
+
 
 
 
@@ -228,9 +375,6 @@ module model3d
         
         globvar = zero
         
-        ! For each global coordinate we want to find its nearest neighbour 
-        write(*,*)'Projecting 3D model to GLL...'
-
         do i = 1, sm%nglob
             da = search%kNearest(self%kdtree, self%xcoord, self%ycoord, self%zcoord, & 
                                  xQuery = sm%x_glob(i), &

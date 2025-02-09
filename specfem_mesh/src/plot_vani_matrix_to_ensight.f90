@@ -24,18 +24,21 @@ program plot_vani_to_ensight
     type(SetMesh) :: sm
     logical, parameter :: vti_model = .false.
     logical, parameter :: output_to_ensight = .false.
+    logical, parameter :: output_to_evengrid = .false.
 
     ! Modes: 
-    integer, dimension(20), parameter :: modeNs = (/2, 3, 9, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27, 6/)
-    integer, dimension(20), parameter :: modeLs = (/3, 2, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2, 10/)
+    ! integer, dimension(20), parameter :: modeNs = (/2, 3, 9, 9, 9, 11, 11, 13,13,13,13,15,15,18,18,20,21,25,27, 6/)
+    ! integer, dimension(20), parameter :: modeLs = (/3, 2, 2, 3, 4,  4,  5,  1, 2, 3, 6, 3, 4, 3, 4, 1, 6,2,2, 10/)
     
+    integer, dimension(40), parameter :: modeNs = (/2, 3, 3, 5, 6, 8, 8, 9, 9, 9, 11, 11, 11, 11, 13, 13, 13, 13, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 20, 20, 21, 21, 21, 22, 23, 23, 25, 25, 27/)
+    integer, dimension(40), parameter :: modeLs = (/3, 1, 2, 2, 3, 1, 5, 2, 3, 4,  1,  4,  5,  6, 1,  2,  3,  6,   4,  3,  4,  5,  6,  7,  1,  8,  3,  4,  6,  1,  5,  6,  7,  8,  1,  4,  5,  1,  2,  2/)
 
 
     ! Load from file
-do i_mode = 1, 1! nmodes
-    n1      = 13!modeNs(i_mode)
+do i_mode = 1,  nmodes
+    n1      = modeNs(i_mode)
     t1      = 'S'
-    l1      = 6!modeLs(i_mode)
+    l1      = modeLs(i_mode)
     tl1     = l1*2 + 1
 
     call buffer_int(nstr, n1)
@@ -67,9 +70,9 @@ do i_mode = 1, 1! nmodes
 
 
 
-    write(*,*)'output_to_ensight', output_to_ensight
     ! Output to Ensight: 
     if(output_to_ensight)then 
+        write(*,*)'output_to_ensight', output_to_ensight
         call mineos%process_mineos_model(.true.)
 
         do iproc = 0, nprocs -1 
@@ -133,61 +136,63 @@ do i_mode = 1, 1! nmodes
 
     ! Write to a surface grid for plotting in MPL 
     ! grid spacing in degrees: 
-    dlat = 0.25 
-    dlon = 0.25
+    if(output_to_evengrid)then
+        dlat = 0.25 
+        dlon = 0.25
 
-    nlat = int(180.0d0/dlat) 
-    nlon = int(360.0d0/dlon) 
+        nlat = int(180.0d0/dlat) 
+        nlon = int(360.0d0/dlon) 
 
-    out_name = 'output/mpl_cst_'//trim(nstr)//trim(t1)//trim(lstr)//trim(model_ti)//'.txt'
-    open(1,file=trim(out_name), form='formatted')
-    write(*,*)'writing to '//trim(out_name)
+        out_name = 'output/mpl_cst_'//trim(nstr)//trim(t1)//trim(lstr)//trim(model_ti)//'.txt'
+        open(1,file=trim(out_name), form='formatted')
+        write(*,*)'writing to '//trim(out_name)
 
-    write(1,'(E15.6)', advance='yes')dlat 
-    write(1,'(E15.6)', advance='yes')dlon 
-
-
-    ! for each latitude we will write one row 
-    ! output matrix is in format rows = lat, cols = lon 
-    do ilat = 1, nlat 
-        do ilon = 1, nlon 
-            !write(*,*)ilat, ilon 
-            ! Compute colatitude and longitude in radians
-            theta = -90.0d0 + ilat*dlat ! latitude 
-            !write(*,*)'theta: ', theta
-            theta = 90.0d0 - theta 
-            !write(*,*)'       ', theta
-            theta = PI * theta/180.d0 
-            !write(*,*)'       ', theta
-            phi   = -180.0d0 + ilon*dlon
-            !write(*,*)'phi: ', phi
-            if (phi.lt.zero) phi = phi + 360.d0
-            !write(*,*)'     ', phi
-            phi = TWO_PI * phi/360.d0 
-            !write(*,*)'     ', phi
+        write(1,'(E15.6)', advance='yes')dlat 
+        write(1,'(E15.6)', advance='yes')dlon 
 
 
-        
-            ! Loop through the s 
-            sum = zero 
-            do is = 3, num_s, 2
-                s = smin+is-1
-                ! Loop through the t values: 
-                do it = 1, 2*s +1
-                    t = it - s - 1
-                    sum = sum + ylm_real(s, t, theta, phi) * real(cst(is,it))
+        ! for each latitude we will write one row 
+        ! output matrix is in format rows = lat, cols = lon 
+        do ilat = 1, nlat 
+            do ilon = 1, nlon 
+                !write(*,*)ilat, ilon 
+                ! Compute colatitude and longitude in radians
+                theta = -90.0d0 + ilat*dlat ! latitude 
+                !write(*,*)'theta: ', theta
+                theta = 90.0d0 - theta 
+                !write(*,*)'       ', theta
+                theta = PI * theta/180.d0 
+                !write(*,*)'       ', theta
+                phi   = -180.0d0 + ilon*dlon
+                !write(*,*)'phi: ', phi
+                if (phi.lt.zero) phi = phi + 360.d0
+                !write(*,*)'     ', phi
+                phi = TWO_PI * phi/360.d0 
+                !write(*,*)'     ', phi
+
+
+            
+                ! Loop through the s 
+                sum = zero 
+                do is = 3, num_s, 2
+                    s = smin+is-1
+                    ! Loop through the t values: 
+                    do it = 1, 2*s +1
+                        t = it - s - 1
+                        sum = sum + ylm_real(s, t, theta, phi) * real(cst(is,it))
+                    enddo 
                 enddo 
+
+                if (ilon.eq.nlon)then 
+                    write(1,'(E15.6)', advance='yes')sum 
+                else 
+                    write(1,'(E15.6)', advance='no')sum 
+                endif 
             enddo 
-
-            if (ilon.eq.nlon)then 
-                write(1,'(E15.6)', advance='yes')sum 
-            else 
-                write(1,'(E15.6)', advance='no')sum 
-            endif 
         enddo 
-    enddo 
+    endif 
 
-
+    deallocate(Vani)
     deallocate(Vani_real)
     deallocate(cst)
 

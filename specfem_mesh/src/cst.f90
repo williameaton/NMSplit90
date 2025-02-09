@@ -253,7 +253,7 @@ module splitting_function
         real(kind=SPLINE_REAL)   :: cst(nrows, ncols)
         integer                  :: nrows, ncols, smin, jump, is ,it
         
-        write(*,*)'Writing to '//trim(fname)
+        !write(*,*)'Writing to '//trim(fname)
 
         open(1,file=trim(fname), form='formatted')
         do is = 1, nrows, jump

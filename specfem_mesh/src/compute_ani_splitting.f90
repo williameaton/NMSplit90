@@ -2,10 +2,12 @@
 program compute_vani_splitting
     use params, only: Vani, verbose, myrank, MPI_SPLINE_COMPLEX, & 
                       MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT, glob_eta1,   &
-                      glob_eta2,  nmodes, nprocs
+                      glob_eta2,  nmodes, nprocs, cluster_size, Arad, Crad, Lrad, Nrad, Frad
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
-                     compute_Vani_matrix, compute_vani_matrix_stored
+                     compute_Vani_matrix, compute_vani_matrix_stored, & 
+                     compute_Cxyz_at_gll_radialACLNF
+
 #ifdef WITH_CUDA
     use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
 #endif
@@ -14,6 +16,10 @@ program compute_vani_splitting
     use voronoi, only: vor_x, vor_y, vor_z, & 
                        vor_A, vor_C, vor_L, vor_N, vor_F, &
                        load_voronoi_model, project_voroni_to_gll
+
+    use model3d, only: M3D
+    
+
     use specfem_mesh, only: SetMesh, create_SetMesh
     use modes, only: get_mode, Mode 
     use mineos_model, only: mineos, mineos_ptr
@@ -25,7 +31,7 @@ program compute_vani_splitting
 #endif 
 
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
-               tl1, tl2, h, b, cluster_size, sets_per_process, & 
+               tl1, tl2, h, b, sets_per_process, & 
                myset_start, myset_end, i_mode, maxknot
     character ::  t1
     character(len=2) nstr, lstr
@@ -34,22 +40,31 @@ program compute_vani_splitting
 
     complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
 
+    real(kind=CUSTOM_REAL), allocatable    :: Aspl(:), Cspl(:), Lspl(:), & 
+                                              Nspl(:), Fspl(:)
+    real(kind=CUSTOM_REAL), allocatable    :: A0(:), vpspl(:), rhospl(:)
+
     ! KD tree: 
     type(KdTree)           :: tree
     type(SetMesh)          :: sm  
     type(Mode)             :: mode_1 
 
+    ! 3D model
+    type(M3D) :: model3D
+
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin = .true.
-    logical, parameter :: save_to_bin   = .false.
-    logical, parameter :: force_VTI     = .true.
+    logical, parameter :: load_from_bin  = .true.
+    logical, parameter :: save_to_bin    = .false.
+    logical, parameter :: force_VTI      = .false.
+    logical, parameter :: tromp93_model  = .false.
 
     ! Modes: 
-    integer, dimension(29), parameter :: modeNs = (/ 6, 5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
-    integer, dimension(29), parameter :: modeLs = (/10, 3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
+    !integer, dimension(29), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
+    !integer, dimension(29), parameter :: modeLs = (/3, 3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
+    integer, dimension(40), parameter :: modeNs =  (/2, 3, 3, 5, 6, 8, 8, 9, 9, 9, 11, 11, 11, 11, 13, 13, 13, 13, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 20, 20, 21, 21, 21, 22, 23, 23, 25, 25, 27/)
+    integer, dimension(40), parameter :: modeLs =  (/3, 1, 2, 2, 3, 1, 5, 2, 3, 4,  1,  4,  5,  6, 1,  2,  3,  6,   4,  3,  4,  5,  6,  7,  1,  8,  3,  4,  6,  1,  5,  6,  7,  8,  1,  4,  5,  1,  2,  2/)
 
- 
 #ifdef WITH_MPI
     call MPI_INIT(ierr)
     call MPI_COMM_SIZE(MPI_COMM_WORLD, cluster_size, ierr)
@@ -105,18 +120,6 @@ program compute_vani_splitting
 region = 3
 
 
-! Read in voronoi model and build K-d tree: 
-call load_voronoi_model()
-
-! Benchmark value
-vor_A =  0.4d0
-vor_C = -0.2d0
-vor_L =  0.3d0
-vor_N = -0.5d0
-vor_F =  0.1d0
-
-
-tree = KdTree(vor_x, vor_y, vor_z) 
 
 
 #ifdef WITH_MPI
@@ -128,29 +131,79 @@ tree = KdTree(vor_x, vor_y, vor_z)
 mineos_ptr => mineos
 
 
+
+if(tromp93_model)then 
+    ! Read TROMP ACLNF model with 33 points (mineos for IC)
+    call load_ACLNF_from_files('/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/tromp93/ACLNF', 33)
+else
+
+    ! Read Hen's model and build K-d tree: 
+     Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_02pi_long"
+    call Model3D%read_model_from_file()
+    call Model3D%create_KDtree()
+endif
+
+
+
+
+! Benchmark value
+!vor_A =  0.4d0
+!vor_C = -0.2d0
+!vor_L =  0.3d0
+!vor_N = -0.5d0
+!vor_F =  0.1d0
+
+! Model values are a % perturbation on PREM so need to divide by 100 
+! to get actual value
+if(.not.tromp93_model)then
+    vor_A = Model3D%valconsts(1)/100.0d0
+    vor_C = Model3D%valconsts(2)/100.0d0
+    vor_L = Model3D%valconsts(3)/100.0d0
+    vor_N = Model3D%valconsts(4)/100.0d0
+    vor_F = Model3D%valconsts(5)/100.0d0
+    tree = KdTree(Model3D%xcoord, Model3D%ycoord, Model3D%zcoord) 
+endif 
+
+
+
+
+
+
+
 if(ONLY_ONE_TASK_PER_SET)then 
     iset = myset_start
     sm = create_SetMesh(iset, region)
 
     call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
 
-
-    allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
-    call project_voroni_to_gll(sm, tree)
-
+    if(.not.tromp93_model)then 
+        allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
+        !call project_voroni_to_gll(sm, tree)
+        call Model3D%project_to_gll(sm, glob_eta1, id=1)
+        call Model3D%project_to_gll(sm, glob_eta2, id=2)
+        if(force_VTI)then 
+            glob_eta1 = zero 
+            glob_eta2 = zero
+        endif 
+    endif 
 
     call sm%compute_rotation_matrix()
-    if(force_VTI)then 
-        glob_eta1 = zero 
-        glob_eta2 = zero
+
+
+    if(tromp93_model)then 
+        call compute_Cxyz_at_gll_radialACLNF(sm, sm%interp%n_radial, &
+                                             Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
+    else 
+
+        call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, vor_N, & 
+                                            vor_F, glob_eta1, glob_eta2, &
+                                            perturbation_on_prem=.true.)
     endif 
-    call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, vor_N, & 
-                                           vor_F, glob_eta1, glob_eta2)
 endif 
 
 
 
-do i_mode = 1, 10 !nmodes
+do i_mode = 1, nmodes
     n1      =  modeNs(i_mode)
     t1      = 'S'
     l1      =  modeLs(i_mode)
@@ -168,17 +221,61 @@ do i_mode = 1, 10 !nmodes
             sm = create_SetMesh(iset, region)
             call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
 
-            allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
-            call project_voroni_to_gll(sm, tree)
-        
+            if(.not.tromp93_model)then
+                allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
+                !call project_voroni_to_gll(sm, tree)
+                call Model3D%project_to_gll(sm, glob_eta1, id=1)
+                call Model3D%project_to_gll(sm, glob_eta2, id=2)
+                if(force_VTI)then 
+                    glob_eta1 = zero 
+                    glob_eta2 = zero
+                endif 
+            endif 
+
             call sm%compute_rotation_matrix()
 
-            if(force_VTI)then 
-                glob_eta1 = zero 
-                glob_eta2 = zero
+            if(tromp93_model)then
+                if(load_from_bin)call sm%get_unique_radii(save_to_bin)
+
+                ! interpolate the ACLNF to the SM radii: 
+                allocate(Aspl(sm%interp%n_radial))
+                allocate(Cspl(sm%interp%n_radial))
+                allocate(Lspl(sm%interp%n_radial))
+                allocate(Nspl(sm%interp%n_radial))
+                allocate(Fspl(sm%interp%n_radial))
+                call sm%interp%interpolate_mineos_variable(real(Arad, kind=SPLINE_REAL), Aspl)
+                call sm%interp%interpolate_mineos_variable(real(Crad, kind=SPLINE_REAL), Cspl)
+                call sm%interp%interpolate_mineos_variable(real(Lrad, kind=SPLINE_REAL), Lspl)
+                call sm%interp%interpolate_mineos_variable(real(Nrad, kind=SPLINE_REAL), Nspl)
+                call sm%interp%interpolate_mineos_variable(real(Frad, kind=SPLINE_REAL), Fspl)
+            
+
+                allocate(A0(sm%interp%n_radial))
+                allocate(vpspl(sm%interp%n_radial))
+                allocate(rhospl(sm%interp%n_radial))
+
+                call sm%interp%interpolate_mineos_variable(real(mineos%rho_mineos, kind=SPLINE_REAL), rhospl)
+                call sm%interp%interpolate_mineos_variable(real(mineos%vp_mineos,  kind=SPLINE_REAL), vpspl)
+            
+                ! Multiply by A0: 
+                ! Note that rhospl and vpspl are already non-dimensionalised
+                ! So i dont think we need to then non-dimensionalise the Aspl
+                
+                A0 = rhospl *  vpspl * vpspl 
+                Aspl = Aspl * A0
+                Cspl = Cspl * A0
+                Lspl = Lspl * A0
+                Nspl = Nspl * A0
+                Fspl = Fspl * A0
+
+                call compute_Cxyz_at_gll_radialACLNF(sm, sm%interp%n_radial, & 
+                                                     Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
+            else 
+                call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, & 
+                                                    vor_N, vor_F, glob_eta1, glob_eta2, &
+                                                    perturbation_on_prem=.true.)
             endif 
-            call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, & 
-                                                   vor_N, vor_F, glob_eta1, glob_eta2)
+
         endif 
 
 
@@ -197,7 +294,11 @@ do i_mode = 1, 10 !nmodes
 #endif
 
         if(.not.ONLY_ONE_TASK_PER_SET)then 
-            deallocate(glob_eta1, glob_eta2)
+            if(tromp93_model)then 
+                deallocate(Aspl, Cspl, Lspl, Nspl, Fspl, rhospl, vpspl, A0)
+            else
+                deallocate(glob_eta1, glob_eta2)
+            endif 
             call sm%cleanup()
         endif
 

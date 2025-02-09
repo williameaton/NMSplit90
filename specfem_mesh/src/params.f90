@@ -7,20 +7,30 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose       = 3
+integer, parameter :: verbose       = 0
 logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
 
-integer, parameter :: nprocs       = 6
-integer, parameter :: nmodes       = 1
+integer, parameter :: nprocs       = 16
+integer, parameter :: nmodes       = 40
 
 ! Specfem mesh files: 
 !character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX112/sliced/'
-character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
+!character(len=250)  :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
+character(len=250)  :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
+!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/whole_earth/'
+!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
 
 ! Mineos model parameters: 
+! PREM mineos model 
 character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'
 character(len=60),  parameter  :: model_fname = 'model'
+character(len=60),  parameter  :: bin_prefix = 'prem_ani_att'
+
+! 1066a mineos model
+!character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/1066a/'
+!character(len=60),  parameter  :: model_fname = '1066a_mineos_model'
+!character(len=60),  parameter  :: bin_prefix = '1066a_noatt'
 
 ! Assumptions: 
 logical, parameter :: Z_AXIS_EARTH_ROTATION = .true.
@@ -36,6 +46,7 @@ complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 ! Matrices: 
 complex(kind=SPLINE_REAL), allocatable :: Wmat(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vani(:,:)
+complex(kind=SPLINE_REAL), allocatable :: Vcen(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Tmat(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Viso(:,:)
 
@@ -78,12 +89,12 @@ character(len=7), parameter  :: realfmt = "(e12.5)"
 
 
 ! Voronoi model: 
-character(len=250) :: fname_voronoi = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/voronoi/voronoi_model.txt'
+character(len=250) :: fname_voronoi = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model.txt'
 
 
 
 ! MPI 
-integer :: myrank
+integer :: myrank, cluster_size
 integer :: MPI_CUSTOM_REAL 
 integer :: MPI_SPLINE_REAL
 integer :: MPI_SPLINE_COMPLEX

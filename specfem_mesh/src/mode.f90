@@ -65,7 +65,7 @@ module modes
         !  u(NR),du(NR),v(NR),dv(NR) ---
         !     in case of toroidal and radial modes, only u,du
         !     is valid, for spheroidal modes, all are valid.
-        use params, only: ddir, model_fname, verbose
+        use params, only: ddir, model_fname, verbose, bin_prefix
         implicit none
         include "constants.h"
         class(Mode) :: self
@@ -74,7 +74,7 @@ module modes
         logical                    :: save_mode
         character(len=*), optional :: out_dir
     
-        character(len=200) :: catalogue, bin_file, eigstring
+        character(len=200) :: catalogue, bin_file, eigstring, freqstring
         integer            :: ntype,nvec,i,j
         character(len=1)   :: type1,type2,char
         integer            :: ieigtxt,iomod,iocat,iobin,nrec,ios,nn,ll
@@ -82,6 +82,7 @@ module modes
         real(4)            :: buf(6*self%len),  cg4, phsv
         integer(4)         :: n4, l4, n4old, l4old
     
+        logical, parameter :: savefreq  = .true.
         eps = 1.0d-4
     
 
@@ -95,36 +96,38 @@ module modes
         ! set up correct catalogue and bin file for mode reading
         if (self%t == 'T' .or. self%t == 't') then
             ntype = 1
-            catalogue = trim(ddir)//'prem_ani_att_T'
+            catalogue = trim(ddir)//trim(bin_prefix)//'_T'
             nvec = 2 * self%len
             type1 = 'T'; type2 = 't';
         
-            bin_file = trim(ddir)//'prem_ani_att_T.bin'
+            bin_file = trim(ddir)//trim(bin_prefix)//'_T.bin'
         
         else if (self%t == 'S' .or. self%t == 's') then
             type1 = 'S'; type2 = 's';
+
     
             if (self%l == 0) then
                 ! Radial modes
                 ntype = 2
                 nvec = 2 * self%len
-                catalogue = trim(ddir)//'prem_ani_att_R'
-                bin_file  = trim(ddir)//'prem_ani_att_R.bin'
+                catalogue = trim(ddir)//trim(bin_prefix)//'_R'
+                bin_file  = trim(ddir)//trim(bin_prefix)//'_R.bin'
             else
                 ! Spheroidal not radial
                 ntype = 3
-                catalogue = trim(ddir)//'prem_ani_att_S'
-                    bin_file = trim(ddir)//'prem_ani_att_S.bin'
-                    nvec = 6 * self%len 
+                catalogue = trim(ddir)//trim(bin_prefix)//'_S'
+                bin_file  = trim(ddir)//trim(bin_prefix)//'_S.bin'
+                nvec = 6 * self%len 
+
             endif ! l=0
 
         elseif (self%t == 'C' .or. self%t == 'c') then
             type1 = 'C'; type2 = 'c';
             ! Inner core toroidal modes
             ntype = 4
-            catalogue = trim(ddir)//'prem_ani_att_C'
+            catalogue = trim(ddir)//trim(bin_prefix)//'_C'
             nvec = 2 * self%len        
-            bin_file = trim(ddir)//'prem_ani_att_C.bin'
+            bin_file = trim(ddir)//trim(bin_prefix)//'_C.bin'
         else
             write(*,*)'Error in get_mineos_mode: mode type must be S, T or C but was '//self%t
         endif ! T or C or S 
@@ -141,6 +144,7 @@ module modes
             ! Checks that the type of mode in the 'catalogue file' is correctly S or T 
             if (nrec == 1 .and. (char /= type1 .and. char /= type2)) then
                 write(*,*)'Incorrect mode catalogue: ', nn, ll, ';', char, ';', type1, ';', type2
+                write(*,*)' This may be because the MINEOS files have the model printed at the top of the text catalogues, which should be removed so that the first line is the first mode.'
                 stop 
             endif
     
@@ -176,6 +180,15 @@ module modes
     
         
         if(verbose.ge.3)then
+
+            if(savefreq)then
+                write(freqstring,'(a,i0,a,i0,a)')'output/freqs/', n4,type1,l4,'.txt'
+                open(57,file=trim(freqstring), iostat=ios)
+                write(57,*)'Frequency in Hz'
+                write(57,*)wwmhz/1000.d0
+                close(57)
+            endif
+
             write(*,*)
             write(*,*)'Angular Freq in rad :', self%wcom
             write(*,*)'Frequency in mHz    :', wwmhz
@@ -206,8 +219,11 @@ module modes
     
         ! Compare the freq in mHz (wwmhz) to ang freq read from binaries
         ! as well as Q values as a sanity check
-        if (abs(wwmhz*2*PI/1000 - self%wcom) > eps  .or. abs(self%qmod - qqmod) > eps) then      
-        stop 'Error: frequencies or Q values do not match'
+        if (abs(wwmhz*2*PI/1000 - self%wcom) > eps ) then      
+            stop 'Error: frequencies do not match'
+        endif 
+        if ( abs(self%qmod - qqmod) > eps) then 
+            write(*,*)'Warning: Q do not match error - ', abs(self%qmod - qqmod)
         endif 
         
         ! Format buffer into arrays 
@@ -335,9 +351,6 @@ module modes
             allocate(m%du(m%len))
             allocate(m%dv(m%len))
         endif       
-        
-
-   
 
         ! If outdir then will save: 
         if (present(out_dir)) then
