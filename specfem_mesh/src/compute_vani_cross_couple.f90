@@ -1,5 +1,5 @@
 
-program compute_vani_splitting
+program compute_vani_cross
     use params, only: Vani, verbose, myrank, MPI_SPLINE_COMPLEX, & 
                       MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT, glob_eta1,   &
                       glob_eta2,  nmodes, nprocs, cluster_size, Arad, Crad, Lrad, Nrad, Frad
@@ -7,6 +7,7 @@ program compute_vani_splitting
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                      compute_Vani_matrix, compute_vani_matrix_stored, & 
                      compute_Cxyz_at_gll_radialACLNF
+use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst, write_cst_complex_to_file
 
 #ifdef WITH_CUDA
     use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
@@ -32,11 +33,12 @@ program compute_vani_splitting
 
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
                tl1, tl2, h, b, sets_per_process, & 
-               myset_start, myset_end, i_mode, maxknot
-    character ::  t1
-    character(len=2) nstr, lstr
+               myset_start, myset_end, i_mode, maxknot, smin, smax, ncols, num_s
+    character ::  t1, t2
+    character(len=2) n1str, l1str, n2str, l2str
     character(len=12) nprocstr, nmodestr, timing_fmt_vals
     character(len=250) :: out_name
+    complex(kind=SPLINE_REAL), allocatable :: cst(:,:)
 
     complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
 
@@ -47,31 +49,26 @@ program compute_vani_splitting
     ! KD tree: 
     type(KdTree)           :: tree
     type(SetMesh)          :: sm  
-    type(Mode)             :: mode_1 
+    type(Mode)             :: mode_1 , mode_2
 
     ! 3D model
     type(M3D) :: model3D
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin  = .true.
-    logical, parameter :: save_to_bin    = .false.
+    logical, parameter :: load_from_bin  = .false.
+    logical, parameter :: save_to_bin    = .true.
     logical, parameter :: force_VTI      = .false.
     logical, parameter :: tromp93_model  = .false.
 
-    ! Modes: 
-    !integer, dimension(29), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
-    !integer, dimension(29), parameter :: modeLs = (/3, 3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
-    !integer, dimension(40), parameter :: modeNs =  (/2, 3, 3, 5, 6, 8, 8, 9, 9, 9, 11, 11, 11, 11, 13, 13, 13, 13, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 20, 20, 21, 21, 21, 22, 23, 23, 25, 25, 27/)
-    !integer, dimension(40), parameter :: modeLs =  (/3, 1, 2, 2, 3, 1, 5, 2, 3, 4,  1,  4,  5,  6, 1,  2,  3,  6,   4,  3,  4,  5,  6,  7,  1,  8,  3,  4,  6,  1,  5,  6,  7,  8,  1,  4,  5,  1,  2,  2/)
 
-    ! The 33: 
-    integer, dimension(33), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21,5, 27, 9, 22, 15, 14/)
-    integer, dimension(33), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
 
     ! Added: 
-    !integer, dimension(6), parameter :: modeNs = (/5, 27, 9, 22, 15, 14/)
-    !integer, dimension(6), parameter :: modeLs = (/2,  2, 2,  1,  3,  4/)
+    integer, dimension(1), parameter :: modeN1s = (/16/)
+    integer, dimension(1), parameter :: modeL1s = (/5/)
+
+    integer, dimension(1), parameter :: modeN2s = (/17/)
+    integer, dimension(1), parameter :: modeL2s = (/4/)
 
 
 #ifdef WITH_MPI
@@ -152,7 +149,6 @@ else
     call Model3D%create_KDtree()
 endif
 
-
 ! Benchmark value
 !vor_A =  0.4d0
 !vor_C = -0.2d0
@@ -168,12 +164,10 @@ if(.not.tromp93_model)then
     vor_L = Model3D%valconsts(3)/100.0d0
     vor_N = Model3D%valconsts(4)/100.0d0
     vor_F = Model3D%valconsts(5)/100.0d0
-    tree = KdTree(Model3D%xcoord, Model3D%ycoord, Model3D%zcoord) 
 endif 
 
 
-! Force the N parameter to be non-zero: 
-vor_N = -0.01d0
+
 
 
 if(ONLY_ONE_TASK_PER_SET)then 
@@ -210,14 +204,20 @@ endif
 
 
 do i_mode = 1, nmodes
-    n1      =  modeNs(i_mode)
+    n1      =  modeN1s(i_mode)
     t1      = 'S'
-    l1      =  modeLs(i_mode)
+    l1      =  modeL1s(i_mode)
+
+    n2      =  modeN2s(i_mode)
+    t2      = 'S'
+    l2      =  modeL2s(i_mode)
+
 
     mode_1  = get_mode(n1, t1, l1, mineos_ptr)
+    mode_2  = get_mode(n2, t2, l2, mineos_ptr)
 
 
-    allocate(Vani(mode_1%tl1, mode_1%tl1))
+    allocate(Vani(mode_1%tl1, mode_2%tl1))
     Vani = SPLINE_iZERO
 
 
@@ -278,8 +278,8 @@ do i_mode = 1, nmodes
                                                      Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
             else 
                 call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, & 
-                                                    vor_N, vor_F, glob_eta1, glob_eta2, &
-                                                    perturbation_on_prem=.true.)
+                                                       vor_N, vor_F, glob_eta1, glob_eta2, &
+                                                       perturbation_on_prem=.true.)
             endif 
 
         endif 
@@ -289,12 +289,13 @@ do i_mode = 1, nmodes
 
 ! Compute the Vani matrix
 #ifdef WITH_CUDA
-        call cuda_Vani_matrix_stored_selfcoupling(sm, n1, t1, l1)
+        write(*,*)'CUDA cross coupling not implemented. stop'
+        stop
 #else
         if(load_from_bin)then 
-            call compute_Vani_matrix_stored(sm, t1, l1, n1, t1, l1, n1) 
+            call compute_Vani_matrix_stored(sm, t1, l1, n1, t2, l2, n2) 
         else 
-            call compute_Vani_matrix(sm, n1, t1, l1, n1, t1, l1, .true.)
+            call compute_Vani_matrix(sm, n1, t1, l1, n2, t2, l2, .true.)
             write(*,*)'Done iset', iset
         endif
 #endif
@@ -315,37 +316,52 @@ do i_mode = 1, nmodes
 ! ---------------------- OUTPUT THE V MATRIX FOR A MODE ----------------------
 #ifdef WITH_MPI
     if(myrank.eq.0)then 
-        allocate(Vani_modesum(mode_1%tl1, mode_1%tl1))
+        allocate(Vani_modesum(mode_1%tl1, mode_2%tl2))
         Vani_modesum = SPLINE_iZERO  
     endif 
 
-    call MPI_Reduce(Vani, Vani_modesum, mode_1%tl1**2, MPI_SPLINE_COMPLEX, &
+    call MPI_Reduce(Vani, Vani_modesum, mode_1%tl1*mode_2%tl2 , MPI_SPLINE_COMPLEX, &
                     MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
     if(myrank.eq.0)then 
-        call buffer_int(nstr, n1)
-        call buffer_int(lstr, l1)
+        call buffer_int(n1str, n1)
+        call buffer_int(n2str, n2)
+        call buffer_int(l1str, l1)
+        call buffer_int(l2str, l2)
         if(force_VTI)then 
-            out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'_VTI.txt'
+            out_name =  './output/vani'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)//'_VTI.txt'
         else 
-            out_name =  './output/N-0.01/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
+            out_name =  './output/vani'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)//'.txt'
         endif 
         Vani = Vani_modesum
-        call save_Vani_matrix(l1, l1, out_name)
+        call save_Vani_matrix(l1, l2, out_name)
         deallocate(Vani_modesum)
     endif 
 
     CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
 #else
-    call buffer_int(nstr, n1)
-    call buffer_int(lstr, l1)
+    call buffer_int(n1str, n1)
+    call buffer_int(n2str, n2)
+    call buffer_int(l1str, l1)
+    call buffer_int(l2str, l2)
     if(force_VTI)then 
-        out_name =  './output/sem_fast_'//trim(nstr)//t1//trim(lstr)//'_VTI.txt'
+        out_name =  './output/vani'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)//'_VTI.txt'
     else 
-        out_name =  './output/sem_fast_'//trim(nstr)//t1//trim(lstr)//'.txt'
+        out_name =  './output/vani'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)//'.txt'
     endif 
     
-    call save_Vani_matrix(l1, l1, out_name)
+    call save_Vani_matrix(l1,l2, out_name)
+
+    ! Write as a CST
+    call get_Ssum_bounds(l1, l2, smin, smax, num_s, ncols)
+    allocate(cst(num_s, ncols))
+    call Hcomplex_to_cst(Vani, l1, l2, cst, ncols, num_s, t1, t2, 2)
+    out_name = 'output/cst_'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)
+    call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
+    deallocate(cst)
+
+
+
 #endif
     deallocate(Vani)
 ! ----------------- END OF OUTPUT THE V MATRIX FOR A MODE --------------
@@ -358,5 +374,5 @@ enddo ! i_mode
 #ifdef WITH_MPI
     call mpi_finalize(ierr)
 #endif
-end program compute_vani_splitting
+end program compute_vani_cross
 

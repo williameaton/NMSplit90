@@ -32,20 +32,6 @@ module splitting_function
 
 
 
-    real(kind=CUSTOM_REAL) function gamma_kkst_alt(md, m, s, t, ld, l, j)
-        ! Gilbert & Woodhouse 2000 
-        ! Determination of structure coefcients from splitting matrices
-        ! Eqn 5
-        ! NOTE THE SECOND w3j compared to the function above 
-        use w3j, only: thrj
-        implicit none
-        integer :: m, md, s, t, l, ld, j
-
-        gamma_kkst_alt = xi_kkst(md, m, s, t, ld, l) * &
-                         thrj(ld+j, s+j, l+j, 0, 0, 0) 
-    end function
-
-
 
     real(kind=CUSTOM_REAL) function gamma_kkst(md, m, s, t, ld, l, j)
         ! Gilbert & Woodhouse 2000 
@@ -111,12 +97,12 @@ module splitting_function
         ! l and ld indicate the order of the modes involved
         implicit none
         integer :: l, ld, ncols, nrows
-        real(kind=SPLINE_REAL)   :: cst(nrows, ncols)
-        real(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
+        complex(kind=SPLINE_REAL)   :: cst(nrows, ncols)
+        complex(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
         character :: type1, type2
         ! Local: 
         integer :: smin, smax, num_s, max_num_t, md, m, t, s,j,is,it
-        real(kind=CUSTOM_REAL) :: sum 
+        complex(kind=CUSTOM_REAL) :: sum 
 
         ! j = 0 for S-S or T-T coupling and 1 for mixed
         if(type1.eq.type2)then
@@ -138,10 +124,12 @@ module splitting_function
             stop
         endif
         
+        H = SPLINE_iZERO
+
         ! Compute for each element of the matrix: 
         do md = -ld, ld ! row
             do m = -l, l ! col
-                sum = zero
+                sum = SPLINE_iZERO
 
                 ! sum over the s
                 do is = 1, num_s 
@@ -151,7 +139,7 @@ module splitting_function
                         ! compute the actual t value: 
                         t = it - 1 - s
                         sum = sum + cst(is,it) * & 
-                                    gamma_kkst(md, m, s, t, l, ld, j)
+                                    gamma_kkst(md, m, s, t, ld, l, j)
                     enddo ! it
                 enddo !is 
 
@@ -163,10 +151,10 @@ module splitting_function
 
 
 
-    subroutine H_to_cst(H, ld, l, cst, ncols, nrows, type1, type2, s_step)
-        ! Computes splitting coefficients from the matrix H
+    subroutine Hreal_to_cst(H, ld, l, cst, ncols, nrows, type1, type2, s_step)
+        ! Computes splitting coefficients from the real matrix H
         ! s_step of 1 will compute all values of s even if some are invalid
-        ! 2 would compute very second s e.g. smin, smin+2 etc
+        ! 2 would compute every second s e.g. smin, smin+2 etc
         implicit none 
 
         integer :: l, ld, ncols, nrows, s_step
@@ -239,10 +227,94 @@ module splitting_function
                 enddo 
             enddo 
         enddo 
+    end subroutine Hreal_to_cst
 
 
+    subroutine Hcomplex_to_cst(H, ld, l, cst, ncols, nrows, type1, type2, s_step)
+        ! Computes splitting coefficients from the complex matrix H
+        ! s_step of 1 will compute all values of s even if some are invalid
+        ! 2 would compute every second s e.g. smin, smin+2 etc
+        implicit none 
 
-    end subroutine H_to_cst
+        integer :: l, ld, ncols, nrows, s_step
+        complex(kind=SPLINE_REAL):: cst(nrows, ncols)
+        complex(kind=SPLINE_REAL):: H(2*ld+1, 2*l+1)
+        character :: type1, type2
+
+
+        ! Local: 
+        integer :: smin, smax, num_s, max_num_t, is, s, it, t, m, & 
+                   r0, rs, Nd, rt, ct, N, R, im, j, md
+
+        if(ld.lt.l)then
+            write(*,*)"ERROR: l' (ld) must be greater than l: "
+            write(*,*)"ERROR: l' = ", ld
+            write(*,*)"ERROR: l  = ", l  
+            stop
+        endif
+
+        ! j = 0 for S-S or T-T coupling and 1 for mixed
+        if(type1.eq.type2)then
+            j = 0
+        else
+            j = 1
+        endif
+        
+        cst = SPLINE_iZERO
+
+        call get_Ssum_bounds(ld, l, smin, smax, num_s, max_num_t)
+        if(nrows.ne.num_s .or. ncols.ne.max_num_t)then
+            write(*,*)'Error: discrepency in nrow/num_s or ncol/max_num_t: '
+            write(*,*)'nrows      = ', nrows
+            write(*,*)'num_s      = ', num_s
+            write(*,*)'ncols      = ', ncols
+            write(*,*)'max_num_t  = ', max_num_t
+            stop
+        endif
+        
+        r0 = 1 + ld - l       ! starting row for t = 0
+        Nd = 2*l +1           ! Maximum diagonal length 
+  
+        do is = 1, num_s, s_step 
+            s = smin + is - 1
+
+            do it = 1, 2*s + 1
+                t = it - 1 - s
+
+
+                ! For each s, t, we need to sum over the (sub)diagonal 
+                ! defined by the t value 
+
+                rs = r0 + t           ! Theoretical starting row
+                if (rs.le.0)then 
+                    rt = 1            ! actual starting row
+                    ct = 2 - rs       ! actual starting column 
+                    N  = Nd + rs - 1  ! number of elements in diagonal 
+                else
+                    rt = rs 
+                    ct = 1 
+                    R  = 2*(ld-l) + 1 - rs
+                    if(R.lt.0)then 
+                        N = Nd + R
+                    else 
+                        N = Nd 
+                    endif 
+                endif
+
+                do im = 1, N
+                    md = -(ld) + (rt+im-1) -1 
+                    m  = -(l)  + (ct+im-1) -1
+
+                    cst(is,it) = cst(is,it) + F_mst(m, s, t, l, ld, j) * & 
+                                              H(md+ld+1, m+l+1)
+                enddo 
+            enddo 
+
+            write(*,*)
+
+
+        enddo 
+    end subroutine Hcomplex_to_cst
 
 
 
@@ -252,8 +324,7 @@ module splitting_function
         character(len=*)         :: fname
         real(kind=SPLINE_REAL)   :: cst(nrows, ncols)
         integer                  :: nrows, ncols, smin, jump, is ,it
-        
-        !write(*,*)'Writing to '//trim(fname)
+
 
         open(1,file=trim(fname), form='formatted')
         do is = 1, nrows, jump
@@ -261,9 +332,24 @@ module splitting_function
                 write(1,*)smin+is-1, it - (smin+is-1) - 1, real(cst(is,it))
             enddo 
         enddo 
-
     end subroutine write_cst_to_file
 
+
+    subroutine write_cst_complex_to_file(fname, cst, ncols, nrows, smin, jump)
+        ! Jump of 2 for only even stuff, 1 for all 
+        implicit none 
+        character(len=*)         :: fname
+        complex(kind=SPLINE_REAL):: cst(nrows, ncols)
+        integer                  :: nrows, ncols, smin, jump, is ,it
+
+
+        open(1,file=trim(fname), form='formatted')
+        do is = 1, nrows, jump
+            do it = 1, 2*(smin + is-1)+1
+                write(1,*)smin+is-1, it - (smin+is-1) - 1, real(cst(is,it)), aimag(cst(is,it))
+            enddo 
+        enddo 
+    end subroutine write_cst_complex_to_file
 
 
 

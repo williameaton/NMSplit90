@@ -472,14 +472,13 @@ module specfem_mesh
             call allocate_if_unallocated(self%ngllx,self%nglly,self%ngllz,self%nspec, self%thetastore)
             call allocate_if_unallocated(self%ngllx,self%nglly,self%ngllz,self%nspec, self%phistore)
 
-
             do ispec = 1, self%nspec
                 do i = 1, self%ngllx
                     do j = 1, self%nglly
                         do k = 1, self%ngllz
                             self%rstore(i,j,k,ispec) = (self%xstore(i,j,k,ispec)**TWO + &
-                                                self%ystore(i,j,k,ispec)**TWO + & 
-                                                self%zstore(i,j,k,ispec)**TWO)**HALF
+                                                        self%ystore(i,j,k,ispec)**TWO + & 
+                                                        self%zstore(i,j,k,ispec)**TWO)**HALF
                                                 
                             ! 0 <= phi <= 2pi
                             self%phistore(i,j,k,ispec) = atan2(self%ystore(i,j,k,ispec),&
@@ -487,7 +486,7 @@ module specfem_mesh
                             if(self%phistore(i,j,k,ispec) .lt. ZERO)& 
                                 self%phistore(i,j,k,ispec)  = TWO_PI + self%phistore(i,j,k,ispec) 
 
-                            ! 0 <= theta <= pi                        
+                            ! 0 <= theta <= pi:                    
                             self%thetastore(i,j,k,ispec) = PI_OVER_TWO -  atan2(self%zstore(i,j,k,ispec),&
                                                                         (self%xstore(i,j,k,ispec)**TWO +&
                                                                         self%ystore(i,j,k,ispec)**TWO)**HALF) 
@@ -495,6 +494,10 @@ module specfem_mesh
                     enddo 
                 enddo
             enddo 
+
+
+            !write(*,*)'Minval/maxval of theta: ', minval(self%thetastore), maxval(self%thetastore)
+            !write(*,*)'Minval/maxval of phi  : ', minval(self%phistore), maxval(self%phistore)
 
             if(save)call self%save_elem_rtp()
 
@@ -546,7 +549,7 @@ module specfem_mesh
                 y = real(self%y_glob(iglob), kind=CUSTOM_REAL)
                 z = real(self%z_glob(iglob), kind=CUSTOM_REAL)
 
-                r = sqrtp(x ** 2 + y ** 2 + z ** 2)
+                r = (x ** two + y ** two + z ** two)**half
 
                 if (r.eq.zero)then 
                     ! For now we will wont rotate it if the central GLL point
@@ -555,15 +558,16 @@ module specfem_mesh
                         self%Rmat(p, p, iglob) = one
                     enddo 
                 else
-                    ! Note that theta and phi here are not necessarily the same
-                    ! as in DT98 i.e. theta here will be between -pi/2 and pi/2
-                    theta = acosp(z/r)
+                    ! We want to use theta in [0, pi  ]
+                    !                phi  in  [0, 2pi ]
+
+                    theta = acosp(z/r)  ! colatitude 
                     phi   = atan2p(y,x)
                     if (phi .lt. zero) phi = phi + TWO_PI
 
+                    st = real(sinp(theta), kind=CUSTOM_REAL)
                     ct = real(cosp(theta), kind=CUSTOM_REAL)
                     cp = real(cosp(phi),   kind=CUSTOM_REAL)
-                    st = real(sinp(theta), kind=CUSTOM_REAL)
                     sp = real(sinp(phi),   kind=CUSTOM_REAL)
 
                     ! Radial vector

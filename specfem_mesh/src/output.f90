@@ -54,8 +54,9 @@ subroutine buffer_int(str, myint)
     elseif(myint.ge.100 .and. myint.lt.1000)then 
         write(str,'(i3)')myint    
     elseif(myint.ge.1000 .and. myint.lt.10000)then 
+        write(str,'(i4)')myint  
+    elseif(myint.ge.10000 .and. myint.lt.100000)then 
         write(str,'(i5)')myint  
-
 
     elseif (myint.gt.-10 .and. myint.lt.0)then
             write(str,'(i2)')myint

@@ -2,6 +2,13 @@ module vani_kernel
 
     use cudafor
     include "constants.h"
+
+    ! Dimensions: ngll^3 x nspec x tl1 x 6 x nmodes
+    real(kind=8), device, allocatable :: d_allstrains_r(:,:,:,:,:), d_allstrains_i(:,:,:,:,:)
+    real(kind=8), device, allocatable :: d_wglljac_g(:, :) ! ngll^3 x nspec
+    real(kind=8), device, allocatable :: d_Cxyz_g(:, :, :, :) ! ngll^3 x nspec x 6 x 6
+    real(kind=8), device, allocatable :: d_vani_real_G(:,:), d_vani_imag_G(:,:)
+
     contains 
 
     ! Subroutine on host that drives vknl
@@ -421,5 +428,185 @@ module vani_kernel
 
 
 
+
+
+
+    subroutine copy_allstrain_to_device(astrain, ModeLs, ngll, nspec)
+        use params, only: max_tl1, nmodes, myrank
+        implicit none 
+        ! IO variables
+        integer :: ngll, nspec
+        complex(kind=SPLINE_REAL) :: astrain(ngll, ngll, ngll, nspec, max_tl1, 6, nmodes)
+        integer :: modeLs(nmodes)
+
+
+        real(kind=8),  dimension(ngll*ngll*ngll, nspec, max_tl1, 6) :: strains_real
+        real(kind=8),  dimension(ngll*ngll*ngll, nspec, max_tl1, 6) :: strains_imag
+        ! Local: 
+        integer :: i,j,k,l,m,p,imode,ispec,igll
+
+        d_allstrains_r = 0.0_8   ! Zero these
+        d_allstrains_i = 0.0_8   ! Zero these
+
+        do imode = 1, nmodes
+            strains_real = zero 
+            strains_imag = zero 
+
+            do ispec = 1, nspec 
+                igll = 1
+                do i = 1, ngll
+                    do j = 1, ngll 
+                        do k = 1, ngll
+                            do m = 1, 2*modeLs(imode) + 1 
+                                do p = 1, 6
+                                    strains_real(igll, ispec, m, p) =  real(astrain(i,j,k,ispec, m, p, imode))
+                                    strains_imag(igll, ispec, m, p) = aimag(astrain(i,j,k,ispec, m, p, imode))
+                                enddo 
+                            enddo 
+                            igll = igll + 1
+                        enddo 
+                    enddo 
+                enddo 
+            enddo 
+
+
+            ! Copy to device
+            d_allstrains_r(:,:,:,:, imode) = strains_real
+            d_allstrains_i(:,:,:,:, imode) = strains_imag
+        enddo !imodes 
+            
+    end subroutine
+
+
+
+
+
+
+
+    subroutine compute_Vani_onemode_allstrains(imode, l, ngll, nspec)
+        use params, only: vani, myrank, max_tl1
+        implicit none 
+        ! IO variables
+        integer :: ngll, nspec, imode
+        integer :: l,  tl1
+
+        ! Local host variables
+        real(kind=8) :: Vloc_r(max_tl1 , max_tl1), Vloc_i(max_tl1, max_tl1), tmp
+        integer :: upper_diag_elem, ii, jj
+
+        ! Zero the matrices on the GPU 
+        d_vani_real_G = 0.0_8
+        d_vani_imag_G = 0.0_8
+
+        tl1 = 2*l + 1
+        upper_diag_elem = (tl1+1)*tl1/2
+
+
+        if(ngll.eq.5)then
+                call vani_knl_allstrains<<<dim3(nspec,tl1,tl1), dim3(ngll*ngll*ngll,1,1)>>>(imode, tl1, nspec)               
+        else 
+            write(*,*)'Error. hardcoded for ngll = 5'
+            stop
+        endif 
+       
+        ! Copy off device HERE: 
+        Vloc_r = d_vani_real_G      
+        Vloc_i = d_vani_imag_G
+
+        ! Add the real and imaginary components to the global Vani
+        Vani(1:tl1, 1:tl1) = Vani(1:tl1, 1:tl1) + Vloc_r(1:tl1, 1:tl1) + SPLINE_iONE*Vloc_i(1:tl1, 1:tl1)
+    end subroutine compute_Vani_onemode_allstrains
+
+
+
+
+
+    attributes(global) subroutine vani_knl_allstrains(imode, tl1, nspec)
+        integer, value  :: imode, tl1, nspec
+
+        ! internal variables
+        integer         :: i, j, k, ispec, m1, m2, p, q, istat, igll
+        real(kind=8) :: cont_r, cont_i
+        real(kind=8)    :: trash
+        integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+
+        ! In shared memory: 
+        !real, dimension(125,6), shared :: s_strain_1_real, s_strain_2_real
+        !real, dimension(125,6), shared :: s_strain_1_imag, s_strain_2_imag
+        !real, dimension(125,6,6), shared:: s_c
+
+        igll = threadidx%x
+        if(igll.gt.125)return 
+
+        ispec = blockidx%x
+        m1    = blockidx%y
+        m2    = blockidx%z
+
+
+        ! Copy some stuff to close shared memory
+        !s_strain_1_real(igll, :) = d_strains_real(igll, ispec, m1, :)
+        !s_strain_2_real(igll, :) = d_strains_real(igll, ispec, m2, :)
+
+        !s_strain_1_imag(igll, :) = d_strains_imag(igll, ispec, m1, :)
+        !s_strain_2_imag(igll, :) = d_strains_imag(igll, ispec, m2, :)
+        !s_c(igll, :, :)    = d_Cxyz(igll, ispec, :, :)
+
+
+        cont_r = 0.0_8
+        cont_i = 0.0_8
+                
+
+        do p = 1, 9
+            do q =1,9
+                ! Real part 
+                cont_r = cont_r  +  (d_allstrains_r(igll, ispec, m1, Vcont(p),imode) * d_allstrains_r(igll, ispec, m2, Vcont(q),imode)  + & 
+                                     d_allstrains_i(igll, ispec, m1, Vcont(p),imode) * d_allstrains_i(igll, ispec, m2, Vcont(q),imode)) * & 
+                                     d_Cxyz_g(igll, ispec, Vcont(p), Vcont(q))
+
+                ! Imag part 
+                cont_i = cont_i  +  (d_allstrains_r(igll, ispec, m1, Vcont(p),imode) * d_allstrains_i(igll, ispec, m2, Vcont(q),imode)  - & 
+                                     d_allstrains_r(igll, ispec, m2, Vcont(q),imode) * d_allstrains_i(igll, ispec, m1, Vcont(p),imode)) * & 
+                                     d_Cxyz_g(igll, ispec, Vcont(p), Vcont(q))
+                enddo 
+        enddo 
+
+
+        cont_r = cont_r * d_wglljac_g(igll,ispec)
+        cont_i = cont_i * d_wglljac_g(igll,ispec)
+
+        ! Extract the real and imaginary parts: 
+        ! atomic add not available for complex. 
+
+        trash = atomicadd(d_vani_real_G(m1, m2),  cont_r)
+        trash = atomicadd(d_vani_imag_G(m1, m2),  cont_i)
+        
+        call syncthreads()
+        
+    end subroutine vani_knl_allstrains
+
+
+
+    subroutine check_cuda_device_allocations(nprocs)
+        use params, only: myrank
+        implicit none 
+        integer :: nprocs
+        integer :: err, mydevice, devcount, mydev, nsets_per_gpu
+
+        ! Number of devices
+        err = cudaGetDeviceCount(devcount)
+
+        ! even split across the GPUs: 
+        nsets_per_gpu = CEILING(real(nprocs)/real(devcount))
+
+        mydev = FLOOR(real(myrank)/real(nsets_per_gpu))
+
+
+        err = cudaSetDevice(mydev)
+        
+        err = cudaGetDevice(mydevice)
+        write(*,*)'myrank = ', myrank, ' my GPU device = ',  mydevice
+
+
+    end subroutine check_cuda_device_allocations
 
 end module vani_kernel

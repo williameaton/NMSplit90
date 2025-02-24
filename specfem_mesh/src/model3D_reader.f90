@@ -54,6 +54,7 @@ module model3d
             procedure :: re_readmodel
             procedure :: create_KDtree
             procedure :: project_to_gll
+            !procedure :: cleanup
     end type  M3D
 
 
@@ -405,6 +406,17 @@ module model3d
     end subroutine project_to_gll
 
 
+
+    ! subroutine cleanup(self)
+    !     use allocation_module, only: deallocate_if_allocated
+    !     implicit none
+    !     include "constants.h"
+    !     class(M3D) :: self
+
+    !     call deallocate_if_allocated()
+
+
+    ! end subroutine cleanup
 
 
 

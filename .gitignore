@@ -25,7 +25,9 @@ databases/*
 databases/*
 get_mode/*
 
-
+specfem_mesh/3D_MODELS/voronoi/MCMC_models/*
+specfem_mesh/3D_MODELS/voronoi/*instances*
+specfem_mesh/output/
 # AC generated stuff: 
 traces.* 
 output.*

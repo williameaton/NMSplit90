@@ -26,9 +26,7 @@ module PREMModel
         else 
 
             eta = ONE 
-
-
-
+            
             ! Originally g/cm^3 --> kg/m^3 -> nondimensionalised
             rho = (13.0885d0 - 8.8381d0*radius*radius)*1000.d0/RHOAV
             ! Originally km/s --> m/s 

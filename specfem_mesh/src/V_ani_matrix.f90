@@ -101,6 +101,7 @@ contains
         real(kind=CUSTOM_REAL) :: Q(6, 6)
 
         real(kind=CUSTOM_REAL) :: c1, c2, s1, s2, c11, c22, s11, s22
+        real(kind=CUSTOM_REAL) :: r11, r12, r13, r21, r22, r23, r31, r32, r33
 
         c1 = cosp(n1)
         c2 = cosp(n2)
@@ -112,47 +113,117 @@ contains
         s11 = s1*s1
         s22 = s2*s2
         ! -------------- Manual bond matrix:  --------------
-        Q(1,1) = c11 * c22 
-        Q(2,1) = s11 * c22 
-        Q(3,1) = s22
-        Q(4,1) = -s1 * s2 * c2
-        Q(5,1) = -c1 * c2 * s2
-        Q(6,1) = c1 * c22 * s1 
+        ! Q(1,1) = c11 * c22 
+        ! Q(2,1) = s11 * c22 
+        ! Q(3,1) = s22
+        ! Q(4,1) = -s1 * s2 * c2
+        ! Q(5,1) = -c1 * c2 * s2
+        ! Q(6,1) = c1 * c22 * s1 
 
-        Q(1,2) = s11
-        Q(2,2) = c11 
-        Q(3,2) = zero
-        Q(4,2) = zero
-        Q(5,2) = zero
-        Q(6,2) = -s1 * c1
+        ! Q(1,2) = s11
+        ! Q(2,2) = c11 
+        ! Q(3,2) = zero
+        ! Q(4,2) = zero
+        ! Q(5,2) = zero
+        ! Q(6,2) = -s1 * c1
 
-        Q(1,3) = s22 * c11
-        Q(2,3) = s11 * s22
-        Q(3,3) = c22 
-        Q(4,3) = s1*s2*c2
-        Q(5,3) = c1*c2*s2
-        Q(6,3) = s1*s22*c1
+        ! Q(1,3) = s22 * c11
+        ! Q(2,3) = s11 * s22
+        ! Q(3,3) = c22 
+        ! Q(4,3) = s1*s2*c2
+        ! Q(5,3) = c1*c2*s2
+        ! Q(6,3) = s1*s22*c1
 
-        Q(1,4) = -two * s1 * s2 * c1
-        Q(2,4) = two * s1 * s2 * c1 
-        Q(3,4) = zero 
-        Q(4,4) = c1*c2 
-        Q(5,4) = -s1*c2
-        Q(6,4) = -s2*(c11 + s11*c2)
+        ! Q(1,4) = -two * s1 * s2 * c1
+        ! Q(2,4) = two * s1 * s2 * c1 
+        ! Q(3,4) = zero 
+        ! Q(4,4) = c1*c2 
+        ! Q(5,4) = -s1*c2
+        ! Q(6,4) = -s2*(c11 + s11*c2)
 
-        Q(1,5) = two * c11 * s2 * c2
-        Q(2,5) = two * s11 * c2 * s2
-        Q(3,5) = - two * s2 * c2
-        Q(4,5) = s1 * (c22 - s22)
-        Q(5,5) = c1 * (c22 - s22)
-        Q(6,5) = two * c1 * c2 * s1 * s2
+        ! Q(1,5) = two * c11 * s2 * c2
+        ! Q(2,5) = two * s11 * c2 * s2
+        ! Q(3,5) = - two * s2 * c2
+        ! Q(4,5) = s1 * (c22 - s22)
+        ! Q(5,5) = c1 * (c22 - s22)
+        ! Q(6,5) = two * c1 * c2 * s1 * s2
 
-        Q(1,6) = - two * c1 * c2 * s1
-        Q(2,6) =   two * s1 * c1 * c2
-        Q(3,6) =  zero 
-        Q(4,6) = - c1 * s2
-        Q(5,6) = s1 * s2
-        Q(6,6) = c2*(c11 - s11)
+        ! Q(1,6) = - two * c1 * c2 * s1
+        ! Q(2,6) =   two * s1 * c1 * c2
+        ! Q(3,6) =  zero 
+        ! Q(4,6) = - c1 * s2
+        ! Q(5,6) = s1 * s2
+        ! Q(6,6) = c2*(c11 - s11)
+
+        
+        ! ! Eqn 5 of Brett 2024
+        r11 = c1 * c2 
+        r12 = - s1
+        r13 = c1*s2
+        
+        r21 = s1*c2
+        r22 = c1
+        r23 = s1*s2 
+
+        r31 = -s2
+        r32 = zero
+        r33 = c2
+
+        ! Eqn 8 of Brett 2024
+        ! r11 = c1 * c2 
+        ! r12 = s1 * c2
+        ! r13 = -s2 
+        
+        ! r21 = -s1 
+        ! r22 = c1 
+        ! r23 = zero 
+
+        ! r31 = c1*s2
+        ! r32 = s1*s2
+        ! r33 = c2
+
+
+        Q(1,1) = r11 * r11 
+        Q(2,1) = r21 * r21 
+        Q(3,1) = r31 * r31
+        Q(4,1) = r21*r31
+        Q(5,1) = r31*r11
+        Q(6,1) = r11*r21
+
+        Q(1,2) = r12 * r12
+        Q(2,2) = r22 * r22
+        Q(3,2) = r32 * r32
+        Q(4,2) = r22*r32
+        Q(5,2) = r32*r12
+        Q(6,2) = r12*r22
+
+        Q(1,3) = r13*r13
+        Q(2,3) = r23*r23
+        Q(3,3) = r33*r33
+        Q(4,3) = r23*r33
+        Q(5,3) = r33*r13
+        Q(6,3) = r13*r23
+
+        Q(1,4) = two*r12*r13
+        Q(2,4) = two*r22*r23
+        Q(3,4) = two*r32*r33
+        Q(4,4) = r22*r33 + r32*r23
+        Q(5,4) = r12*r33 + r13*r32
+        Q(6,4) = r12*r23 + r13*r22
+
+        Q(1,5) = two * r11 * r13
+        Q(2,5) = two * r21 * r23
+        Q(3,5) = two * r33 * r31
+        Q(4,5) = r23*r31 + r21*r33
+        Q(5,5) = r33*r11 +r13*r31
+        Q(6,5) = r13*r21 + r23*r11
+
+        Q(1,6) = two * r11 * r12
+        Q(2,6) = two * r21 * r22
+        Q(3,6) = two * r31 * r32
+        Q(4,6) = r21*r32 + r31*r22
+        Q(5,6) = r31*r12 + r11*r32
+        Q(6,6) = r11*r22 + r21*r12
         return 
     end subroutine compute_bond_matrix_explicit
 
@@ -259,8 +330,6 @@ contains
         ! Local: 
         real(kind=CUSTOM_REAL) :: r, Aprem, Cprem, Lprem, Nprem, Fprem
 
-
-
         if(verbose.ge.2)write(*,'(/,a)')'• Computing elastic tensor for constant ACLNF'
 
 
@@ -360,21 +429,12 @@ contains
 
         do m1 = -l1, l1
             ! Compute strain and store if desired
-
-
             call sm%compute_mode_strain(m1, mode_1, sm%strain1)
-
-
-
             call sm%rotate_complex_sym_matrix_rtp_to_xyz(sm%strain1)
 
-
             if(store)then
-
-
                 call sm%save_mode_strain_binary(n1, t1, l1, m1, 1)
             endif      
-
 
 
             if(self_coupling) then 
@@ -943,32 +1003,32 @@ contains
 
 
 
-    subroutine save_Vani_matrix(l, fname)
+    subroutine save_Vani_matrix(l1, l2, fname)
         use params, only: Vani
         implicit none 
         include "constants.h"
         character(len=*) :: fname
-        integer :: l
+        integer :: l1, l2
 
         integer :: row, col
 
 
-        write(*,*)'Writing to ', trim(fname)
+       write(*,*)'Writing to ', trim(fname)
 
         open(1,file=trim(fname))
         ! Write the real matrix 
-        do row =1, 2*l + 1
-            do col = 1, 2*l + 1
-                if (col .lt. 2*l+1)then 
+        do row =1, 2*l1 + 1
+            do col = 1, 2*l2 + 1
+                if (col .lt. 2*l2+1)then 
                 write(1,'(E15.6)', advance='no')real(Vani(row,col))
                 else 
                     write(1,'(E15.6)', advance='yes')real(Vani(row,col))
                 endif
             enddo 
         enddo 
-        do row =1, 2*l + 1
-            do col = 1, 2*l + 1
-                if (col .lt. 2*l+1)then 
+        do row =1, 2*l1 + 1
+            do col = 1, 2*l2 + 1
+                if (col .lt. 2*l2+1)then 
                 write(1,'(E15.6)', advance='no')aimag(Vani(row,col))
                 else 
                     write(1,'(E15.6)', advance='yes')aimag(Vani(row,col))
@@ -1010,7 +1070,7 @@ contains
     end subroutine save_Vani_real_matrix
 
 
-    subroutine load_vani_from_file(l, fname)
+    subroutine load_vani_from_file(l1, l2, fname)
         use params, only: Vani
         use allocation_module, only: allocate_if_unallocated
         implicit none 
@@ -1018,19 +1078,20 @@ contains
         character(len=*) :: fname
         character(5) :: vals_per_row_str
         character(15) :: fmt
-        integer :: tl1
-        integer :: l
+        integer :: tl1, tl2
+        integer :: l1, l2
         real(kind=SPLINE_REAL), allocatable :: row_data(:)
 
         integer :: row, col
 
-        tl1 = 2*l+1
-        allocate(row_data(tl1))
+        tl1 = 2*l1+1
+        tl2 = 2*l2+1
+        allocate(row_data(tl2))
 
         write(*,*)'Loading from ', trim(fname)
-        call allocate_if_unallocated(tl1, tl1, Vani)
+        call allocate_if_unallocated(tl1, tl2, Vani)
 
-        call buffer_int(vals_per_row_str, tl1)
+        call buffer_int(vals_per_row_str, tl2)
         
         fmt = '('//trim(vals_per_row_str)//'E15.6)'
 
