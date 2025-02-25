@@ -1,8 +1,9 @@
 
 program optimised_vani
     use params, only: Vani, verbose, myrank, MPI_SPLINE_COMPLEX, & 
-                        MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT, glob_eta1,   &
-                        glob_eta2,  nmodes, nprocs, all_warnings, datadir, max_tl1, Cxyz
+                        MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT,   &
+                         nmodes, nprocs, all_warnings, datadir, max_tl1, & 
+                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                         compute_Vani_matrix, compute_vani_matrix_stored, & 
@@ -19,9 +20,12 @@ program optimised_vani
     use mineos_model, only: mineos, mineos_ptr
     use model3d, only: M3D
     use vani_kernel, only: d_allstrains_r, d_allstrains_i, copy_allstrain_to_device, & 
-                            d_wglljac_g, d_Cxyz_g, d_vani_imag_G, d_vani_real_G, & 
-                            compute_Vani_onemode_allstrains, check_cuda_device_allocations
-
+                           d_wglljac_g, d_Cxyz_g, d_vani_imag_G, d_vani_real_G, & 
+                           compute_Vani_onemode_allstrains, check_cuda_device_allocations,& 
+                           Model3D_dev, cuda_project_eta_to_GLL, Model_ACLNF, & 
+                           d_rad, d_eta1, d_eta2, d_xcoord, d_ycoord, d_zcoord
+    use cudafor 
+    
     implicit none
     include "constants.h"
     include 'mpif.h'
@@ -29,7 +33,7 @@ program optimised_vani
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, ierr, & 
                 tl2, h, b, cluster_size, sets_per_process, & 
                 myset_start, myset_end, i_mode, smin, smax, num_s, & 
-                ncols, this_tl1, imode, im, imodel_iter, igll, iproc
+                ncols, this_tl1, imode, im, imodel_iter, igll, iproc, success
     character(len=2) nstr, lstr
     character(len=5) iterstr
     character(len=3) chainstr
@@ -45,12 +49,18 @@ program optimised_vani
 
     real(kind=8), allocatable :: wglljac_loc(:, :)
     real(kind=8), allocatable :: Cxyz_loc(:, :, :, :)
+    
+    
+    real(kind=8), allocatable :: BrettModelToTransfer(:,:)
+
 
     ! KD tree: 
     type(KdTree)           :: tree
     type(SetMesh)          :: sm  
     type(M3D) :: model3D
 
+    integer :: start_clock, end_clock, count_rate
+    real(8) :: elapsed_time
 
     ! Modes: 
     !integer, dimension(nmodes), parameter :: modeNs = (/2, 3, 3, 5, 6, 8, 8, 9, 9, 11, 11, 11, 13, 13, 13, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 20, 20, 21, 21, 21, 22, 23, 23, 25, 25, 27/)
@@ -62,8 +72,13 @@ program optimised_vani
     !integer, dimension(nmodes), parameter :: modeNs = (/2, 3, 3, 6, 8, 8, 9, 11, 11, 13, 13, 13,  16, 16, 17,  18, 18, 21, 21, 23 , 23 /) 
     !integer, dimension(nmodes), parameter :: modeLs = (/3, 1, 2, 3, 1, 5, 3,  4,  5,  1,  2,  3,   5,  7,  1,   3,  4,  6,  7,  4 ,  5 /)
     
-    integer, dimension(nmodes), parameter :: modeNs = (/13/) 
-    integer, dimension(nmodes), parameter :: modeLs = (/ 1/)
+    ! The 33
+    !integer, dimension(33), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21,5, 27, 9, 22, 15, 14/)
+    !integer, dimension(33), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
+
+
+    integer, dimension(nmodes), parameter :: modeNs = (/16, 13, 3, 23/) 
+    integer, dimension(nmodes), parameter :: modeLs = (/ 7,  1, 2, 4/)
 
 
     ! Simulation parameters: 
@@ -141,14 +156,12 @@ program optimised_vani
 
 
     ! Setup global eta1, eta2 arrays
-    allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
     ! Allocate Vani matrices
     allocate(Vani(max_tl1, max_tl1))
     if(myrank.eq.0)then 
         allocate(Vani_modesum(max_tl1, max_tl1))
         allocate(Vani_real(max_tl1, max_tl1))
     endif
-
 
 
     ! Loading strains and determining estimate of the memory cost: 
@@ -172,8 +185,77 @@ program optimised_vani
         stop 
     endif 
 
+    ! Allocate xcoord on device
+    ierr=0
+    allocate(d_eta1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating eta1 on Device for proc ', myrank
+        stop 
+    endif 
+    ! Allocate ycoord on device
+    ierr=0
+    allocate(d_eta2(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating eta2 on Device for proc ', myrank
+        stop 
+    endif 
 
-    if(myrank.eq.0)write(*,*)'Loading mode strains'
+    ! Allocate zcoord on device
+    ierr=0
+    allocate(d_rad(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating d_rad on Device for proc ', myrank
+        stop 
+    endif 
+    ! Copy to the device
+    d_rad = sm%rstore
+
+
+    ierr=0
+    allocate(d_xcoord(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating d_xcoord on Device for proc ', myrank
+        stop 
+    endif 
+
+    ierr=0
+    allocate(d_ycoord(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating d_zcoord on Device for proc ', myrank
+        stop 
+    endif 
+
+    ierr=0
+    allocate(d_zcoord(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating d_zcoord on Device for proc ', myrank
+        stop 
+    endif 
+
+    ierr = cudaMemcpy(d_xcoord, sm%xstore, sm%ngllx*sm%nglly*sm%ngllz*sm%nspec, cudaMemcpyHostToDevice)
+    if(ierr.ne.0)then 
+        write(*,*)'Error copying xstore to device for rank', myrank
+        stop 
+    endif 
+    success = cudaMemcpy(d_ycoord, sm%ystore, sm%ngllx*sm%nglly*sm%ngllz*sm%nspec, cudaMemcpyHostToDevice)
+    if(ierr.ne.0)then 
+        write(*,*)'Error copying ystore to device for rank', myrank
+        stop 
+    endif 
+    success = cudaMemcpy(d_zcoord, sm%zstore, sm%ngllx*sm%nglly*sm%ngllz*sm%nspec, cudaMemcpyHostToDevice)
+    if(ierr.ne.0)then 
+        write(*,*)'Error copying zstore to device for rank', myrank
+        stop 
+    endif 
+
+
+
+
+
+    if(myrank.eq.0)write(*,*)'Synching device.'
+    success =  cudaDeviceSynchronize()
+
+
 
     do imode = 1, nmodes
         n1       = modeNs(imode)
@@ -246,8 +328,8 @@ program optimised_vani
 
     ! Allocate the cxyz for the device: 
     allocate(d_Cxyz_g(sm%ngllx*sm%nglly*sm%ngllz, sm%nspec, 6, 6))
-    allocate(Cxyz_loc(sm%ngllx*sm%nglly*sm%ngllz, sm%nspec, 6, 6))
-    if(myrank.eq.0)write(*,*)'Allocated Cxyz.'
+    !allocate(Cxyz_loc(sm%ngllx*sm%nglly*sm%ngllz, sm%nspec, 6, 6))
+
 
 
     ! Allocate the Vmatrices on the GPU: 
@@ -255,65 +337,50 @@ program optimised_vani
     allocate(d_vani_imag_G(max_tl1, max_tl1))
 
 
+    ! Assuming a maximum number of points of 150 ish 
+    allocate(BrettModelToTransfer(MaxBrettModelPts, 5))
+    ! On device
+    allocate(Model3D_dev(MaxBrettModelPts, 5))
+
+
+
+
+    if(myrank.eq.0)write(*,*)'------------------ BEGIN ALL THE LOOPS ------------------ '
+
     ! Loop over the models: 
     do imodel_iter = 10900, nmodeliter
         call buffer_int(iterstr, imodel_iter)
 
-        do model_chain = 1, 20 
+        do model_chain = 1, 1
             call buffer_int(chainstr, model_chain)
+
 
             ! Load the model: 
             !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+         
             Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c"//trim(chainstr)//"_m"//trim(iterstr)//".txt"
             call Model3D%read_model_from_file()
-            call Model3D%create_KDtree()
-            
-            !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS//voronoi/instances/instance_"//trim(iterstr)
-            !call Model3D%re_readmodel()
+     
+            BrettModelToTransfer(1:Model3D%npts, 1) = Model3D%xcoord
+            BrettModelToTransfer(1:Model3D%npts, 2) = Model3D%ycoord
+            BrettModelToTransfer(1:Model3D%npts, 3) = Model3D%zcoord
+            BrettModelToTransfer(1:Model3D%npts, 4) = Model3D%valspats(:,1)
+            BrettModelToTransfer(1:Model3D%npts, 5) = Model3D%valspats(:,2)
+            ! Transfer over the coordinates and eta1, eta 2
+             
+            success = cudaMemcpy(Model3D_dev,       & 
+                            BrettModelToTransfer,   &
+                            MaxBrettModelPts * 5, cudaMemcpyHostToDevice)
 
-            vor_A = Model3D%valconsts(1)/100.0d0
-            vor_C = Model3D%valconsts(2)/100.0d0
-            vor_L = Model3D%valconsts(3)/100.0d0
-            vor_N = Model3D%valconsts(4)/100.0d0
-            vor_F = Model3D%valconsts(5)/100.0d0
+            ! Transfer over the ACLNF
+            success = cudaMemcpy(Model_ACLNF,  Model3D%valconsts/100.0d0,   &
+                                  5, cudaMemcpyHostToDevice)
 
-            call Model3D%project_to_gll(sm, glob_eta1, id=1)
-            call Model3D%project_to_gll(sm, glob_eta2, id=2)
+            if(myrank.eq.0)write(*,*)'Transfered 3D model.'
 
-            if(force_VTI)then 
-                ! for benchmark - will delete for real runs 
-                glob_eta1 = zero 
-                glob_eta2 = zero
-            endif 
+            call cuda_project_eta_to_GLL(Model3D%npts, sm%nspec, sm%ngllx)
 
-
-
-
-            ! Convert to CUDA kernel? 
-            call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, vor_N, & 
-                                                vor_F, glob_eta1, glob_eta2, & 
-                                                    perturbation_on_prem=.true.)
-
-
-            ! Copy the Cxyz over to GPU once per model: 
-            do ispec = 1, sm%nspec 
-                igll = 1
-                do i = 1, sm%ngllx
-                    do j = 1, sm%nglly 
-                        do k = 1, sm%ngllz
-                            Cxyz_loc(igll, ispec, :, :) = Cxyz(i,j,k,ispec, :, :)
-                            igll = igll + 1
-                        enddo 
-                    enddo 
-                enddo 
-            enddo 
-            ! Copy wglljac to the device:
-
-
-            d_Cxyz_g = Cxyz_loc                                  
-
-
-
+    
             ! Loop for each mode to compute the splitting and the Cst value
             do i_mode = 1, nmodes
 
@@ -347,7 +414,6 @@ program optimised_vani
                         out_name =  './output/instance_matrices/vani_'//trim(nstr)// t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
                     endif 
                     call save_Vani_matrix(l1,l1, out_name)
-        
                     !call convert_imag_to_real(l1, l1, Vani_modesum(1:this_tl1, 1:this_tl1), Vani_real(1:this_tl1, 1:this_tl1))
                     call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
                     allocate(cst(num_s, ncols))

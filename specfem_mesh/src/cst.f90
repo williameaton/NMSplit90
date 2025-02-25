@@ -309,10 +309,6 @@ module splitting_function
                                               H(md+ld+1, m+l+1)
                 enddo 
             enddo 
-
-            write(*,*)
-
-
         enddo 
     end subroutine Hcomplex_to_cst
 

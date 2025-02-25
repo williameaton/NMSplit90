@@ -9,6 +9,17 @@ module vani_kernel
     real(kind=8), device, allocatable :: d_Cxyz_g(:, :, :, :) ! ngll^3 x nspec x 6 x 6
     real(kind=8), device, allocatable :: d_vani_real_G(:,:), d_vani_imag_G(:,:)
 
+    real(kind=8), device, allocatable :: d_eta1(:,:,:,:), d_eta2(:,:,:,:)
+
+    real(kind=8), device, allocatable :: d_rad(:,:,:,:)
+    real(kind=8), device, allocatable :: d_xcoord(:,:,:,:)
+    real(kind=8), device, allocatable :: d_ycoord(:,:,:,:)
+    real(kind=8), device, allocatable :: d_zcoord(:,:,:,:)
+
+    real(kind=8), device, allocatable :: Model3D_dev(:, :)
+    real(kind=8), device :: Model_ACLNF(5)
+
+
     contains 
 
     ! Subroutine on host that drives vknl
@@ -492,7 +503,10 @@ module vani_kernel
 
         ! Local host variables
         real(kind=8) :: Vloc_r(max_tl1 , max_tl1), Vloc_i(max_tl1, max_tl1), tmp
-        integer :: upper_diag_elem, ii, jj
+        integer :: upper_diag_elem, ii, jj, success
+        integer :: start_clock, end_clock, count_rate
+        real(8) :: elapsed_time
+
 
         ! Zero the matrices on the GPU 
         d_vani_real_G = 0.0_8
@@ -501,17 +515,22 @@ module vani_kernel
         tl1 = 2*l + 1
         upper_diag_elem = (tl1+1)*tl1/2
 
-
+        ! Copy off device to CPU: 
         if(ngll.eq.5)then
                 call vani_knl_allstrains<<<dim3(nspec,tl1,tl1), dim3(ngll*ngll*ngll,1,1)>>>(imode, tl1, nspec)               
         else 
             write(*,*)'Error. hardcoded for ngll = 5'
             stop
         endif 
-       
-        ! Copy off device HERE: 
-        Vloc_r = d_vani_real_G      
-        Vloc_i = d_vani_imag_G
+
+        success = cudaMemcpy(Vloc_r,         & 
+                             d_vani_real_G,  &
+                             max_tl1 * max_tl1, cudaMemcpyDeviceToHost)
+   
+
+        success = cudaMemcpy(Vloc_i,         & 
+                             d_vani_imag_G,  &
+                             max_tl1 * max_tl1, cudaMemcpyDeviceToHost)
 
         ! Add the real and imaginary components to the global Vani
         Vani(1:tl1, 1:tl1) = Vani(1:tl1, 1:tl1) + Vloc_r(1:tl1, 1:tl1) + SPLINE_iONE*Vloc_i(1:tl1, 1:tl1)
@@ -541,7 +560,6 @@ module vani_kernel
         ispec = blockidx%x
         m1    = blockidx%y
         m2    = blockidx%z
-
 
         ! Copy some stuff to close shared memory
         !s_strain_1_real(igll, :) = d_strains_real(igll, ispec, m1, :)
@@ -608,5 +626,197 @@ module vani_kernel
 
 
     end subroutine check_cuda_device_allocations
+
+
+
+
+    subroutine cuda_project_eta_to_GLL(model_npoints, nspec, ngll)
+        ! Launches cuda kernel to project the 3D model onto the 
+        ! GLL mesh by a nearest neighbour search
+        ! If there are N gll points to be evaulated and M points that
+        ! could be the nearest neighbour then N threads will be launched
+        ! where each thread will evaluate M options 
+        implicit none 
+        integer :: model_npoints, nspec, ngll
+
+        call project_eta_to_gll<<<dim3(nspec, 1, 1), dim3(ngll, ngll, ngll)>>>(model_npoints, ngll)               
+
+    end subroutine cuda_project_eta_to_GLL
+
+
+    attributes(global) subroutine project_eta_to_gll(npoints, ngll)
+    integer, value  :: npoints, ngll
+
+    ! internal variables
+    integer         :: mypt, i,j,k,l, igllx, iglly, igllz, ispec
+    real(kind=8)    :: cont_r, cont_i
+    real(kind=8)    :: dist, last_dist, rad2, rho, vp, vs, myx, myy, myz
+    real(kind=8)    :: myA, myC, myL, myN, myF
+    real(kind=8)    :: Cnat(6,6), Q(6,6), Crot(6,6)
+    real(kind=8)    :: n1, n2, c1, c2, s1, s2, r11, r12, r13, r21, r22, r23, r31, r32, r33
+
+    igllx = threadidx%x
+    iglly = threadidx%y
+    igllz = threadidx%z
+
+    ispec = blockidx%x
+
+    myx = d_xcoord(igllx,iglly,igllz,ispec)
+    myy = d_ycoord(igllx,iglly,igllz,ispec)
+    myz = d_zcoord(igllx,iglly,igllz,ispec)
+
+    ! For each possible point let us evaluate the distance
+    last_dist = 1000.0d0
+    do ipt = 1, npoints
+        dist = ( (Model3D_dev(ipt,1)-myx )**2.0d0 + & 
+                 (Model3D_dev(ipt,2)-myy )**2.0d0 + & 
+                 (Model3D_dev(ipt,3)-myz )**2.0d0)**0.5d0 
+        ! If distance is smaller than last then save this index 
+        if(dist.lt.last_dist)then 
+            last_dist = dist
+            mypt      = ipt 
+        endif 
+    enddo 
+
+    ! Ultimately we set this points eta 1 and eta 2 to the final mypt 
+    ! that survived: 
+    n1 = Model3D_dev(mypt,4)
+    n2 = Model3D_dev(mypt,5)
+    d_eta1(igllx,iglly,igllz,ispec) = n1
+    d_eta2(igllx,iglly,igllz,ispec) = n2
+
+
+    ! Get the PREM related values for ACLNF at this point: 
+    rad2 = d_rad(igllx,iglly,igllz,ispec)**two
+
+
+    ! Originally g/cm^3 --> kg/m^3 -> nondimensionalised
+    rho = (13.0885d0 - 8.8381d0*rad2)*0.1813466804490d0   ! 1000.d0/RHOAV
+    ! Originally km/s --> m/s  
+    vp  = (11.2622d0 - 6.3640d0*rad2)*0.1459938230354d0   ! 1000.d0/SCALE_V
+    vs  = (3.6678d0 - 4.4475d0*rad2)*0.1459938230354d0    ! 1000.d0/SCALE_V
+
+    myA = rho * vp * vp * Model_ACLNF(1)
+    myC = rho * vp * vp * Model_ACLNF(2)
+    myL = rho * vs * vs * Model_ACLNF(3)
+    myN = rho * vs * vs * Model_ACLNF(4)
+    ! eta  = 1 for PREM core and F = eta * (A - 2L)
+    myF = ((rho * vp * vp) - 2.0d0*(rho * vs * vs)) * Model_ACLNF(5) 
+
+
+    ! Create natural Stiffness matrix:
+    Cnat(:,:) = 0.0d0 
+    Cnat(1,1) = myA 
+    Cnat(2,2) = myA 
+    Cnat(3,3) = myC 
+    Cnat(4,4) = myL 
+    Cnat(5,5) = myL 
+    Cnat(6,6) = myN 
+
+    Cnat(1,2) = myA - 2.0d0*myN
+    Cnat(2,1) = myA - 2.0d0*myN
+
+    Cnat(1,3) = myF
+    Cnat(3,1) = myF
+    Cnat(2,3) = myF
+    Cnat(3,2) = myF
+
+    ! Create bond matrix: 
+    c1 = cos(n1)
+    c2 = cos(n2)
+    s1 = sin(n1)
+    s2 = sin(n2)
+
+    ! Eqn 5 of Brett 2024
+    r11 = c1 * c2 
+    r12 = - s1
+    r13 = c1*s2
+    
+    r21 = s1*c2
+    r22 = c1
+    r23 = s1*s2 
+
+    r31 = -s2
+    r32 = zero
+    r33 = c2
+
+
+    ! Eqn 8 of Brett 2024
+    ! r11 = c1 * c2 
+    ! r12 = s1 * c2
+    ! r13 = -s2 
+
+    ! r21 = -s1 
+    ! r22 = c1 
+    ! r23 = zero 
+
+    ! r31 = c1*s2
+    ! r32 = s1*s2
+    ! r33 = c2
+
+
+    Q(1,1) = r11 * r11 
+    Q(2,1) = r21 * r21 
+    Q(3,1) = r31 * r31
+    Q(4,1) = r21*r31
+    Q(5,1) = r31*r11
+    Q(6,1) = r11*r21
+
+    Q(1,2) = r12 * r12
+    Q(2,2) = r22 * r22
+    Q(3,2) = r32 * r32
+    Q(4,2) = r22*r32
+    Q(5,2) = r32*r12
+    Q(6,2) = r12*r22
+
+    Q(1,3) = r13*r13
+    Q(2,3) = r23*r23
+    Q(3,3) = r33*r33
+    Q(4,3) = r23*r33
+    Q(5,3) = r33*r13
+    Q(6,3) = r13*r23
+
+    Q(1,4) = 2.0d0*r12*r13
+    Q(2,4) = 2.0d0*r22*r23
+    Q(3,4) = 2.0d0*r32*r33
+    Q(4,4) = r22*r33 + r32*r23
+    Q(5,4) = r12*r33 + r13*r32
+    Q(6,4) = r12*r23 + r13*r22
+
+    Q(1,5) = 2.0d0 * r11 * r13
+    Q(2,5) = 2.0d0 * r21 * r23
+    Q(3,5) = 2.0d0 * r33 * r31
+    Q(4,5) = r23*r31 + r21*r33
+    Q(5,5) = r33*r11 +r13*r31
+    Q(6,5) = r13*r21 + r23*r11
+
+    Q(1,6) = 2.0d0 * r11 * r12
+    Q(2,6) = 2.0d0 * r21 * r22
+    Q(3,6) = 2.0d0 * r31 * r32
+    Q(4,6) = r21*r32 + r31*r22
+    Q(5,6) = r31*r12 + r11*r32
+    Q(6,6) = r11*r22 + r21*r12
+
+    ! Compute Bond * C * Bond^T
+    ! C'_il =  B_ij C_jk B_lk  note transpose on last matrix
+    Crot(:,:) = 0.0d0 
+    do i = 1,6
+        do l = 1,6
+            do j = 1,6
+                do k = 1,6
+                    Crot(i,l) = Crot(i,l) +  (Q(i,j) * Cnat(j,k) * Q(l,k))
+                enddo 
+            enddo 
+        enddo
+    enddo 
+
+    ! convert this i,j,k,nspec to ngll^3 x nspec and store:
+    d_Cxyz_g(ngll*ngll*(igllx-1) + ngll*(iglly-1) + igllz, ispec , :, :) = Crot
+
+
+    end subroutine project_eta_to_gll
+
+
+
 
 end module vani_kernel
