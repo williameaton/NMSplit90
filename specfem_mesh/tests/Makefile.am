@@ -27,7 +27,9 @@ bin_PROGRAMS = test_plm_function    \
                test_tmat            \
                viso_semi            \
                test_viso            \
-               test_gmag
+               test_gmag            \
+               vcen_semi            \
+               test_amp
 
 
 d_cst  = cst
@@ -43,6 +45,8 @@ d_ylm  = ylm
 d_tmat = Tmat
 d_viso = Viso
 d_grav = gravity
+d_vcen = Vcen
+d_amp  = amplitude
 
 
 # Define basic sources groups 
@@ -51,8 +55,8 @@ SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90  \
 
 MED_SRCS =  $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90 \
                           mode.f90 integrate.f90 gravity.f90 woodhouse.f90 piecewise_interpolation.f90  \
-                          lagrange_any.f90 mesh.f90   \
-                           output.f90 
+                          lagrange_any.f90 mesh.f90 prem.f90  \
+                          output.f90 
 
 
 VANI_SRCS = $(MED_SRCS) cuda_proxies.f90 V_ani_matrix.f90
@@ -66,6 +70,8 @@ SHRM_SRCS = $(SETUP_SRCS)
 XLM_SRCS  = $(MED_SRCS)
 CST_SRCS  = $(MED_SRCS) cuda_proxies.f90 V_ani_matrix.f90 cst.f90
 GRAV_SRCS = $(MED_SRCS) 
+VCEN_SRCS = $(MED_SRCS) V_cen_matrix.f90
+AMP_SRCS  = $(MED_SRCS) 
 
 test_plm_function_SOURCES     = $(SETUP_SRCS) $(d_plm)/test_plm.f90
 test_plm_values_SOURCES       = $(SETUP_SRCS) $(d_plm)/test_plm_values.f90
@@ -90,6 +96,9 @@ test_tmat_SOURCES             = $(TMAT_SRCS)  $(d_tmat)/tmat_sem.f90
 test_viso_SOURCES             = $(VISO_SRCS)  $(d_viso)/viso_sem.f90
 viso_semi_SOURCES             = $(VISO_SRCS)  $(d_viso)/viso_radial.f90
 test_gmag_SOURCES             = $(GRAV_SRCS)  $(d_grav)/test_gmag.f90
+vcen_semi_SOURCES             = $(VCEN_SRCS)  $(d_vcen)/vcen_woodhouse.f90
+test_amp_SOURCES              = $(AMP_SRCS)   $(d_amp)/rotation_amplitude.f90
+
 
 # Test groups: 
 plm_tests:  test_ylm_function test_ylm_values
