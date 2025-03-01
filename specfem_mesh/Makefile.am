@@ -5,7 +5,7 @@ VPATH  = src
 # -cpp allows linknig to the .cuf file
 # -D WITH_CUDA to set preprocessor WITH_CUDA = true
 if USE_CUDA
-    AM_FCFLAGS = -cpp -Wall -O0 -g  -llapack -lblas -cuda -lcudart -D WITH_CUDA -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
+    AM_FCFLAGS = -cpp -Wall -O0 -g -lstdc++  -llapack -lblas -cuda -lcudart -D WITH_CUDA -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 else
     AM_FCFLAGS = -cpp -Wall -O4 -llapack -lblas -cuda -lcudart -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 endif
@@ -53,6 +53,13 @@ vani_kernel.o: src/params.f90 src/vani_kernel.cuf
 	$(FC) -c $(AM_FCFLAGS) src/vani_kernel.cuf -o vani_kernel.o
 
 
+# Rule to precompile vani.cu: 
+vanicpp.o: vani.cu
+	nvcc -c src/vani.cu -o vanicpp.o
+
+binding.o: src/binding.f90
+	$(FC) -c src/binding.f90 -o binding.o 
+
 linbreak_mesh_SOURCES = $(MED_SRCS) linearly_breakup_mesh.f90 
 
 split_mesh_SOURCES    = $(SETUP_SRCS) split_mesh.f90 
@@ -83,6 +90,8 @@ opt_vani_SOURCES = $(MED_SRCS)       \
                         cst.f90          \
                         voronoi.f90      \
                         vani_kernel.o    \
+                        vanicpp.o        \
+                        binding.o     \
                         optimised_vani.f90
 
 reopt_SOURCES = $(MED_SRCS)       \
@@ -117,7 +126,7 @@ comp_split_SOURCES     = $(MED_SRCS)  visual.f90 V_cen_matrix.f90  compute_split
 
 
 
-opt_vani_LDADD = vani_kernel.o -lcoretran 
+opt_vani_LDADD = vani_kernel.o vanicpp.o binding.o -lcoretran 
 reopt_LDADD = vani_kernel.o -lcoretran 
 compute_vani_LDADD = vani_kernel.o -lcoretran 
 cross_vani_LDADD = vani_kernel.o -lcoretran 

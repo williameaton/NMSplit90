@@ -37,6 +37,22 @@ interface
       integer(c_int),value :: size
     end function 
 
+    integer function copy_LUT_array(hloc, size) bind(C, name="copy_LUT_array")
+      use iso_c_binding
+      implicit none
+      type(C_PTR),   value :: hloc
+      integer(c_int),value :: size
+    end function 
+
+
+    integer function copy_allstrains(hloc_r, hloc_i, size) bind(C, name="copy_allstrains")
+      use iso_c_binding
+      implicit none
+      type(C_PTR),   value :: hloc_r, hloc_i
+      integer(c_int),value :: size
+    end function 
+
+
     integer function allocate_Cxyz_array(size) bind(C, name="allocate_Cxyz_array")
       use iso_c_binding
       implicit none
@@ -50,6 +66,15 @@ interface
       real(c_double), dimension(5) :: modelv
 
     end function 
+
+
+
+    integer function launch_vanikernel(ngll, nspec, nn1_total, nn1max) bind(C, name="launch_vanikernel")
+      use iso_c_binding
+      implicit none 
+      integer(c_int),value :: ngll, nspec, nn1_total, nn1max
+    end function 
+
 
 
 end interface
