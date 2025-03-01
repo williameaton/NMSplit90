@@ -31,6 +31,13 @@ interface
 
 
 
+    integer function allocate_Vani_arrays(size) bind(C, name="allocate_Vani_arrays")
+      use iso_c_binding
+      implicit none
+      integer(c_int),value :: size
+    end function 
+
+
     integer function allocate_eta_arrays(size) bind(C, name="allocate_eta_arrays")
       use iso_c_binding
       implicit none
@@ -43,7 +50,14 @@ interface
       type(C_PTR),   value :: hloc
       integer(c_int),value :: size
     end function 
+    
 
+    integer function copy_wgll_array(hloc, size) bind(C, name="copy_wgll_array")
+      use iso_c_binding
+      implicit none
+      type(C_PTR),   value :: hloc
+      integer(c_int),value :: size
+    end function 
 
     integer function copy_allstrains(hloc_r, hloc_i, size) bind(C, name="copy_allstrains")
       use iso_c_binding
@@ -69,10 +83,10 @@ interface
 
 
 
-    integer function launch_vanikernel(ngll, nspec, nn1_total, nn1max) bind(C, name="launch_vanikernel")
+    integer function launch_vanikernel(ngll, nspec, nn1_total, maxnn1,  maxtl1) bind(C, name="launch_vanikernel")
       use iso_c_binding
       implicit none 
-      integer(c_int),value :: ngll, nspec, nn1_total, nn1max
+      integer(c_int),value :: ngll, nspec, nn1_total, maxtl1, maxnn1
     end function 
 
 

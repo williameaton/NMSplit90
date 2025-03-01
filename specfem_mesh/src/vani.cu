@@ -16,9 +16,16 @@ double *d_eta2   = nullptr;
 double *d_Cxyz   = nullptr;
 int    *d_LUT    = nullptr;
 
+double *d_wgll   = nullptr;
 
 double *d_allstrain_r   = nullptr;
 double *d_allstrain_i   = nullptr;
+
+double *d_vani_real = nullptr;
+double *d_vani_imag = nullptr;
+
+  __constant__ int Vcont[9] = {0, 1, 2, 3, 3, 4, 4, 5, 5};
+
 
 
 extern "C" {
@@ -50,10 +57,32 @@ int allocate_Cxyz_array(int size){
 
 
 extern "C" {
+int allocate_Vani_arrays(int size){
+  // Allocates the Vani arrays
+  cudaMalloc(&d_vani_real, size*sizeof(double));
+  cudaMalloc(&d_vani_imag, size*sizeof(double));
+  return 0;
+}
+}
+
+
+
+extern "C" {
 int copy_LUT_array(int *hloc, int size){
   // Allocates the eta arrays
   cudaMalloc(&d_LUT, size*sizeof(int));
   cudaMemcpy(d_LUT, hloc, size*sizeof(int), cudaMemcpyHostToDevice);
+  return 0;
+}
+}
+
+
+
+extern "C" {
+int copy_wgll_array(double *hloc, int size){
+  // Allocates the eta arrays
+  cudaMalloc(&d_wgll, size*sizeof(double));
+  cudaMemcpy(d_wgll, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
   return 0;
 }
 }
@@ -77,11 +106,13 @@ int copy_allstrains(double *hloc_r, double *hloc_i, int size){
 
 
 
-__global__ void vanikernel_allstrains_allmodes(int nspec, int ngll_per_loop, int nelem_in_block, int ngll,
-                                               int *d_LUT, double *d_allstrain_r, double *d_allstrain_i){ 
+__global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_per_loop, int nelem_in_block, int ngll,
+                                               int maxnn1,
+                                               int *d_LUT, double *d_allstrain_r, double *d_allstrain_i, 
+                                               double *d_wgll, double *d_Cxyz, double *d_vani_real, double *d_vani_imag){ 
   // Kernel is launched with dimensions: 
   // <<< dim3(nblocks_for_all_elems, nn1_total, 81), dim3(nelem_in_block, ngll_in_block, 1) >>>
-  int startelem, myspec, ispec, endelem, igllstart, igllend, imode, m1, m2, p, q, utripos;
+  int startelem, myspec, ispec, endelem, igllstart, igllend, imode, m1, m2, p, q, utripos, cxyzindex;
   double cont_r, cont_i; 
 
   extern __shared__ double shared_mem[];  // Dynamic shared memory
@@ -91,6 +122,7 @@ __global__ void vanikernel_allstrains_allmodes(int nspec, int ngll_per_loop, int
   double* sreal2 = sreal1 + (125 * 32);
   double* simag1 = sreal2 + (125 * 32);
   double* simag2 = simag1 + (125 * 32);
+  double* swgll  = simag2 + (125 * 32);
   
 
   // 
@@ -126,34 +158,63 @@ __global__ void vanikernel_allstrains_allmodes(int nspec, int ngll_per_loop, int
   p = blockIdx.z/9     ;
   q = blockIdx.z - p*9 ;
 
-
+ 
 
   // Copy over 125 * 32 points
-  // d_allstrain_r order is nspec, ngll, 
-  for (int i = 0; i < 125*32; ++i){
-    //index = ispec + 
-    sreal1[i] = 2.0;  // d_allstrain_r[startelem:endelem, :, m1, Vcont[p], imode];
-    sreal2[i] = 3.0;  // d_allstrain_r[startelem:endelem, :, m2, Vcont[p], imode];
+  // d_allstrain_r order is nspec, ngll,
+  if (threadIdx.x == 0 && threadIdx.y == 0) {
+    int ictr = 0;
+    int myind_1 =  imode*6*maxtl1*125*nspec + Vcont[p]*maxtl1*125*nspec + m1*125*nspec;
+    int myind_2 =  imode*6*maxtl1*125*nspec + Vcont[q]*maxtl1*125*nspec + m2*125*nspec;
 
-    simag1[i] = 4.0;  // d_allstrain_i[startelem:endelem, :, m1, Vcont[q], imode];
-    simag2[i] = 5.0;  // d_allstrain_i[startelem:endelem, :, m2, Vcont[q], imode];
-  } 
+    for (int i = 0; i < 125; ++i){
+      for (int j = startelem; j <= endelem; ++j){
 
-  cont_r = 0.0;
-  cont_i = 0.0;
+ 
+        sreal1[ictr] = d_allstrain_r[myind_1 + (i*nspec) + j];  // d_allstrain_r[startelem:endelem, :, m1, Vcont[p], imode];
+        sreal2[ictr] = d_allstrain_r[myind_2 + (i*nspec) + j];  // d_allstrain_r[startelem:endelem, :, m2, Vcont[q], imode];
+
+        simag1[ictr] = d_allstrain_i[myind_1 + (i*nspec) + j];  // d_allstrain_i[startelem:endelem, :, m1, Vcont[p], imode];
+        simag2[ictr] = d_allstrain_i[myind_2 + (i*nspec) + j];  // d_allstrain_i[startelem:endelem, :, m2, Vcont[q], imode ; 
+
+        swgll[ictr] = d_wgll[i*nspec + j];
+
+        ictr = ictr + 1;
+
+      }
+    } 
+  }
 
 
-   for (int igll = igllstart; igll < igllend; ++igll){
-            // Real part 
-            cont_r = cont_r  +  (sreal1[32*igll + myspec] * sreal2[32*igll + myspec]  +  
-                                 simag1[32*igll + myspec] * simag2[32*igll + myspec]); // * & 
-                                 // NEED TO ADD THIS d_Cxyz_g[10] * swgll(myspec, igll)
+__syncthreads();
 
-            // Imag part 
-            cont_i = cont_i  +  (sreal1[32*igll + myspec] * simag2[32*igll + myspec]  -  
-                                 sreal2[32*igll + myspec] * simag1[32*igll + myspec]);  //* & 
-                                 //d_Cxyz_g(myspec, igll, Vcont(p), Vcont(q)) * swgll(myspec, igll)
-   } 
+cont_r = 0.0;
+cont_i = 0.0;
+
+
+// What cxyz point am i: 
+for (int igll = igllstart; igll < igllend; ++igll){
+
+        // If you are in the last block then this wont be 32 
+        int nloc_el = endelem - startelem + 1;
+
+        // Cxyz index: 
+        cxyzindex = (Vcont[p]*(nspec*125)*6)  +  (Vcont[q]*nspec*125) + (igll*nspec) + ispec;        
+
+        // Real part 
+        cont_r = cont_r  +  (sreal1[nloc_el*igll + myspec] * sreal2[nloc_el*igll + myspec]  +  
+                             simag1[nloc_el*igll + myspec] * simag2[nloc_el*igll + myspec]) * 
+                             d_Cxyz[cxyzindex] * swgll[nloc_el*igll + myspec];
+
+        
+        // Imag part 
+        cont_i = cont_i  +  (sreal1[nloc_el*igll + myspec] * simag2[nloc_el*igll + myspec]  -  
+                             sreal2[nloc_el*igll + myspec] * simag1[nloc_el*igll + myspec]) * 
+                             d_Cxyz[cxyzindex] * swgll[nloc_el*igll + myspec];
+} 
+
+atomicAdd(&d_vani_real[maxnn1*imode + utripos], cont_r);
+atomicAdd(&d_vani_imag[maxnn1*imode + utripos], cont_i);
 
 }
 
@@ -161,7 +222,7 @@ __global__ void vanikernel_allstrains_allmodes(int nspec, int ngll_per_loop, int
 
 
 extern "C" {
-int launch_vanikernel(int ngll, int nspec, int nn1_total, int nn1max){
+int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1, int maxtl1){
   
   // Local variables
   cudaFuncAttributes attrib;
@@ -173,51 +234,54 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int nn1max){
   int nblocks_for_all_elems = ceil(float(nspec)/float(nelem_in_block));
   int ngll_per_loop         = ceil(125.0/float(ngll_in_block));
 
+  // CUDA event timers
+  cudaEvent_t start, stop;
+  float milliseconds = 0;
+
+  // Create events
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
 
   // Max out the dynamic shared memory for A100
   cudaFuncSetAttribute(vanikernel_allstrains_allmodes, cudaFuncAttributeMaxDynamicSharedMemorySize, 163840);
   cudaFuncGetAttributes(&attrib, vanikernel_allstrains_allmodes);
-
   cudaFuncSetAttribute(vanikernel_allstrains_allmodes, cudaFuncAttributePreferredSharedMemoryCarveout, 100);
 
-
-  printf("Dimensions for calculation: \n");
-  printf("    - Nspec                     :   %i\n\n", nspec);
-  printf("Grid dimensions: \n");
-  printf("    - To cover all elements     :   %i\n ", nblocks_for_all_elems);
-  printf("   - To cover all nn1_total    :   %i\n ", nn1_total);
-  printf("   - To cover all contractions :   %i\n\n ", 9*9);
-  printf("Block dimensions: \n");
-  printf("    - Elements in a block       :   %i\n", nelem_in_block);
-  printf("    - Ngll covered in the block :   %i\n", ngll_in_block);
-  printf("    - Ngll in loop              :   %i\n\n", ngll_per_loop);
-  printf("Shared memory: \n");
-  printf("maxDynamicSharedSizeBytes       :   %i  \n", attrib.maxDynamicSharedSizeBytes);
-  printf("preferredShmemCarveout          :   %i  \n", attrib.preferredShmemCarveout);
-  printf("Static(?) shared memory size    :   %zu \n", attrib.sharedSizeBytes);
-
-
   if(ngll == 5){
+
+        // Start timing
+        cudaEventRecord(start);
+
         vanikernel_allstrains_allmodes<<<dim3(nblocks_for_all_elems, nn1_total, 81), 
                                          dim3(nelem_in_block, ngll_in_block, 1),
                                          sharedMemSize>>>
-                                         (nspec, ngll_per_loop, nelem_in_block, ngll, d_LUT,
-                                         d_allstrain_r, d_allstrain_i);        
+                                         (maxtl1, nspec, ngll_per_loop, nelem_in_block, ngll, maxnn1, d_LUT,
+                                         d_allstrain_r, d_allstrain_i, d_wgll, d_Cxyz, d_vani_real, d_vani_imag);        
+
+        // Stop timing
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
   } else {
         printf("Error. hardcoded for ngll = 5\n");
         abort();
   } // ngll=5
 
-
   cudaDeviceSynchronize();
-
 
   ierr = cudaGetLastError();
   printf("Error code:    :   %i \n", ierr);
 
   if (ierr != cudaSuccess) {
       printf("CUDA kernel launch error: %s\n", cudaGetErrorString(ierr));
+  } else {
+      printf("Kernel execution time: %f ms\n", milliseconds);
   }
+
+  // Clean up CUDA events
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
 
   return 0;
 }
@@ -235,22 +299,21 @@ int copythisarraytodevice(double *hloc, int size, int varid){
     case 1:
       cudaMalloc(&d_xcoord  , size*sizeof(double));
       cudaMemcpy(d_xcoord, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
-      printf("Copying xcoord \n");
+
       break;
     case 2:
       cudaMalloc(&d_ycoord  , size*sizeof(double));
       cudaMemcpy(d_ycoord, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
-      printf("Copying ycoord \n");
+
       break;
     case 3:
       cudaMalloc(&d_zcoord  , size*sizeof(double));
       cudaMemcpy(d_zcoord, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
-      printf("Copying zcoord \n");
+
       break;
     case 4:
       cudaMalloc(&d_m3d  , size*sizeof(double));
       cudaMemcpy(d_m3d, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
-      printf("Copying 3D model \n");
       break;
     default:
       printf("Invalid VarID entered, must be 1-3 or 21 but was %i \n", varid);
@@ -260,6 +323,10 @@ int copythisarraytodevice(double *hloc, int size, int varid){
   return 0;
 }
 }
+
+
+
+
 
 
 // WHEN WE LAUNCH THIS IT SHOULD BE: 
@@ -381,17 +448,17 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
 
 
     // ! Eqn 8 of Brett 2024
-    // ! r11 = c1 * c2 
-    // ! r12 = s1 * c2
-    // ! r13 = -s2 
+    // r11 = c1 * c2 ;
+    // r12 = s1 * c2;
+    // r13 = -s2; 
 
-    // ! r21 = -s1 
-    // ! r22 = c1 
-    // ! r23 = 0.0 
+    // r21 = -s1 ;
+    // r22 = c1 ;
+    // r23 = 0.0 ;
 
-    // ! r31 = c1*s2
-    // ! r32 = s1*s2
-    // ! r33 = c2
+    // r31 = c1*s2;
+    // r32 = s1*s2;
+    // r33 = c2;
 
     Q[0][0] = r11 * r11; 
     Q[1][0] = r21 * r21; 
@@ -459,6 +526,8 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     for (int i = 0; i < 6; ++i){
       for (int l = 0; l < 6; ++l){
             myindex = (i * (nspec*(ngll*ngll*ngll))*6)  +  (l*nspec*ngll*ngll*ngll) + (myigll*nspec) + blockIdx.x;
+
+    
         d_Cxyz[myindex] = Crot[i][l];
       }
     }
@@ -486,9 +555,9 @@ extern "C" {
   cudaFuncGetAttributes(&attrib, project_eta_to_gll);
 
 
-  printf("maxDynamicSharedSizeBytes: %i \n", attrib.maxDynamicSharedSizeBytes);
-  printf("preferredShmemCarveout   :    %i \n", attrib.preferredShmemCarveout);
-  printf("Shared memory size       : %zu bytes \n", attrib.sharedSizeBytes);
+  // printf("maxDynamicSharedSizeBytes: %i \n", attrib.maxDynamicSharedSizeBytes);
+  // printf("preferredShmemCarveout   :    %i \n", attrib.preferredShmemCarveout);
+  // printf("Shared memory size       : %zu bytes \n", attrib.sharedSizeBytes);
 
 
   project_eta_to_gll<<<dim3(nspec, 1, 1), 
@@ -515,31 +584,30 @@ int copyfromdevice(double *hloc, int size, int varid){
   switch (varid) {
     case 1:
       cudaMemcpy(hloc, d_xcoord, size*sizeof(double), cudaMemcpyDeviceToHost);
-      printf("Copying xcoord to host \n");
       break;
     case 2:
       cudaMemcpy(hloc, d_ycoord, size*sizeof(double), cudaMemcpyDeviceToHost);
-      printf("Copying ycoord to host \n");
       break;
     case 3:
       cudaMemcpy(hloc, d_zcoord, size*sizeof(double), cudaMemcpyDeviceToHost);
-      printf("Copying zcoord to host \n");
       break;
     case 4:
       cudaMemcpy(hloc, d_m3d, size*sizeof(double), cudaMemcpyDeviceToHost);
-      printf("Copying 3D model to host \n");
       break;
     case 5:
       cudaMemcpy(hloc, d_eta1, size*sizeof(double), cudaMemcpyDeviceToHost);
-      printf("Copying eta1 to host \n");
       break;
     case 6:
       cudaMemcpy(hloc, d_eta2, size*sizeof(double), cudaMemcpyDeviceToHost);
-      printf("Copying eta2 to host \n");
       break;
     case 7:
       cudaMemcpy(hloc, d_Cxyz, size*sizeof(double), cudaMemcpyDeviceToHost);
-      printf("Copying d_Cxyz to host \n");
+      break;
+    case 8:
+      cudaMemcpy(hloc, d_vani_real, size*sizeof(double), cudaMemcpyDeviceToHost);
+      break;
+    case 9:
+      cudaMemcpy(hloc, d_vani_imag, size*sizeof(double), cudaMemcpyDeviceToHost);
       break;
     default:
       printf("Invalid VarID entered, must be 1-3 or 21 but was %i \n", varid);

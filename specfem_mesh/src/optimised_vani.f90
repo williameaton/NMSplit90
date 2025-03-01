@@ -46,8 +46,8 @@ program optimised_vani
     character(len=450) :: out_name
     real :: gb_per_set
 
-    real(kind=SPLINE_REAL), allocatable :: Vani_real(:,:)
-    complex(kind=SPLINE_REAL), allocatable :: Vani_modesum(:,:)
+
+    real(kind=8), allocatable :: Vani_modesum_r(:), Vani_modesum_i(:)
     complex(kind=SPLINE_REAL), allocatable :: cst(:,:)
     character(len=20) :: model_ti
     complex(kind=SPLINE_REAL), allocatable :: allstrains(:, :, :, :, :, :, :)
@@ -90,20 +90,21 @@ program optimised_vani
     !integer, dimension(16), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3/)
     integer :: sumoftl1s
 
-    integer, dimension(nmodes), parameter :: modeNs = (/16, 13, 3, 23/) 
-    integer, dimension(nmodes), parameter :: modeLs = (/ 7,  1, 2,  4/)
+    integer, dimension(nmodes), parameter :: modeNs = (/ 13, 3, 16, 23/) 
+    integer, dimension(nmodes), parameter :: modeLs = (/  1, 2,  7,  4/)
 
     real(kind=8) :: testval
 
     ! BINDING PARAMETERS: 
     integer     :: size_of_array, strainsize
-    type(C_PTR) :: ta_ptr, eta1_ptr, eta2_ptr, cxyz_ptr, LUT_ptr, strain_r_ptr, strain_i_ptr
+    type(C_PTR) :: ta_ptr, eta1_ptr, eta2_ptr, cxyz_ptr, LUT_ptr, strain_r_ptr, strain_i_ptr, Vani_real_ptr, Vani_imag_ptr, wgll_ptr
 
     real(8), pointer :: flat3Dmodel(:)
     type(C_PTR) :: ptr_m3D
 
 
-    real(8), allocatable, target :: flatarray(:), eta1(:), eta2(:), localcxyz(:), flatstrain_r(:), flatstrain_i(:)
+    real(8), allocatable, target :: flatarray(:), eta1(:), eta2(:), localcxyz(:), flatstrain_r(:), flatstrain_i(:), Vani_real(:), Vani_imag(:)
+    real(8), allocatable, target :: wgllflat(:)
 
 
     ! Simulation parameters: 
@@ -188,10 +189,8 @@ program optimised_vani
     ! Setup global eta1, eta2 arrays
     ! Allocate Vani matrices
     allocate(VaniAllModes(max_tl1, max_tl1, nmodes))
-    if(myrank.eq.0)then 
-        allocate(Vani_modesum(max_tl1, max_tl1))
-        allocate(Vani_real(max_tl1, max_tl1))
-    endif
+    VaniAllModes = SPLINE_iZERO
+
 
 
     ! Loading strains and determining estimate of the memory cost: 
@@ -318,6 +317,25 @@ program optimised_vani
     ierr = copythisarraytodevice(ta_ptr, size_of_array, 3)
 
 
+    ! Transfer the wgll: 
+
+    allocate(wgllflat(size_of_array))
+    iii = 1
+    do k = 1, sm%ngllz
+        do j = 1, sm%nglly
+            do i = 1, sm%ngllx
+                do ispec = 1, sm%nspec 
+                    wgllflat(iii) = sm%wglljac(i,j,k,ispec)
+                    iii = iii + 1
+                enddo 
+            enddo 
+        enddo 
+    enddo 
+
+
+
+    wgll_ptr = c_loc(wgllflat)
+    ierr = copy_wgll_array(wgll_ptr, size_of_array)
 
 
 
@@ -393,7 +411,11 @@ program optimised_vani
     ! (sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, max_tl1, 6, nmodes)
     ! Now we have collapsed the matrix we can store only the number of tl1s 
     ! that each mode needs 
-    strainsize = nmodes * sumoftl1s * sm%ngllx * sm%nglly * sm%ngllz * sm%nspec * 6 
+
+    ! FOR NOW WE ARE USING THE MORE MEMORY INEFFICIENT VERSION OF ASSUMING THEY ALL 
+    ! HAVE max_tl1 - this makes the indexing a bit simpler in the kernel for now.
+    ! probs need a LUT otherwise
+    strainsize = nmodes * max_tl1 * sm%ngllx * sm%nglly * sm%ngllz * sm%nspec * 6 
     allocate(flatstrain_r(strainsize))
     allocate(flatstrain_i(strainsize))
 
@@ -401,13 +423,20 @@ program optimised_vani
     do imode = 1, nmodes 
         l1  = modeLs(imode)
         do p = 1,6
-            do im =  -l1, l1 
+            do im =  1, max_tl1!-l1, l1 
                 do k = 1, sm%ngllz
                     do j = 1, sm%nglly
                         do i = 1, sm%ngllx
                             do ispec = 1, sm%nspec 
-                                flatstrain_r(iii) =  real(allstrains(i, j, k, ispec, l1+im+1, p, imode), kind=8)
-                                flatstrain_i(iii) = aimag(allstrains(i, j, k, ispec, l1+im+1, p, imode))
+                                if (im.le. 2*l1 + 1)then 
+                                    flatstrain_r(iii) =  real(allstrains(i, j, k, ispec, im, p, imode), kind=8)
+                                    flatstrain_i(iii) = aimag(allstrains(i, j, k, ispec, im, p, imode))
+                                else
+                                    ! regions outside of the tl1 that is valid for this mode
+                                    flatstrain_r(iii) = zero 
+                                    flatstrain_i(iii) = zero 
+                                endif 
+                                iii = iii + 1
                             enddo 
                         enddo 
                     enddo 
@@ -421,6 +450,8 @@ program optimised_vani
 
     ! Need to transfer the megastrains! 
     ierr = copy_allstrains(strain_r_ptr, strain_i_ptr, strainsize)
+
+
 
 
     ! ! Copying this all to the device: 
@@ -480,6 +511,21 @@ program optimised_vani
     ! ! Allocate the Vmatrices on the GPU: 
     ! allocate(d_vani_real_G(max_tl1, max_tl1, nmodes))
     ! allocate(d_vani_imag_G(max_tl1, max_tl1, nmodes))
+
+
+    ierr = allocate_Vani_arrays(nmodes*max_nn1)
+
+    allocate(Vani_real(nmodes*max_nn1))
+    Vani_real_ptr = c_loc(Vani_real)
+
+    allocate(Vani_imag(nmodes*max_nn1))
+    Vani_imag_ptr = c_loc(Vani_imag)
+
+    
+    if(myrank.eq.0)then 
+        allocate(Vani_modesum_r(nmodes*max_nn1))
+        allocate(Vani_modesum_i(nmodes*max_nn1))
+    endif
 
 
     ierr = allocate_eta_arrays(size_of_array)
@@ -551,26 +597,69 @@ program optimised_vani
                                           Model3D%valconsts/100.0d0) 
         
 
-            ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_tl1)
+            ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1)
 
-            !ierr = copyfromdevice(cxyz_ptr, size_of_array*36, 7)
-            stop 
             
+            ierr = copyfromdevice(Vani_real_ptr, max_nn1*nmodes, 8)
+            ierr = copyfromdevice(Vani_imag_ptr, max_nn1*nmodes, 9)
 
-            ! if(myrank.eq.0)then 
-            !     do i_mode = 1, 1
-            !         n1       = modeNs(i_mode)
-            !         l1       = modeLs(i_mode)
-            !         this_tl1 = 2*l1 +1
+            call MPI_Reduce(Vani_real, Vani_modesum_r, nmodes*max_nn1, MPI_DOUBLE_PRECISION, &
+                            MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
-            !         do iii = 1, this_tl1
-            !             write(*,*)VaniAllModes(iii,1:this_tl1, i_mode)
-            !         enddo 
 
+            call MPI_Reduce(Vani_imag, Vani_modesum_i, nmodes*max_nn1, MPI_DOUBLE_PRECISION, &
+                            MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+
+
+            if(myrank.eq.0)then 
+                do imode = 1, 2 
+                    l1  = modeLs(imode)
+                    n1  = modeNs(imode)
+                    this_tl1 = 2*l1 + 1
+                    thisnn1  = this_tl1*(this_tl1+1)/2
+
+                    do iii = 1, thisnn1
+                        ival = iii 
+                        call find_row_col(ival, thisrow, thiscol, l1)
+                        VaniAllModes(thisrow, thiscol, imode) = Vani_modesum_r( (imode-1)*max_nn1 + iii) + SPLINE_iONE*Vani_modesum_i((imode-1)*max_nn1 + iii)
+                    enddo 
+
+
+                    ! Print the matrix: 
+                    do iii = 1, 2*l1 + 1
+                        write(*,*) real(VaniAllModes(iii, 1:2*l1 + 1, imode))
+                    enddo 
+                    write(*,*)
+
+                    call buffer_int(nstr, n1)
+                    call buffer_int(lstr, l1)
+
+                    if(force_VTI)then 
+                        out_name =  './output/instance_matrices/vani_'//trim(nstr)// t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'_VTI.txt'
+                    else 
+                        out_name =  './output/instance_matrices/vani_'//trim(nstr)// t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
+                    endif 
+                    !call save_Vani_matrix(l1,l1, out_name)
                     
-            !     enddo 
-            ! endif 
 
+
+                    call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
+                    allocate(cst(num_s, ncols))
+                    call Hcomplex_to_cst(VaniAllModes(1:this_tl1, 1:this_tl1, imode), l1, l1, cst, ncols, num_s, t1, t1, 2)
+                    out_name = 'output/cst_'//trim(nstr)//trim(t1)//trim(lstr)//trim(model_ti)//'_'//trim(iterstr)//'_'//trim(chainstr)
+                    call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
+                    deallocate(cst)
+
+
+                enddo      
+
+            endif 
+            stop
+
+
+    
+            
 
             ! Loop for each mode to compute the splitting and the Cst value
             ! do i_mode = 1, nmodes
@@ -633,7 +722,7 @@ program optimised_vani
 
     ! Cleanup memory 
     deallocate(VaniAllModes)
-    if(myrank.eq.0) deallocate(Vani_modesum, Vani_real)
+    if(myrank.eq.0) deallocate(Vani_modesum_r, Vani_modesum_i)
 
     call mpi_finalize(ierr)
 end program optimised_vani
