@@ -4,6 +4,7 @@
 #include "device_launch_parameters.h"
 
 
+
 //double *h_eta1 = nullptr;
 double *d_xcoord = nullptr;
 double *d_ycoord = nullptr;
@@ -26,6 +27,7 @@ double *d_vani_imag = nullptr;
 
   __constant__ int Vcont[9] = {0, 1, 2, 3, 3, 4, 4, 5, 5};
 
+#define GET_SWGLL(i, j) d_wgll[(i) * nspec + (j)]
 
 
 extern "C" {
@@ -106,8 +108,8 @@ int copy_allstrains(double *hloc_r, double *hloc_i, int size){
 
 
 
-__global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_per_loop, int nelem_in_block, int ngll,
-                                               int maxnn1,
+__global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_per_loop, int nelem_in_block, int ngll_in_block, 
+                                               int ngll, int maxnn1,
                                                int *d_LUT, double *d_allstrain_r, double *d_allstrain_i, 
                                                double *d_wgll, double *d_Cxyz, double *d_vani_real, double *d_vani_imag){ 
   // Kernel is launched with dimensions: 
@@ -116,14 +118,16 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   double cont_r, cont_i; 
 
   extern __shared__ double shared_mem[];  // Dynamic shared memory
-
   // Assign pointers to shared memory
   double* sreal1 = shared_mem;
   double* sreal2 = sreal1 + (125 * 32);
   double* simag1 = sreal2 + (125 * 32);
   double* simag2 = simag1 + (125 * 32);
-  double* swgll  = simag2 + (125 * 32);
+  //double* swgll  = simag2 + (125 * 32);
   
+  // Block wise reduction
+  double* scont_r = simag2 + (125 * 32);
+  double* scont_i = scont_r + ngll_in_block*nelem_in_block;  // Offset for imaginary part
 
   // 
   startelem = blockIdx.x * nelem_in_block;
@@ -137,13 +141,17 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   endelem = startelem + 31;
   if (endelem >= nspec )endelem = nspec -1 ;
 
+  int nloc_el = endelem - startelem + 1;
+
 
   // Each warp is responsible for ngll_per_loop gll points
   // Will go from igllstart to igllstart + ngll_per_loop
   igllstart = threadIdx.y * ngll_per_loop ;
-  igllend   = igllstart + ngll_per_loop - 1;
+  igllend   = igllstart   + ngll_per_loop ;
 
-  if(igllend >= ngll*ngll*ngll)igllend = ngll*ngll*ngll; //safeguard
+  if(igllend > ngll*ngll*ngll) igllend = ngll*ngll*ngll; //safeguard
+
+
 
 
   // Which mode am i and which m1, m2 value am I solving? 
@@ -170,17 +178,15 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
     for (int i = 0; i < 125; ++i){
       for (int j = startelem; j <= endelem; ++j){
 
- 
-        sreal1[ictr] = d_allstrain_r[myind_1 + (i*nspec) + j];  // d_allstrain_r[startelem:endelem, :, m1, Vcont[p], imode];
-        sreal2[ictr] = d_allstrain_r[myind_2 + (i*nspec) + j];  // d_allstrain_r[startelem:endelem, :, m2, Vcont[q], imode];
+        sreal1[ictr] = d_allstrain_r[myind_1 + (i*nspec) + j]; 
+        sreal2[ictr] = d_allstrain_r[myind_2 + (i*nspec) + j]; 
 
-        simag1[ictr] = d_allstrain_i[myind_1 + (i*nspec) + j];  // d_allstrain_i[startelem:endelem, :, m1, Vcont[p], imode];
-        simag2[ictr] = d_allstrain_i[myind_2 + (i*nspec) + j];  // d_allstrain_i[startelem:endelem, :, m2, Vcont[q], imode ; 
+        simag1[ictr] = d_allstrain_i[myind_1 + (i*nspec) + j]; 
+        simag2[ictr] = d_allstrain_i[myind_2 + (i*nspec) + j]; 
 
-        swgll[ictr] = d_wgll[i*nspec + j];
+        ///swgll[ictr] = d_wgll[i*nspec + j];
 
         ictr = ictr + 1;
-
       }
     } 
   }
@@ -196,7 +202,6 @@ cont_i = 0.0;
 for (int igll = igllstart; igll < igllend; ++igll){
 
         // If you are in the last block then this wont be 32 
-        int nloc_el = endelem - startelem + 1;
 
         // Cxyz index: 
         cxyzindex = (Vcont[p]*(nspec*125)*6)  +  (Vcont[q]*nspec*125) + (igll*nspec) + ispec;        
@@ -204,17 +209,56 @@ for (int igll = igllstart; igll < igllend; ++igll){
         // Real part 
         cont_r = cont_r  +  (sreal1[nloc_el*igll + myspec] * sreal2[nloc_el*igll + myspec]  +  
                              simag1[nloc_el*igll + myspec] * simag2[nloc_el*igll + myspec]) * 
-                             d_Cxyz[cxyzindex] * swgll[nloc_el*igll + myspec];
+                             d_Cxyz[cxyzindex] *  d_wgll[igll*nspec + ispec];  //GET_SWGLL(i, j);//swgll[nloc_el*igll + myspec];
 
         
         // Imag part 
         cont_i = cont_i  +  (sreal1[nloc_el*igll + myspec] * simag2[nloc_el*igll + myspec]  -  
                              sreal2[nloc_el*igll + myspec] * simag1[nloc_el*igll + myspec]) * 
-                             d_Cxyz[cxyzindex] * swgll[nloc_el*igll + myspec];
+                             d_Cxyz[cxyzindex] *  d_wgll[igll*nspec + ispec];
 } 
 
-atomicAdd(&d_vani_real[maxnn1*imode + utripos], cont_r);
-atomicAdd(&d_vani_imag[maxnn1*imode + utripos], cont_i);
+
+  // It needs to be this way around because for the final block_x 
+  // there are (probably) not 32 elements left 
+  int tid = (threadIdx.x * ngll_in_block) + threadIdx.y;  
+
+  scont_r[tid] = cont_r;
+  scont_i[tid] = cont_i;
+  __syncthreads();
+
+
+
+  /// TWO VERSIONS OF THE ATOMIC ADD - 2nd is more parallel and a bit faster
+  /// but I think the requirement to sync threads lots slows it down 
+  /// its a small reduction so not much difference in the speed 
+  /// Currently using 1st version because the 2nd seems to give slightly
+  /// wrong answer and dont want to debug it rn. 
+
+  if (threadIdx.x == 0 && threadIdx.y == 0) {
+    for (int i = 1; i < ngll_in_block*nloc_el; ++i){
+      scont_r[0] += scont_r[i] ;
+      scont_i[0] += scont_i[i] ;
+    } 
+      atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
+      atomicAdd(&d_vani_imag[maxnn1 * imode + utripos], scont_i[0]);
+  }
+
+
+  // // Perform parallel reduction in shared memory
+  //  int total_threads = ngll_in_block * nloc_el;    // Effective number of threads
+  // for (int stride = total_threads / 2; stride > 0; stride >>= 1) {
+  //     if (tid < stride) {
+  //         scont_r[tid] += scont_r[tid + stride];
+  //         scont_i[tid] += scont_i[tid + stride];
+  //     }
+  //     __syncthreads();
+  // }
+  // // Final atomic add by one thread per block
+  // if (tid == 0) {
+  //     atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
+  //     atomicAdd(&d_vani_imag[maxnn1 * imode + utripos], scont_i[0]);
+  // }
 
 }
 
@@ -255,7 +299,7 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1, int maxtl1
         vanikernel_allstrains_allmodes<<<dim3(nblocks_for_all_elems, nn1_total, 81), 
                                          dim3(nelem_in_block, ngll_in_block, 1),
                                          sharedMemSize>>>
-                                         (maxtl1, nspec, ngll_per_loop, nelem_in_block, ngll, maxnn1, d_LUT,
+                                         (maxtl1, nspec, ngll_per_loop, nelem_in_block, ngll_in_block, ngll, maxnn1, d_LUT,
                                          d_allstrain_r, d_allstrain_i, d_wgll, d_Cxyz, d_vani_real, d_vani_imag);        
 
         // Stop timing
