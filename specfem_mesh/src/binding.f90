@@ -83,10 +83,10 @@ interface
 
 
 
-    integer function launch_vanikernel(ngll, nspec, nn1_total, maxnn1,  maxtl1) bind(C, name="launch_vanikernel")
+    integer function launch_vanikernel(ngll, nspec, nn1_total, maxnn1,  maxtl1, nmodes) bind(C, name="launch_vanikernel")
       use iso_c_binding
       implicit none 
-      integer(c_int),value :: ngll, nspec, nn1_total, maxtl1, maxnn1
+      integer(c_int),value :: ngll, nspec, nn1_total, maxtl1, maxnn1, nmodes
     end function 
 
 

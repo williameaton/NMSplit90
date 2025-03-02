@@ -67,7 +67,7 @@ program optimised_vani
     type(M3D) :: model3D
 
     integer :: thisnn1, ival
-    integer :: start_clock, end_clock, count_rate, total_nn1, iii 
+    integer :: start_clock, end_clock, count_rate, total_nn1, iii, loop_clock_start
     real(8) :: elapsed_time
 
     ! Modes: 
@@ -86,8 +86,8 @@ program optimised_vani
 
 
     ! Half the 33
-    !integer, dimension(16), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13/)
-    !integer, dimension(16), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3/)
+    !integer, dimension(nmodes), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13/)
+    !integer, dimension(nmodes), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3/)
     integer :: sumoftl1s
 
     integer, dimension(nmodes), parameter :: modeNs = (/ 13, 3, 16, 23/) 
@@ -539,30 +539,31 @@ program optimised_vani
     allocate(localcxyz(size_of_array*36))
     cxyz_ptr = c_loc(localcxyz)
 
-
-
     ! Assuming a maximum number of points of 150 ish 
     allocate(BrettModelToTransfer(MaxBrettModelPts, 5))
     allocate(flat3Dmodel(MaxBrettModelPts*5))
 
 
-
     if(myrank.eq.0)write(*,*)'------------------ BEGIN ALL THE LOOPS ------------------ '
 
     ! Loop over the models: 
-    do imodel_iter = 10900, nmodeliter
+    do imodel_iter = 10900, 10902 !nmodeliter
         call buffer_int(iterstr, imodel_iter)
+
+        call system_clock(count_rate=count_rate)
+        call system_clock(loop_clock_start)
+
 
         do model_chain = 1, 1
             call buffer_int(chainstr, model_chain)
 
-
+          
+            call system_clock(count_rate=count_rate)
+            call system_clock(start_clock)    
             ! Load the model: 
             !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
-         
             Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c"//trim(chainstr)//"_m"//trim(iterstr)//".txt"
             call Model3D%read_model_from_file()
-            call Model3D%create_KDtree()
             ! Flatten 
             iii=1
             do i = 1, Model3D%npts
@@ -573,47 +574,59 @@ program optimised_vani
                 flat3Dmodel(iii+4) = Model3D%valspats(i,2)
                 iii = iii+5
             enddo 
+            call system_clock(end_clock)
+            elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(*,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
+                         
 
-            !BrettModelToTransfer(1:Model3D%npts, 1) = Model3D%xcoord
-            !BrettModelToTransfer(1:Model3D%npts, 2) = Model3D%ycoord
-            !BrettModelToTransfer(1:Model3D%npts, 3) = Model3D%zcoord
-            !BrettModelToTransfer(1:Model3D%npts, 4) = Model3D%valspats(:,1)
-            !BrettModelToTransfer(1:Model3D%npts, 5) = Model3D%valspats(:,2)
-            ! Transfer over the coordinates and eta1, eta 2
-             
-            ! success = cudaMemcpy(Model3D_dev,       & 
-            !                 BrettModelToTransfer,   &
-            !                 MaxBrettModelPts * 5, cudaMemcpyHostToDevice)
-
-            ! ! Transfer over the ACLNF
-            ! success = cudaMemcpy(Model_ACLNF,  Model3D%valconsts/100.0d0,   &
-            !                       5, cudaMemcpyHostToDevice)
-
-        
-
+            call system_clock(count_rate=count_rate)
+            call system_clock(start_clock)
             ptr_m3D = c_loc(flat3Dmodel)
             ierr = copythisarraytodevice(ptr_m3D, MaxBrettModelPts*5, 4)            
             ierr = cpp_project_eta_to_gll(Model3D%npts, sm%nspec, sm%ngllx, & 
                                           Model3D%valconsts/100.0d0) 
-        
+            call system_clock(end_clock)
+            elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(*,*) 'Copy model to device:', elapsed_time*1000, ' ms'
+                              
+                                    
+            call system_clock(count_rate=count_rate)
+            call system_clock(start_clock)
+            ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1, nmodes)
+            call system_clock(end_clock)
+            elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(*,*) 'Kernel time:', elapsed_time*1000, ' ms'
 
-            ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1)
 
-            
+
+
+            call system_clock(count_rate=count_rate)
+            call system_clock(start_clock)
             ierr = copyfromdevice(Vani_real_ptr, max_nn1*nmodes, 8)
             ierr = copyfromdevice(Vani_imag_ptr, max_nn1*nmodes, 9)
+            call system_clock(end_clock)
+            elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(*,*) 'Copy back:', elapsed_time*1000, ' ms'
 
+
+            call system_clock(count_rate=count_rate)
+            call system_clock(start_clock)
             call MPI_Reduce(Vani_real, Vani_modesum_r, nmodes*max_nn1, MPI_DOUBLE_PRECISION, &
                             MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-
 
             call MPI_Reduce(Vani_imag, Vani_modesum_i, nmodes*max_nn1, MPI_DOUBLE_PRECISION, &
                             MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
+            call system_clock(end_clock)
+            elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(*,*) 'Reduction:', elapsed_time*1000, ' ms'
+                
 
 
+            call system_clock(count_rate=count_rate)
+            call system_clock(start_clock)
             if(myrank.eq.0)then 
-                do imode = 1, 2 
+                do imode = 1, nmodes
                     l1  = modeLs(imode)
                     n1  = modeNs(imode)
                     this_tl1 = 2*l1 + 1
@@ -626,11 +639,11 @@ program optimised_vani
                     enddo 
 
 
-                    ! Print the matrix: 
-                    do iii = 1, 2*l1 + 1
-                        write(*,*) real(VaniAllModes(iii, 1:2*l1 + 1, imode))
-                    enddo 
-                    write(*,*)
+                    ! ! Print the matrix: 
+                    ! do iii = 1, 2*l1 + 1
+                    !     write(*,*) real(VaniAllModes(iii, 1:2*l1 + 1, imode))
+                    ! enddo 
+                    ! write(*,*)
 
                     call buffer_int(nstr, n1)
                     call buffer_int(lstr, l1)
@@ -642,69 +655,22 @@ program optimised_vani
                     endif 
                     !call save_Vani_matrix(l1,l1, out_name)
                     
-
-
                     call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
                     allocate(cst(num_s, ncols))
                     call Hcomplex_to_cst(VaniAllModes(1:this_tl1, 1:this_tl1, imode), l1, l1, cst, ncols, num_s, t1, t1, 2)
                     out_name = 'output/cst_'//trim(nstr)//trim(t1)//trim(lstr)//trim(model_ti)//'_'//trim(iterstr)//'_'//trim(chainstr)
                     call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
                     deallocate(cst)
-
-
                 enddo      
-
             endif 
-            stop
 
-
-    
-            
-
-            ! Loop for each mode to compute the splitting and the Cst value
-            ! do i_mode = 1, nmodes
-
-            !     n1       = modeNs(i_mode)
-            !     l1       = modeLs(i_mode)
-            !     this_tl1 = 2*l1 +1
-
-            !     ! Reset the matrix:
-            !     Vani         = SPLINE_iZERO
-            !     if(myrank.eq.0)then
-            !         Vani_modesum = SPLINE_iZERO
-            !     endif
+            call system_clock(end_clock)
+            elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(*,*) 'CST computation:', elapsed_time*1000, ' ms'
                 
-            !     ! Compute the Vani matrix
-            !     call compute_Vani_onemode_allstrains(i_mode, l1, sm%ngllx, sm%nspec)
 
 
-            !     !Reduce the matrices across all of the MPI procs
-            !     call MPI_Reduce(Vani, Vani_modesum, max_tl1**2, MPI_SPLINE_COMPLEX, &
-            !                     MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-            !     ! USE Vani_modesum to output/compute CSTs
-            !     if(myrank.eq.0)then 
-
-            !         call buffer_int(nstr, n1)
-            !         call buffer_int(lstr, l1)
-            !         Vani = Vani_modesum
-
-            !         if(force_VTI)then 
-            !             out_name =  './output/instance_matrices/vani_'//trim(nstr)// t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'_VTI.txt'
-            !         else 
-            !             out_name =  './output/instance_matrices/vani_'//trim(nstr)// t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
-            !         endif 
-            !         call save_Vani_matrix(l1,l1, out_name)
-            !         !call convert_imag_to_real(l1, l1, Vani_modesum(1:this_tl1, 1:this_tl1), Vani_real(1:this_tl1, 1:this_tl1))
-            !         call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
-            !         allocate(cst(num_s, ncols))
-            !         call Hcomplex_to_cst(Vani(1:this_tl1, 1:this_tl1), l1, l1, cst, ncols, num_s, t1, t1, 2)
-            !         out_name = 'output/instance_csts/cst_'//trim(nstr)//trim(t1)//trim(lstr)//trim(model_ti)//'_'//trim(iterstr)//'_'//trim(chainstr)
-            !         call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
-            !         deallocate(cst)
-            !     endif
-            !     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
-            ! enddo ! i_mode 
-
+            CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
             deallocate(Model3D%idspats)
             deallocate(Model3D%valspats)
@@ -716,7 +682,18 @@ program optimised_vani
 
         enddo ! chain
 
+
+
+
         if(myrank.eq.0)write(*,*)'Completed iteration: ', imodel_iter
+
+        call system_clock(end_clock)
+        elapsed_time = real(end_clock - loop_clock_start, kind=8) / real(count_rate, kind=8)
+        if(myrank.eq.0)then 
+            write(*,*) 'Iteration time', elapsed_time*1000, ' ms'
+            write(*,*)
+        endif 
+        
     enddo ! imodel_iter
 
 
