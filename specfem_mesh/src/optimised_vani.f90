@@ -3,7 +3,7 @@ program optimised_vani
     use params, only: VaniAllModes, verbose, myrank, MPI_SPLINE_COMPLEX, & 
                         MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT,   &
                          nmodes, nprocs, all_warnings, datadir, max_tl1, & 
-                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2
+                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                         compute_Vani_matrix, compute_vani_matrix_stored, & 
@@ -35,17 +35,18 @@ program optimised_vani
     include "constants.h"
     include 'mpif.h'
 
-    integer :: iset, i,j,k, p, ispec, l1, l2, n1, m1,m2, n2, ierr, & 
+    integer :: iset, i,j,k,s, p, ispec, l1, l2, n1, m1,m2, n2, ierr, & 
                 tl2, h, b, cluster_size, sets_per_process, & 
                 myset_start, myset_end, i_mode, smin, smax, num_s, & 
                 ncols, this_tl1, imode, im, imodel_iter, igll, iproc, & 
-                success, idx, thisrow, thiscol
+                success, idx, thisrow, thiscol, is, it, ncstsvals, icst, thissmax
     character(len=2) nstr, lstr
     character(len=5) iterstr
     character(len=3) chainstr
     character(len=450) :: out_name
     real :: gb_per_set
 
+    real(kind=8), allocatable :: allcsts_r(:), allcsts_i(:), allcsts_r_RED(:), allcsts_i_RED(:)
 
     real(kind=8), allocatable :: Vani_modesum_r(:), Vani_modesum_i(:)
     complex(kind=SPLINE_REAL), allocatable :: cst(:,:)
@@ -342,6 +343,7 @@ program optimised_vani
 
     allstrains = SPLINE_iZERO
 
+    ncstsvals = 0 
     do imode = 1, nmodes
         n1       = modeNs(imode)
         l1       = modeLs(imode)
@@ -350,10 +352,31 @@ program optimised_vani
             call sm%load_mode_strain_binary(n1, t1, l1, im, &  
                                             allstrains(:,:,:,:,l1+im+1,:,imode))
         enddo 
+
+        ! There are (l+1) s values we need (for self coupling) where 
+        ! Each of those s there are s + 1 
+        ! Maxing at s = 6
+        if (2*l1.gt.compute_cst_smax)then 
+            thissmax = compute_cst_smax
+        else 
+            thissmax = 2*l1 
+        endif 
+        do s = 0, thissmax, 2 
+            ncstsvals = ncstsvals + (s+1)
+        enddo 
+        
     enddo  
     if(myrank.eq.0)write(*,*)'Loaded all strain binaries from disc.'
 
 
+    allocate(allcsts_r(ncstsvals))
+    allocate(allcsts_i(ncstsvals))
+    
+    if(myrank.eq.0)then 
+        allocate(allcsts_r_RED(ncstsvals))
+        allocate(allcsts_i_RED(ncstsvals))
+    endif 
+     
     ! Until I can think of a better system, lets setup a mode look up table on the gpu
     total_nn1 = 0
     do imode = 1, nmodes
@@ -522,10 +545,10 @@ program optimised_vani
     Vani_imag_ptr = c_loc(Vani_imag)
 
     
-    if(myrank.eq.0)then 
-        allocate(Vani_modesum_r(nmodes*max_nn1))
-        allocate(Vani_modesum_i(nmodes*max_nn1))
-    endif
+    ! if(myrank.eq.0)then 
+    !     allocate(Vani_modesum_r(nmodes*max_nn1))
+    !     allocate(Vani_modesum_i(nmodes*max_nn1))
+    ! endif
 
 
     ierr = allocate_eta_arrays(size_of_array)
@@ -609,61 +632,89 @@ program optimised_vani
             if(myrank.eq.0)write(*,*) 'Copy back:', elapsed_time*1000, ' ms'
 
 
+
+
+            ! Overall the number of cst values we need to compute and 
+            ! conduct reduction of is as follows: 
+            ! Each mode of degree l = we need the s from 0 to 2l (inclusive)
+            ! for each s there are s+1 values we need to transfer (only computing the negative)
+            ! Due to hermitian nature 
+
             call system_clock(count_rate=count_rate)
             call system_clock(start_clock)
-            call MPI_Reduce(Vani_real, Vani_modesum_r, nmodes*max_nn1, MPI_DOUBLE_PRECISION, &
-                            MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
-            call MPI_Reduce(Vani_imag, Vani_modesum_i, nmodes*max_nn1, MPI_DOUBLE_PRECISION, &
-                            MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+            icst = 1
+            do imode = 1, nmodes
+                l1  = modeLs(imode)
+                n1  = modeNs(imode)
+                this_tl1 = 2*l1 + 1
+                thisnn1  = this_tl1*(this_tl1+1)/2
 
-            call system_clock(end_clock)
-            elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(*,*) 'Reduction:', elapsed_time*1000, ' ms'
+                do iii = 1, thisnn1
+                    ival = iii 
+                    call find_row_col(ival, thisrow, thiscol, l1)
+                    VaniAllModes(thisrow, thiscol, imode) = Vani_real( (imode-1)*max_nn1 + iii) + SPLINE_iONE*Vani_imag((imode-1)*max_nn1 + iii)
+                enddo 
+
+         
+                call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
+                allocate(cst(num_s, ncols))
+                call Hcomplex_to_cst(VaniAllModes(1:this_tl1, 1:this_tl1, imode), l1, l1, cst, ncols, num_s, t1, t1, 2)
                 
+                if (2*l1.gt.compute_cst_smax)then 
+                    thissmax = compute_cst_smax
+                else 
+                    thissmax = 2*l1 
+                endif 
 
 
-            call system_clock(count_rate=count_rate)
-            call system_clock(start_clock)
+                do is = 1, thissmax-smin+1, 2
+                    do it = 1, (smin+is-1) +1
+                        allcsts_r(icst) =  real(cst(is,it))
+                        allcsts_i(icst) =  aimag(cst(is,it))
+                        icst = icst + 1
+                    enddo 
+                enddo 
+                    
+                deallocate(cst)
+            enddo      
+
+            ! Now each process has compute the csts we can reduce them 
+            call MPI_Reduce(allcsts_r, allcsts_r_RED, ncstsvals, MPI_DOUBLE_PRECISION, &
+                            MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+            call MPI_Reduce(allcsts_i, allcsts_i_RED, ncstsvals, MPI_DOUBLE_PRECISION, &
+                            MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+
             if(myrank.eq.0)then 
+                icst = 1
                 do imode = 1, nmodes
                     l1  = modeLs(imode)
                     n1  = modeNs(imode)
-                    this_tl1 = 2*l1 + 1
-                    thisnn1  = this_tl1*(this_tl1+1)/2
 
-                    do iii = 1, thisnn1
-                        ival = iii 
-                        call find_row_col(ival, thisrow, thiscol, l1)
-                        VaniAllModes(thisrow, thiscol, imode) = Vani_modesum_r( (imode-1)*max_nn1 + iii) + SPLINE_iONE*Vani_modesum_i((imode-1)*max_nn1 + iii)
-                    enddo 
+                    if (2*l1.gt.compute_cst_smax)then 
+                        thissmax = compute_cst_smax
+                    else 
+                        thissmax = 2*l1 
+                    endif 
 
-
-                    ! ! Print the matrix: 
-                    ! do iii = 1, 2*l1 + 1
-                    !     write(*,*) real(VaniAllModes(iii, 1:2*l1 + 1, imode))
-                    ! enddo 
-                    ! write(*,*)
 
                     call buffer_int(nstr, n1)
                     call buffer_int(lstr, l1)
+                
+                    out_name =  './output/cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
+                    open(1,file=trim(out_name), form='formatted')
+                    do s = 0, thissmax, 2
+                        do it = 1, s+1
+                            write(1,*) s, it-s-1, allcsts_r_RED(icst), allcsts_i_RED(icst)
+                            icst = icst + 1
+                        enddo !it
+                    enddo ! s 
+                    close(1) ! close file
+                enddo ! loop over modes for writing 
 
-                    if(force_VTI)then 
-                        out_name =  './output/instance_matrices/vani_'//trim(nstr)// t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'_VTI.txt'
-                    else 
-                        out_name =  './output/instance_matrices/vani_'//trim(nstr)// t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
-                    endif 
-                    !call save_Vani_matrix(l1,l1, out_name)
-                    
-                    call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
-                    allocate(cst(num_s, ncols))
-                    call Hcomplex_to_cst(VaniAllModes(1:this_tl1, 1:this_tl1, imode), l1, l1, cst, ncols, num_s, t1, t1, 2)
-                    out_name = 'output/cst_'//trim(nstr)//trim(t1)//trim(lstr)//trim(model_ti)//'_'//trim(iterstr)//'_'//trim(chainstr)
-                    call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
-                    deallocate(cst)
-                enddo      
             endif 
-
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
             if(myrank.eq.0)write(*,*) 'CST computation:', elapsed_time*1000, ' ms'
@@ -699,7 +750,7 @@ program optimised_vani
 
     ! Cleanup memory 
     deallocate(VaniAllModes)
-    if(myrank.eq.0) deallocate(Vani_modesum_r, Vani_modesum_i)
+
 
     call mpi_finalize(ierr)
 end program optimised_vani
