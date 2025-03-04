@@ -3,7 +3,7 @@ program optimised_vani
     use params, only: VaniAllModes, verbose, myrank, MPI_SPLINE_COMPLEX, & 
                         MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT,   &
                          nmodes, nprocs, all_warnings, datadir, max_tl1, & 
-                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax
+                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax, timingNEX
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                         compute_Vani_matrix, compute_vani_matrix_stored, & 
@@ -140,8 +140,6 @@ program optimised_vani
         model_ti = ''
     endif 
 
-
-
     ! For some reason Myrank =6 seems to not print...is this an issue? 
     call check_cuda_device_allocations(nprocs)
     
@@ -215,55 +213,6 @@ program optimised_vani
         stop 
     endif 
 
-    ! Allocate xcoord on device
-    ! ierr=0
-    ! allocate(d_eta1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating eta1 on Device for proc ', myrank
-    !     stop 
-    ! endif 
-
-
-    ! Allocate ycoord on device
-    ! ierr=0
-    ! allocate(d_eta2(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating eta2 on Device for proc ', myrank
-    !     stop 
-    ! endif 
-
-    ! ! Allocate zcoord on device
-    ! ierr=0
-    ! allocate(d_rad(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating d_rad on Device for proc ', myrank
-    !     stop 
-    ! endif 
-    ! ! Copy to the device
-    ! d_rad = sm%rstore
-
-    ! ierr=0
-    ! allocate(d_xcoord(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating d_xcoord on Device for proc ', myrank
-    !     stop 
-    ! endif 
-
-    ! ierr=0
-    ! allocate(d_ycoord(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating d_zcoord on Device for proc ', myrank
-    !     stop 
-    ! endif 
-
-    ! ierr=0
-    ! allocate(d_zcoord(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating d_zcoord on Device for proc ', myrank
-    !     stop 
-    ! endif 
-
-
 
     ! Allocate memory on the GPU device: 
     size_of_array = sm%ngllx * sm%nglly * sm%ngllz * sm%nspec
@@ -319,7 +268,6 @@ program optimised_vani
 
 
     ! Transfer the wgll: 
-
     allocate(wgllflat(size_of_array))
     iii = 1
     do k = 1, sm%ngllz
@@ -377,27 +325,26 @@ program optimised_vani
         allocate(allcsts_i_RED(ncstsvals))
     endif 
      
+
+
     ! Until I can think of a better system, lets setup a mode look up table on the gpu
     total_nn1 = 0
     do imode = 1, nmodes
         l1       = modeLs(imode)
         this_tl1 = 2*l1 +1
-        total_nn1 = total_nn1 + this_tl1*(this_tl1+1)/2
+        total_nn1 = total_nn1 + (this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2)
     enddo  
     allocate(modeLUT(total_nn1*4))
 
 
-    sumoftl1s = 0
     idx = 1
-
     do imode = 1, nmodes
         l1       = modeLs(imode)
         this_tl1 = 2*l1 +1
 
-        sumoftl1s = sumoftl1s + this_tl1
+        thisnn1  = (this_tl1 * (this_tl1+1)/2) - l1*(l1+1)/2
 
-        thisnn1  = this_tl1 * (this_tl1+1)/2
-        do iii = 1, thisnn1
+        do iii = 1, (this_tl1 * (this_tl1+1)/2) - l1*(l1+1)/2
             modeLUT(idx) = imode-1 ! mode
             idx = idx + 1
             modeLUT(idx) = iii -1   ! place in matrix
@@ -409,16 +356,21 @@ program optimised_vani
             ! copy it to a new integer before parsing -- this took me
             ! way too long to work out
             ival = iii 
+
             call find_row_col(ival, thisrow, thiscol, l1)
             
-            modeLUT(idx) = thisrow -1  ! row
+
+            modeLUT(idx) = thisrow -1  ! row in c++ -1 
             idx = idx + 1
 
-            modeLUT(idx) = thiscol -1  ! col
+            modeLUT(idx) = thiscol -1  ! col in c++ -1 
             idx = idx + 1
 
         enddo 
     enddo  
+
+    ! I think we want to keep this without the subtraction since it 
+    ! is used for the spacing of the arrays etc 
     max_nn1 = max_tl1*(max_tl1+1)/2
 
 
@@ -475,67 +427,6 @@ program optimised_vani
     ierr = copy_allstrains(strain_r_ptr, strain_i_ptr, strainsize)
 
 
-
-
-    ! ! Copying this all to the device: 
-    ! ierr=0
-    ! allocate(d_allstrains_r(sm%nspec, sm%ngllx*sm%nglly*sm%ngllz,  max_tl1, 6, nmodes), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating d_allstrains_r for proc ', myrank
-    !     stop 
-    ! endif 
-
-    ! ierr=0
-    ! allocate(d_allstrains_i(sm%nspec, sm%ngllx*sm%nglly*sm%ngllz,  max_tl1, 6, nmodes), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating d_allstrains_i for proc ', myrank
-    !     stop 
-    ! endif 
-
-
-    ! call copy_allstrain_to_device(allstrains, modeLs, sm%ngllx, sm%nspec)
-    ! if(myrank.eq.0)write(*,*)'Copied over all the strains.'
-
-
-    ! ! WGLL on device
-    ! ierr=0
-    ! allocate(d_wglljac_g(sm%nspec, sm%ngllx*sm%nglly*sm%ngllz), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating d_wglljac_g for proc ', myrank
-    !     stop 
-    ! endif 
-
-    ! ! Allocate local copy to cast over to new format: 
-    ! ierr=0
-    ! allocate(wglljac_loc(sm%nspec,sm%ngllx*sm%nglly*sm%ngllz), stat=ierr)
-    ! if(ierr.ne.0)then 
-    !     write(*,*)'Error allocating wglljac_loc for proc ', myrank
-    !     stop 
-    ! endif 
-
-    ! do ispec = 1, sm%nspec 
-    !     igll = 1
-    !     do i = 1, sm%ngllx
-    !         do j = 1, sm%nglly 
-    !             do k = 1, sm%ngllz
-    !                 wglljac_loc(ispec, igll) = sm%wglljac(i,j,k,ispec)
-    !                 igll = igll + 1
-    !             enddo 
-    !         enddo 
-    !     enddo 
-    ! enddo 
-
-    ! ! Copy wglljac to the device:
-    ! d_wglljac_g = wglljac_loc
-    ! if(myrank.eq.0)write(*,*)'Copied wglljac to device.'
-
-
-
-    ! ! Allocate the Vmatrices on the GPU: 
-    ! allocate(d_vani_real_G(max_tl1, max_tl1, nmodes))
-    ! allocate(d_vani_imag_G(max_tl1, max_tl1, nmodes))
-
-
     ierr = allocate_Vani_arrays(nmodes*max_nn1)
 
     allocate(Vani_real(nmodes*max_nn1))
@@ -544,11 +435,6 @@ program optimised_vani
     allocate(Vani_imag(nmodes*max_nn1))
     Vani_imag_ptr = c_loc(Vani_imag)
 
-    
-    ! if(myrank.eq.0)then 
-    !     allocate(Vani_modesum_r(nmodes*max_nn1))
-    !     allocate(Vani_modesum_i(nmodes*max_nn1))
-    ! endif
 
 
     ierr = allocate_eta_arrays(size_of_array)
@@ -570,16 +456,20 @@ program optimised_vani
     if(myrank.eq.0)write(*,*)'------------------ BEGIN ALL THE LOOPS ------------------ '
 
     ! Loop over the models: 
-    do imodel_iter = 10900, 10902 !nmodeliter
+    do imodel_iter = 10900, 10905 !nmodeliter
         call buffer_int(iterstr, imodel_iter)
 
         call system_clock(count_rate=count_rate)
         call system_clock(loop_clock_start)
 
 
+
         do model_chain = 1, 1
             call buffer_int(chainstr, model_chain)
 
+            if(myrank.eq.0)then
+                open(34,file='./output/timing/'//trim(timingNEX)//'it_'//trim(iterstr)//'_ch_'//trim(chainstr), form='formatted')
+            endif 
           
             call system_clock(count_rate=count_rate)
             call system_clock(start_clock)    
@@ -599,6 +489,7 @@ program optimised_vani
             enddo 
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(34,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
             if(myrank.eq.0)write(*,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
                          
 
@@ -610,6 +501,7 @@ program optimised_vani
                                           Model3D%valconsts/100.0d0) 
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+            if(myrank.eq.0)write(34,*) 'Copy model to device:', elapsed_time*1000, ' ms'
             if(myrank.eq.0)write(*,*) 'Copy model to device:', elapsed_time*1000, ' ms'
                               
                                     
@@ -618,7 +510,8 @@ program optimised_vani
             ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1, nmodes)
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(*,*) 'Kernel time:', elapsed_time*1000, ' ms'
+            if(myrank.eq.0)write(34,*) 'Kernel time         :', elapsed_time*1000, ' ms'
+            if(myrank.eq.0)write(*,*) 'Kernel time         :', elapsed_time*1000, ' ms'
 
 
 
@@ -629,7 +522,8 @@ program optimised_vani
             ierr = copyfromdevice(Vani_imag_ptr, max_nn1*nmodes, 9)
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(*,*) 'Copy back:', elapsed_time*1000, ' ms'
+            if(myrank.eq.0)write(34,*) 'Copy back           :', elapsed_time*1000, ' ms'
+            if(myrank.eq.0)write(*,*) 'Copy back           :', elapsed_time*1000, ' ms'
 
 
 
@@ -648,12 +542,21 @@ program optimised_vani
                 l1  = modeLs(imode)
                 n1  = modeNs(imode)
                 this_tl1 = 2*l1 + 1
-                thisnn1  = this_tl1*(this_tl1+1)/2
+                thisnn1  = this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2
+
 
                 do iii = 1, thisnn1
                     ival = iii 
                     call find_row_col(ival, thisrow, thiscol, l1)
                     VaniAllModes(thisrow, thiscol, imode) = Vani_real( (imode-1)*max_nn1 + iii) + SPLINE_iONE*Vani_imag((imode-1)*max_nn1 + iii)
+
+                    ! For the values that are in colums < l we can use the symmetries of the matrix to compute
+                    ! The relationship between V_mm' and V_-m -m' is in D.153 - we can use this but this will give us 
+                    ! the elements  in V (col < m=0) that are on the wrong side of the diagonal, so then we can apply
+                    ! the fact it is hermitian - this is why we dont take the conjugate in the end.
+                    if(thisrow > l1 )then 
+                        VaniAllModes(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes(thisrow, thiscol, imode) * (-one)**(thisrow + thiscol - two*real(l1 +1 ,kind=8) )
+                    endif 
                 enddo 
 
          
@@ -703,7 +606,7 @@ program optimised_vani
                     call buffer_int(nstr, n1)
                     call buffer_int(lstr, l1)
                 
-                    out_name =  './output/cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
+                    out_name =  './output/NEX_'//trim(timingNEX)//'cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
                     open(1,file=trim(out_name), form='formatted')
                     do s = 0, thissmax, 2
                         do it = 1, s+1
@@ -717,9 +620,9 @@ program optimised_vani
             endif 
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(*,*) 'CST computation:', elapsed_time*1000, ' ms'
+            if(myrank.eq.0)write(34,*) 'CST computation     :', elapsed_time*1000, ' ms'
+            if(myrank.eq.0)write(*,*) 'CST computation     :', elapsed_time*1000, ' ms'
                 
-
 
             CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
@@ -736,12 +639,12 @@ program optimised_vani
 
 
 
-        if(myrank.eq.0)write(*,*)'Completed iteration: ', imodel_iter
-
         call system_clock(end_clock)
         elapsed_time = real(end_clock - loop_clock_start, kind=8) / real(count_rate, kind=8)
         if(myrank.eq.0)then 
-            write(*,*) 'Iteration time', elapsed_time*1000, ' ms'
+            write(34,*)  'Iteration time      :', elapsed_time*1000, ' ms'
+            write(*,*)  'Iteration time      :', elapsed_time*1000, ' ms'
+            write(*,*)  'Completed iteration : ', imodel_iter
             write(*,*)
         endif 
         

@@ -7,13 +7,10 @@
 cudaGraph_t Vanigraph;
 cudaGraphExec_t VanigraphExec;
 cudaStream_t Vanistream;
-cudaGraphNode_t VanikernelNode;
+cudaGraphNode_t       VanikernelNode;
 cudaKernelNodeParams  kernelParams = {};
 
 bool graphConstructed = false;  // Flag to track whether the graph is created or not
-
-
-
 
 
 //double *h_eta1 = nullptr;
@@ -172,29 +169,83 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   q = blockIdx.z - p*9 ;
 
 
-
 cont_r = 0.0;
 cont_i = 0.0;
 
-int myind_1  =  imode*6*maxtl1*125*nspec + Vcont[p]*maxtl1*125*nspec + m1*125*nspec;
-int myind_2  =  imode*6*maxtl1*125*nspec + Vcont[q]*maxtl1*125*nspec + m2*125*nspec;
 
-// What cxyz point am i: 
-for (int igll = igllstart; igll < igllend; ++igll){
+// Try optimising for the case that m1 = m2 
 
-  double real_1 = __ldg(&d_allstrain_r[myind_1 + (igll * nspec) + ispec]);
-  double real_2 = __ldg(&d_allstrain_r[myind_2 + (igll * nspec) + ispec]);
-  double imag_1 = __ldg(&d_allstrain_i[myind_1 + (igll * nspec) + ispec]);
-  double imag_2 = __ldg(&d_allstrain_i[myind_2 + (igll * nspec) + ispec]);
-  double cxyz   = __ldg(&d_Cxyz[(Vcont[p]*(nspec*125)*6)  +  (Vcont[q]*nspec*125) + (igll*nspec) + ispec]);
-  double wgll   = __ldg(&d_wgll[igll*nspec + ispec]);
 
-  cont_r = cont_r  +  ( real_1 * real_2  + imag_1 * imag_2) * 
-                        cxyz * wgll;  
+if(m1 == m2 && Vcont[p] == Vcont[q]){ 
+  // In this case we are going to load the same vectors twice 
+  // and the imaginary part will be zero, so we can avoid the atomic adds
+  int vp = Vcont[p];
+  int myind_1  =  imode*6*maxtl1*125*nspec + vp*maxtl1*125*nspec + m1*125*nspec  + ispec;
+  int startcxyz = (vp*(nspec*125)*6)+  (vp*nspec*125) + ispec ;
 
-  cont_i = cont_i  +  (real_1 * imag_2  - real_2 * imag_1) * 
-                        cxyz * wgll;
-} 
+  for (int igll = igllstart; igll < igllend; ++igll){
+
+    double real_1     = __ldg(&d_allstrain_r[myind_1 + (igll * nspec)]);
+    double imag_1     = __ldg(&d_allstrain_i[myind_1 + (igll * nspec)]);
+    double cxyzwgll   = __ldg(&d_Cxyz[startcxyz  + (igll*nspec)]) * __ldg(&d_wgll[igll*nspec + ispec]);
+
+    cont_r = cont_r  +  ( real_1 * real_1  + imag_1 * imag_1) * 
+                          cxyzwgll;  
+  } 
+
+
+  // ADD TO THE GLOBAL MATRIX USING A 2-STEP REDUCTIOn 
+  // It needs to be this way around because for the final block_x 
+  // there are (probably) not 32 elements left 
+  int tid = (threadIdx.x * ngll_in_block) + threadIdx.y;  
+
+  scont_r[tid] = cont_r;
+  __syncthreads();
+
+  if (nloc_el < nelem_in_block){ 
+
+    if (tid == 0) {
+      for (int i = 1; i < ngll_in_block*nloc_el; ++i){
+        scont_r[0] += scont_r[i] ;
+      } 
+      atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
+    }
+  } else  {
+    // Perform parallel reduction in shared memory
+    for (int stride = ngll_in_block * nloc_el / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+          scont_r[tid] += scont_r[tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid == 0) {
+        atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
+    }
+  } // nloc_el < nelem_in_block
+
+
+}else{
+
+
+  int myind_1  =  imode*6*maxtl1*125*nspec + Vcont[p]*maxtl1*125*nspec + m1*125*nspec  + ispec;
+  int myind_2  =  imode*6*maxtl1*125*nspec + Vcont[q]*maxtl1*125*nspec + m2*125*nspec  + ispec;
+
+  int startcxyz = (Vcont[p]*(nspec*125)*6)+  (Vcont[q]*nspec*125) + ispec ;
+
+  for (int igll = igllstart; igll < igllend; ++igll){
+
+    double real_1 = __ldg(&d_allstrain_r[myind_1 + (igll * nspec)]);
+    double real_2 = __ldg(&d_allstrain_r[myind_2 + (igll * nspec)]);
+    double imag_1 = __ldg(&d_allstrain_i[myind_1 + (igll * nspec)]);
+    double imag_2 = __ldg(&d_allstrain_i[myind_2 + (igll * nspec)]);
+    double cxyzwgll   = __ldg(&d_Cxyz[startcxyz  + (igll*nspec)]) * __ldg(&d_wgll[igll*nspec + ispec]);
+
+    cont_r = cont_r  +  ( real_1 * real_2  + imag_1 * imag_2) * 
+                          cxyzwgll;  
+
+    cont_i = cont_i  +  (real_1 * imag_2  - real_2 * imag_1) * 
+                          cxyzwgll;
+  } 
 
 
   // ADD TO THE GLOBAL MATRIX USING A 2-STEP REDUCTIOn 
@@ -207,11 +258,6 @@ for (int igll = igllstart; igll < igllend; ++igll){
   __syncthreads();
 
   if (nloc_el < nelem_in_block){ 
-    // For the blocks that do not have 32 elements the parallel reduction
-    // Becomes an issue since its no longer a power of 2 threads that are active
-    // You could buffer the scont_r arrays but then we already returned some 
-    // of the threads so it wont happen nicely...for now using a serial 
-    // reduction 
     if (tid == 0) {
       for (int i = 1; i < ngll_in_block*nloc_el; ++i){
         scont_r[0] += scont_r[i] ;
@@ -236,6 +282,7 @@ for (int igll = igllstart; igll < igllend; ++igll){
   } // nloc_el < nelem_in_block
 
 
+} // if p = q and m1 == m2
   
 }
 
@@ -275,7 +322,7 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
     kernelParams.gridDim = dim3(nblocks_for_all_elems, nn1_total, 81);
     kernelParams.blockDim = dim3(nelem_in_block, ngll_in_block, 1);
     kernelParams.sharedMemBytes = sharedMemSize;
-    kernelParams.kernelParams = kernelArgs;
+    kernelParams.kernelParams   = kernelArgs;
 
 
     // Add the kernel launch to the graph
