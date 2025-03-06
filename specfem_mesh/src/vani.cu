@@ -2,6 +2,8 @@
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include "device_launch_parameters.h"
+#include "driver_types.h"
+#include "precisioncpp.h"
 
 
 cudaGraph_t Vanigraph;
@@ -9,50 +11,56 @@ cudaGraphExec_t VanigraphExec;
 cudaStream_t Vanistream;
 cudaGraphNode_t       VanikernelNode;
 cudaKernelNodeParams  kernelParams = {};
-
 bool graphConstructed = false;  // Flag to track whether the graph is created or not
 
 
-//double *h_eta1 = nullptr;
-double *d_xcoord = nullptr;
-double *d_ycoord = nullptr;
-double *d_zcoord = nullptr;
-double *d_m3d    = nullptr; // flattened 3D model
+CPPCUSTOM_REAL *d_xcoord = nullptr;
+CPPCUSTOM_REAL *d_ycoord = nullptr;
+CPPCUSTOM_REAL *d_zcoord = nullptr;
+CPPCUSTOM_REAL *d_m3d    = nullptr; // flattened 3D model
 
-double *d_eta1   = nullptr;
-double *d_eta2   = nullptr;
 
-double *d_Cxyz   = nullptr;
-int    *d_LUT    = nullptr;
+CPPCUSTOM_REAL *d_Cxyz   = nullptr;
+int            *d_LUT    = nullptr;
 
-double *d_wgll   = nullptr;
+CPPCUSTOM_REAL *d_wgll   = nullptr;
 
-double *d_allstrain_r   = nullptr;
-double *d_allstrain_i   = nullptr;
+CPPCUSTOM_REAL *d_allstrain_r   = nullptr;
+CPPCUSTOM_REAL *d_allstrain_i   = nullptr;
 
-double *d_vani_real = nullptr;
-double *d_vani_imag = nullptr;
+CPPCUSTOM_REAL *d_vani_real = nullptr;
+CPPCUSTOM_REAL *d_vani_imag = nullptr;
 
-  __constant__ int Vcont[9] = {0, 1, 2, 3, 3, 4, 4, 5, 5};
+// There are 81 contractions to be done but only 
+// 36 of them are unique. I.e. originally a 9 x 9
+// where vcont = [0, 1, 2, 3, 3, 4, 4, 5, 5]
+// Here I list [p1, q1, occurrences, p1, q1, occurrences ...]
+// for the 36 unique combinations
+__constant__ int Vcont[108] = {0, 0, 1, 0, 1, 1, 0, 2, 1, 0, 3, 2, 0, 4, 2, 
+                               0, 5, 2, 1, 0, 1, 1, 1, 1, 1, 2, 1, 1, 3, 2, 
+                               1, 4, 2, 1, 5, 2, 2, 0, 1, 2, 1, 1, 2, 2, 1, 
+                               2, 3, 2, 2, 4, 2, 2, 5, 2, 3, 0, 2, 3, 1, 2, 
+                               3, 2, 2, 3, 3, 4, 3, 4, 4, 3, 5, 4, 4, 0, 2, 
+                               4, 1, 2, 4, 2, 2, 4, 3, 4, 4, 4, 4, 4, 5, 4, 
+                               5, 0, 2, 5, 1, 2, 5, 2, 2, 5, 3, 4, 5, 4, 4, 
+                               5, 5, 4};
 
-#define GET_SWGLL(i, j) d_wgll[(i) * nspec + (j)]
+// extern "C" {
+// int allocate_eta_arrays(int size){
+//   // Allocates the eta arrays
+//   int ierr = cudaMalloc(&d_eta1, size*sizeof(CPPCUSTOM_REAL));
+//   if(ierr != 0)return -1 ;
+
+//   ierr = cudaMalloc(&d_eta2, size*sizeof(CPPCUSTOM_REAL));
+//   return ierr;
+// }
+// }
+
 
 
 extern "C" {
-int cudatestfunc(int size){
-
-  return size*2 + 1;
-}
-}
-
-
-
-extern "C" {
-int allocate_eta_arrays(int size){
-  // Allocates the eta arrays
-  cudaMalloc(&d_eta1, size*sizeof(double));
-  cudaMalloc(&d_eta2, size*sizeof(double));
-  return 0;
+int get_cpp_precision(){
+  return sizeof(CPPCUSTOM_REAL);
 }
 }
 
@@ -60,8 +68,8 @@ int allocate_eta_arrays(int size){
 extern "C" {
 int allocate_Cxyz_array(int size){
   // Allocates the eta arrays
-  cudaMalloc(&d_Cxyz, size*sizeof(double));
-  return 0;
+  int ierr = cudaMalloc(&d_Cxyz, size*sizeof(CPPCUSTOM_REAL));
+  return ierr;
 }
 }
 
@@ -69,9 +77,30 @@ int allocate_Cxyz_array(int size){
 extern "C" {
 int allocate_Vani_arrays(int size){
   // Allocates the Vani arrays
-  cudaMalloc(&d_vani_real, size*sizeof(double));
-  cudaMalloc(&d_vani_imag, size*sizeof(double));
-  return 0;
+  int ierr = cudaMalloc(&d_vani_real, size*sizeof(CPPCUSTOM_REAL));
+  if(ierr != 0)return -1 ;
+
+  ierr = cudaMalloc(&d_vani_imag, size*sizeof(CPPCUSTOM_REAL));
+  return ierr;
+}
+}
+
+
+extern "C" {
+int allocate_M3D_array(int size){
+  // Allocates the Vani arrays
+  int ierr = cudaMalloc(&d_m3d  , size*sizeof(CPPCUSTOM_REAL));
+  return ierr;
+}
+}
+
+
+
+extern "C" {
+int copy_M3D_array(CPPCUSTOM_REAL *hloc, int size){
+  // Allocates the eta arrays
+  int ierr = cudaMemcpy(d_m3d, hloc, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
+  return ierr;
 }
 }
 
@@ -80,73 +109,140 @@ int allocate_Vani_arrays(int size){
 extern "C" {
 int copy_LUT_array(int *hloc, int size){
   // Allocates the eta arrays
-  cudaMalloc(&d_LUT, size*sizeof(int));
-  cudaMemcpy(d_LUT, hloc, size*sizeof(int), cudaMemcpyHostToDevice);
-  return 0;
+  int ierr = cudaMalloc(&d_LUT, size*sizeof(int));
+  if(ierr != 0)return -1 ;
+
+  ierr = cudaMemcpy(d_LUT, hloc, size*sizeof(int), cudaMemcpyHostToDevice);
+  return ierr;
 }
 }
 
 
 
 extern "C" {
-int copy_wgll_array(double *hloc, int size){
+int copy_wgll_array(CPPCUSTOM_REAL *hloc, int size){
   // Allocates the eta arrays
-  cudaMalloc(&d_wgll, size*sizeof(double));
-  cudaMemcpy(d_wgll, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
+  int ierr = cudaMalloc(&d_wgll, size*sizeof(CPPCUSTOM_REAL));
+  if (ierr !=0 ){
+    printf("Error allocating d_wgll...");
+    return -1 ;
+  }
+  ierr = cudaMemcpy(d_wgll, hloc, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
+    if (ierr !=0 ){
+    printf("Error copying d_wgll...");
+    return -1 ;
+  }
   return 0;
 }
 }
 
 
 extern "C" {
-int copy_allstrains(double *hloc_r, double *hloc_i, int size){
-  // Allocates the eta arrays
-  cudaMalloc(&d_allstrain_r, size*sizeof(double));
-  cudaMemcpy( d_allstrain_r, hloc_r, size*sizeof(double), cudaMemcpyHostToDevice);
+int copy_allstrains(CPPCUSTOM_REAL *hloc_r, CPPCUSTOM_REAL *hloc_i, int64_t size){
+  int ierr;
+
+  ierr = cudaMalloc(&d_allstrain_r, size*sizeof(CPPCUSTOM_REAL));
+  if (ierr !=0 ){
+    printf("Error allocating strain real...");
+    return -1 ;
+  }
+
+  ierr = cudaMemcpy( d_allstrain_r, hloc_r, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
+  if (ierr !=0 ){
+    printf("Error copying strain real...");
+    return -1 ;
+  }
 
   // Allocates the eta arrays
-  cudaMalloc(&d_allstrain_i, size*sizeof(double));
-  cudaMemcpy( d_allstrain_i, hloc_i, size*sizeof(double), cudaMemcpyHostToDevice);
-
+  ierr = cudaMalloc(&d_allstrain_i, size*sizeof(CPPCUSTOM_REAL));
+    if (ierr !=0 ){
+    printf("Error allocating strain imag...");
+    return -1 ;
+  }
+  ierr = cudaMemcpy( d_allstrain_i, hloc_i, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
+  if (ierr !=0 ){
+    printf("Error copying strain imag...");
+    return -1 ;
+  }
   return 0;
 }
 }
 
+
+
+extern "C"{
+int assign_proc_to_device(int nprocs, int myrank){
+    int err, devcount, mydevice, mydev, nsets_per_gpu;
+
+    // Number of devices
+    err = cudaGetDeviceCount(&devcount);
+    if (err != cudaSuccess) {
+      printf("Error: Unable to get device count!\n");
+      return -1;
+    }
+    devcount = 1;
+
+    if(myrank == 0){
+      printf("Number of GPU devices:  %i\n", devcount);
+    }
+
+    nsets_per_gpu = (nprocs + devcount - 1) / devcount;  
+
+    mydev = myrank / nsets_per_gpu;  // This mimics FLOOR(myrank / nsets_per_gpu)
+
+    err = cudaSetDevice(mydev);
+    if (err != cudaSuccess) {
+      printf("Error: Unable to set device!\n");
+      return -1 ;
+    }
+
+    err = cudaGetDevice(&mydevice);
+    if (err != cudaSuccess) {
+      printf("Error: Unable to get current device!\n");
+      return -1;
+    }
+
+    printf("myrank = %i -- on device %i\n", myrank, mydevice);
+    return 0;
+}
+}
 
 
 
 
 __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_per_loop, int nelem_in_block, int ngll_in_block, 
-                                               int ngll, int maxnn1,
+                                               int ngll, int maxnn1, int elemperthread,
                                                int * __restrict__ d_LUT, 
-                                               double * __restrict__ d_allstrain_r, 
-                                               double * __restrict__ d_allstrain_i, 
-                                               double * __restrict__ d_wgll, 
-                                               double * __restrict__ d_Cxyz,
-                                               double * __restrict__ d_vani_real, 
-                                               double * __restrict__ d_vani_imag){ 
+                                               CPPCUSTOM_REAL * __restrict__ d_allstrain_r, 
+                                               CPPCUSTOM_REAL * __restrict__ d_allstrain_i, 
+                                               CPPCUSTOM_REAL * __restrict__ d_Cxyz,
+                                               CPPCUSTOM_REAL * __restrict__ d_vani_real, 
+                                               CPPCUSTOM_REAL * __restrict__ d_vani_imag){ 
   // Kernel is launched with dimensions: 
   // <<< dim3(nblocks_for_all_elems, nn1_total, 81), dim3(nelem_in_block, ngll_in_block, 1) >>>
-  int startelem, myspec, ispec, endelem, igllstart, igllend, imode, m1, m2, p, q, utripos;
-  double cont_r, cont_i; 
+  int startelem, myspec, ispec, endelem, igllstart, igllend, imode, m1, m2, p, utripos, endispec;
+  CPPCUSTOM_REAL cont_r, cont_i; 
 
-  extern __shared__ double shared_mem[];  // Dynamic shared memory
+  extern __shared__ CPPCUSTOM_REAL shared_mem[];  // Dynamic shared memory
+  
   
   // Block wise reduction
-  double* scont_r = shared_mem;
-  double* scont_i = scont_r + ngll_in_block*nelem_in_block;  // Offset for imaginary part
-
-  startelem = blockIdx.x * nelem_in_block;
-  myspec    = threadIdx.x;                   // 0 - 31;
-  ispec     = startelem + myspec;
+  CPPCUSTOM_REAL* scont_r = shared_mem;
+  CPPCUSTOM_REAL* scont_i = scont_r + ngll_in_block*32;  // Offset for imaginary part
 
 
-  if(ispec >= nspec)return; // safeguard note >= because ispec goes to 0, nspec-1 
+  startelem = blockIdx.x  * nelem_in_block;  // First element in the block
+  myspec    = threadIdx.x * elemperthread;   // threadid * number of elements in block (0-63 )              
+  ispec     = startelem + myspec;            // global element number
+  endispec  = ispec + elemperthread -1 ;     // End element for this thread
+ 
+  // for individual thread
+  if(ispec >= nspec)return;                // if thread is out of the nspec
+  if(endispec >= nspec)endispec= nspec-1;  // if thread would go over 
 
 
-  endelem = startelem + 31;
+  endelem = startelem + nelem_in_block - 1;
   if (endelem >= nspec )endelem = nspec -1 ;
-
   int nloc_el = endelem - startelem + 1;
 
   // Each warp is responsible for ngll_per_loop gll points
@@ -155,42 +251,54 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   igllend   = igllstart   + ngll_per_loop ;
 
   if(igllend > ngll*ngll*ngll) igllend = ngll*ngll*ngll; //safeguard
-
+  
   // Which mode am i and which m1, m2 value am I solving? 
-  imode    = __ldg(&d_LUT[blockIdx.y*4    ]);  // The number of this mode
-  utripos  = __ldg(&d_LUT[blockIdx.y*4 + 1]);  // The position in the Vani matrix (upper triangular)
-
-  m1       = __ldg(&d_LUT[blockIdx.y*4 + 2]);  // The row of the Vani element
-  m2       = __ldg(&d_LUT[blockIdx.y*4 + 3]);  // The column of the Vani element
-
+  int4 lut_values = __ldg(reinterpret_cast<const int4*>(&d_LUT[blockIdx.y * 4]));
+  imode   = lut_values.x;  // The number of this mode
+  utripos = lut_values.y;  // The position in the Vani matrix (upper triangular)
+  m1      = lut_values.z;  // The row of the Vani element
+  m2      = lut_values.w;  // The column of the Vani element
 
   // Which of the 81 contractions am i solving? 
-  p = blockIdx.z/9     ;
-  q = blockIdx.z - p*9 ;
+  // Any time that we use vp or vq we use it as 
+  // vp * 125 * nspec 
+  // Except in the if statement below but in that case this will still work
+  // so lets premultiply: 
+  // There are 81 contractions but only 36 are unique so we launch 
+  // Block dim z of 36 and then work out the occurrences
+  p = blockIdx.z;
+  int VP125nspec  = Vcont[3*p]*125*nspec;
+  int VQ125nspec  = Vcont[3*p +1]*125*nspec;
+  int occurrences = Vcont[3*p +2];
+  float occurrences_float = static_cast<float>(occurrences);  // Convert to float
 
 
-cont_r = 0.0;
-cont_i = 0.0;
-
+  cont_r = 0.0;
+  cont_i = 0.0;
 
 // Try optimising for the case that m1 = m2 
-
-
-if(m1 == m2 && Vcont[p] == Vcont[q]){ 
+if(m1 == m2 && VP125nspec == VQ125nspec){ 
   // In this case we are going to load the same vectors twice 
   // and the imaginary part will be zero, so we can avoid the atomic adds
-  int vp = Vcont[p];
-  int myind_1  =  imode*6*maxtl1*125*nspec + vp*maxtl1*125*nspec + m1*125*nspec  + ispec;
-  int startcxyz = (vp*(nspec*125)*6)+  (vp*nspec*125) + ispec ;
+  int myind_1  =  imode*6*maxtl1*125*nspec + VP125nspec*maxtl1 + m1*125*nspec  + ispec;
+
+  //int startcxyz = (VP*(nspec*125)*6)+  (VP*nspec*125) + ispec ;
+  // so simplifies to 
+  int startcxyz = (VP125nspec*7) + ispec ;
 
   for (int igll = igllstart; igll < igllend; ++igll){
+    // NOTE: We pre-multiply all the strains by wglljac**0.5 so that 
+    // each of the terms ends up having * wglljac included
+    // without us having to load it from memory
 
-    double real_1     = __ldg(&d_allstrain_r[myind_1 + (igll * nspec)]);
-    double imag_1     = __ldg(&d_allstrain_i[myind_1 + (igll * nspec)]);
-    double cxyzwgll   = __ldg(&d_Cxyz[startcxyz  + (igll*nspec)]) * __ldg(&d_wgll[igll*nspec + ispec]);
+    float4 real_1  = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_1 + (igll * nspec)]));
+    float4 imag_1  = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_1 + (igll * nspec)]));
+    float4 cxyz    = __ldg(reinterpret_cast<const float4*>(&d_Cxyz[startcxyz  + (igll*nspec)]));
 
-    cont_r = cont_r  +  ( real_1 * real_1  + imag_1 * imag_1) * 
-                          cxyzwgll;  
+    cont_r += (real_1.x * real_1.x  + imag_1.x * imag_1.x) * cxyz.x +
+              (real_1.y * real_1.y  + imag_1.y * imag_1.y) * cxyz.y +
+              (real_1.z * real_1.z  + imag_1.z * imag_1.z) * cxyz.z +
+              (real_1.w * real_1.w  + imag_1.w * imag_1.w) * cxyz.w;  
   } 
 
 
@@ -199,20 +307,21 @@ if(m1 == m2 && Vcont[p] == Vcont[q]){
   // there are (probably) not 32 elements left 
   int tid = (threadIdx.x * ngll_in_block) + threadIdx.y;  
 
-  scont_r[tid] = cont_r;
+  scont_r[tid] = cont_r * occurrences_float;
   __syncthreads();
 
   if (nloc_el < nelem_in_block){ 
 
     if (tid == 0) {
-      for (int i = 1; i < ngll_in_block*nloc_el; ++i){
+      for (int i = 1; i < ngll_in_block*nloc_el/elemperthread; ++i){
         scont_r[0] += scont_r[i] ;
       } 
       atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
     }
   } else  {
     // Perform parallel reduction in shared memory
-    for (int stride = ngll_in_block * nloc_el / 2; stride > 0; stride >>= 1) {
+    // 16 comes from the 32 threads in threadx dim, strided by 2
+    for (int stride = ngll_in_block * 16; stride > 0; stride >>= 1) {
       if (tid < stride) {
           scont_r[tid] += scont_r[tid + stride];
       }
@@ -223,29 +332,32 @@ if(m1 == m2 && Vcont[p] == Vcont[q]){
     }
   } // nloc_el < nelem_in_block
 
-
 }else{
 
+  int myind_1  =  imode*6*maxtl1*125*nspec + VP125nspec*maxtl1 + m1*125*nspec  + ispec;
+  int myind_2  =  imode*6*maxtl1*125*nspec + VQ125nspec*maxtl1 + m2*125*nspec  + ispec;
 
-  int myind_1  =  imode*6*maxtl1*125*nspec + Vcont[p]*maxtl1*125*nspec + m1*125*nspec  + ispec;
-  int myind_2  =  imode*6*maxtl1*125*nspec + Vcont[q]*maxtl1*125*nspec + m2*125*nspec  + ispec;
+  int startcxyz = (VP125nspec*6)+  VQ125nspec + ispec ;
+  
 
-  int startcxyz = (Vcont[p]*(nspec*125)*6)+  (Vcont[q]*nspec*125) + ispec ;
+for (int igll = igllstart; igll < igllend; ++igll){
+  float4  real_1     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_1 + (igll * nspec)]));
+  float4  real_2     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_2 + (igll * nspec)]));
+  float4  imag_1     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_1 + (igll * nspec)]));
+  float4  imag_2     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_2 + (igll * nspec)]));
+  float4  cxyz       = __ldg(reinterpret_cast<const float4*>(&d_Cxyz[startcxyz  + (igll*nspec)]));
 
-  for (int igll = igllstart; igll < igllend; ++igll){
 
-    double real_1 = __ldg(&d_allstrain_r[myind_1 + (igll * nspec)]);
-    double real_2 = __ldg(&d_allstrain_r[myind_2 + (igll * nspec)]);
-    double imag_1 = __ldg(&d_allstrain_i[myind_1 + (igll * nspec)]);
-    double imag_2 = __ldg(&d_allstrain_i[myind_2 + (igll * nspec)]);
-    double cxyzwgll   = __ldg(&d_Cxyz[startcxyz  + (igll*nspec)]) * __ldg(&d_wgll[igll*nspec + ispec]);
+  cont_r +=  (real_1.x * real_2.x  + imag_1.x * imag_2.x) * cxyz.x +
+             (real_1.y * real_2.y  + imag_1.y * imag_2.y) * cxyz.y +
+             (real_1.z * real_2.z  + imag_1.z * imag_2.z) * cxyz.z +  
+             (real_1.w * real_2.w  + imag_1.w * imag_2.w) * cxyz.w;  
 
-    cont_r = cont_r  +  ( real_1 * real_2  + imag_1 * imag_2) * 
-                          cxyzwgll;  
-
-    cont_i = cont_i  +  (real_1 * imag_2  - real_2 * imag_1) * 
-                          cxyzwgll;
-  } 
+  cont_i +=  (real_1.x * imag_2.x  - real_2.x * imag_1.x) * cxyz.x +
+             (real_1.y * imag_2.y  - real_2.y * imag_1.y) * cxyz.y +
+             (real_1.z * imag_2.z  - real_2.z * imag_1.z) * cxyz.z +
+             (real_1.w * imag_2.w  - real_2.w * imag_1.w) * cxyz.w;
+} 
 
 
   // ADD TO THE GLOBAL MATRIX USING A 2-STEP REDUCTIOn 
@@ -253,13 +365,13 @@ if(m1 == m2 && Vcont[p] == Vcont[q]){
   // there are (probably) not 32 elements left 
   int tid = (threadIdx.x * ngll_in_block) + threadIdx.y;  
 
-  scont_r[tid] = cont_r;
-  scont_i[tid] = cont_i;
+  scont_r[tid] = cont_r * occurrences_float;
+  scont_i[tid] = cont_i * occurrences_float;
   __syncthreads();
 
   if (nloc_el < nelem_in_block){ 
     if (tid == 0) {
-      for (int i = 1; i < ngll_in_block*nloc_el; ++i){
+      for (int i = 1; i < ngll_in_block*nloc_el/elemperthread; ++i){
         scont_r[0] += scont_r[i] ;
         scont_i[0] += scont_i[i] ;
       } 
@@ -268,11 +380,12 @@ if(m1 == m2 && Vcont[p] == Vcont[q]){
     }
   } else  {
     // Perform parallel reduction in shared memory
-    for (int stride = ngll_in_block * nloc_el / 2; stride > 0; stride >>= 1) {
+    for (int stride = ngll_in_block * 16; stride > 0; stride >>= 1) {
       if (tid < stride) {
           scont_r[tid] += scont_r[tid + stride];
           scont_i[tid] += scont_i[tid + stride];
       }
+      
       __syncthreads();
     }
     if (tid == 0) {
@@ -280,10 +393,7 @@ if(m1 == m2 && Vcont[p] == Vcont[q]){
         atomicAdd(&d_vani_imag[maxnn1 * imode + utripos], scont_i[0]);
     }
   } // nloc_el < nelem_in_block
-
-
 } // if p = q and m1 == m2
-  
 }
 
 
@@ -291,21 +401,29 @@ if(m1 == m2 && Vcont[p] == Vcont[q]){
 
 extern "C" {
 int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1, 
-                      int maxtl1, int nmodes){
+                      int maxtl1, int nmodes, int myrank){
   
   // Local variables
   cudaError_t ierr; 
+
+  cudaEvent_t startEvent, stopEvent;
+  float elapsedTime;
+
+  cudaEventCreate(&startEvent);
+  cudaEventCreate(&stopEvent);
+
+
 
   // First time we launch the kernel we create a graph which 
   // Stores the launch parameters 
   if (!graphConstructed) {
 
-    int nelem_in_block        = 32;
+    int elem_per_thread       = 4 ; // Each thread is responsible for 2 elements
+    int nelem_in_block        = 32*elem_per_thread;
     int ngll_in_block         = 4;
-    int nblocks_for_all_elems = ceil(float(nspec)/float(nelem_in_block));
+    int nblocks_for_all_elems = ceil(float(nspec)/float(nelem_in_block)) ;
     int ngll_per_loop         = ceil(125.0/float(ngll_in_block));
-
-    size_t sharedMemSize = 2*8*ngll_in_block*nelem_in_block;
+    size_t sharedMemSize = 2 * sizeof(CPPCUSTOM_REAL) * ngll_in_block * 32;
 
 
     cudaStreamCreate(&Vanistream);
@@ -313,16 +431,19 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
 
     void* kernelArgs[] = {
           &maxtl1, &nspec, &ngll_per_loop, &nelem_in_block, &ngll_in_block, &ngll,
-          &maxnn1, &d_LUT, &d_allstrain_r, &d_allstrain_i, &d_wgll,
+          &maxnn1, &elem_per_thread, &d_LUT, &d_allstrain_r, &d_allstrain_i,
           &d_Cxyz, &d_vani_real, &d_vani_imag
       };
 
     // Prepare kernel launch parameters
-    kernelParams.func = (void*)vanikernel_allstrains_allmodes;
-    kernelParams.gridDim = dim3(nblocks_for_all_elems, nn1_total, 81);
-    kernelParams.blockDim = dim3(nelem_in_block, ngll_in_block, 1);
+    kernelParams.func           = (void*)vanikernel_allstrains_allmodes;
+    kernelParams.gridDim        = dim3(nblocks_for_all_elems, nn1_total, 36);
+    kernelParams.blockDim       = dim3(32, ngll_in_block, 1);
     kernelParams.sharedMemBytes = sharedMemSize;
     kernelParams.kernelParams   = kernelArgs;
+
+    //printf("Launch params: (%i %i %i ) x (%i %i %i )", nblocks_for_all_elems, nn1_total, 81, 32, ngll_in_block, 1 );
+
 
 
     // Add the kernel launch to the graph
@@ -336,20 +457,30 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
 
 
   // Reset d_vani_real and d_vani_imag to zero before the kernel launch
-  cudaMemsetAsync(d_vani_real, 0, nmodes*maxnn1 * sizeof(double), Vanistream);
-  cudaMemsetAsync(d_vani_imag, 0, nmodes*maxnn1 * sizeof(double), Vanistream);
+  // I tried adding this to the graph but hit a brick wall...
+  cudaMemsetAsync(d_vani_real, 0, nmodes*maxnn1 * sizeof(CPPCUSTOM_REAL), Vanistream);
+  cudaMemsetAsync(d_vani_imag, 0, nmodes*maxnn1 * sizeof(CPPCUSTOM_REAL), Vanistream);
+
   // Synchronize to ensure memory is cleared before launching the graph
   cudaStreamSynchronize(Vanistream);
 
+  cudaEventRecord(startEvent, Vanistream);
+
   cudaGraphLaunch(VanigraphExec, Vanistream);
 
-
   ierr = cudaGetLastError();
-  if (ierr != cudaSuccess) {
-      printf("CUDA kernel launch error: %s\n", cudaGetErrorString(ierr));
-  }
+    if (ierr != cudaSuccess) {
+        printf("CUDA kernel launch error: %s\n", cudaGetErrorString(ierr));
+    }
 
-  cudaDeviceSynchronize();
+
+  cudaEventRecord(stopEvent, Vanistream);
+  cudaEventSynchronize(stopEvent);
+
+  cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
+  if(myrank==0)printf(" Kernel time         : %f ms\n", elapsedTime);
+  cudaEventDestroy(startEvent);
+  cudaEventDestroy(stopEvent);
 
   return 0;
 }
@@ -357,31 +488,24 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
 
 
 
-
-
 extern "C" {
-int copythisarraytodevice(double *hloc, int size, int varid){
+int copythisarraytodevice(CPPCUSTOM_REAL *hloc, int size, int varid){
 
   
   switch (varid) {
     case 1:
-      cudaMalloc(&d_xcoord  , size*sizeof(double));
-      cudaMemcpy(d_xcoord, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
+      cudaMalloc(&d_xcoord  , size*sizeof(CPPCUSTOM_REAL));
+      cudaMemcpy(d_xcoord, hloc, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
 
       break;
     case 2:
-      cudaMalloc(&d_ycoord  , size*sizeof(double));
-      cudaMemcpy(d_ycoord, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
+      cudaMalloc(&d_ycoord  , size*sizeof(CPPCUSTOM_REAL));
+      cudaMemcpy(d_ycoord, hloc, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
 
       break;
     case 3:
-      cudaMalloc(&d_zcoord  , size*sizeof(double));
-      cudaMemcpy(d_zcoord, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
-
-      break;
-    case 4:
-      cudaMalloc(&d_m3d  , size*sizeof(double));
-      cudaMemcpy(d_m3d, hloc, size*sizeof(double), cudaMemcpyHostToDevice);
+      cudaMalloc(&d_zcoord  , size*sizeof(CPPCUSTOM_REAL));
+      cudaMemcpy(d_zcoord, hloc, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
       break;
     default:
       printf("Invalid VarID entered, must be 1-3 or 21 but was %i \n", varid);
@@ -401,33 +525,39 @@ int copythisarraytodevice(double *hloc, int size, int varid){
 // <<<dim3(nspec, 1, 1), dim3(32, ngll**3 // 32, 1)>>>
 // Ie a warp does 32 gll points so need ~ ngll**3 // 32 = 4 warps for the element
 __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
-                                   double *d_xcoord, double *d_ycoord, double *d_zcoord,  
-                                   double *d_m3d,    double *d_eta1,   double *d_eta2, 
-                                   double modelA, double modelC, double modelL, double modelN, double modelF,
-                                   double *d_Cxyz){
+                                   CPPCUSTOM_REAL *d_xcoord, 
+                                   CPPCUSTOM_REAL *d_ycoord, 
+                                   CPPCUSTOM_REAL *d_zcoord,  
+                                   CPPCUSTOM_REAL *d_m3d,   
+                                   CPPCUSTOM_REAL modelA, 
+                                   CPPCUSTOM_REAL modelC, 
+                                   CPPCUSTOM_REAL modelL, 
+                                   CPPCUSTOM_REAL modelN, 
+                                   CPPCUSTOM_REAL modelF,
+                                   CPPCUSTOM_REAL *d_Cxyz){
 
     // npoints = number of points in 3D model to test
     // ngll = number of GLL in one direction
 
     // internal variables
     int  mypt, ispec, myigll, myindex;
-    double  myx, myy, myz, dist, last_dist, vp, vs, rho, rad2;
-    double  myA, myC, myL, myN, myF;
-    double  n1, n2, c1, c2, s1, s2, r11, r12, r13, r21, r22, r23, r31, r32, r33;
+    CPPCUSTOM_REAL  myx, myy, myz, dist, last_dist, vp, vs, rho, rad2;
+    CPPCUSTOM_REAL  myA, myC, myL, myN, myF;
+    CPPCUSTOM_REAL  n1, n2, c1, c2, s1, s2, r11, r12, r13, r21, r22, r23, r31, r32, r33;
 
-    double Cnat[6][6], Q[6][6], Crot[6][6];
+    CPPCUSTOM_REAL Cnat[6][6], Q[6][6], Crot[6][6];
 
-    
+
     myigll = (threadIdx.y)*32 + (threadIdx.x);
-    ispec  = blockIdx.x * ngll*ngll*ngll;
+    ispec  = blockIdx.x ;
 
     if(myigll >= 125) return;
 
     // These arrays are flattened as follows - i then j, then k, then ispec
     // hence there are 125 values in a row for each ispec
-    myx = d_xcoord[ispec + myigll];
-    myy = d_ycoord[ispec + myigll];
-    myz = d_zcoord[ispec + myigll];
+    myx = d_xcoord[myigll*nspec + ispec];
+    myy = d_ycoord[myigll*nspec + ispec];
+    myz = d_zcoord[myigll*nspec + ispec];
 
     // For each possible point let us evaluate the distance
     last_dist = 1000.0;
@@ -449,9 +579,6 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     n1 = d_m3d[mypt*5  + 3];
     n2 = d_m3d[mypt*5  + 4];
     
-    // // Store these for benchmarking
-    //d_eta1[ispec + myigll] = n1;
-    //d_eta2[ispec + myigll] = n2;
 
     // // Get the PREM related values for ACLNF at this point: 
     // r^2 normalised
@@ -471,7 +598,7 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     myF = ((rho * vp * vp) - 2.0*(rho * vs * vs)) * modelF;
 
 
-    // ! Create natural Stiffness matrix:
+    // Create natural Stiffness matrix:
     for (int i = 0; i < 6; ++i) {
       for (int j = 0; j < 6; ++j) {
           Cnat[i][j] = 0.0;
@@ -501,31 +628,34 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     s1 = sin(n1);
     s2 = sin(n2);
 
-    // ! Eqn 5 of Brett 2024
-    r11 = c1 * c2;
-    r12 = - s1;
-    r13 = c1*s2;
-    
-    r21 = s1*c2;
-    r22 = c1;
-    r23 = s1*s2;
 
-    r31 = -s2;
-    r32 = 0.0;
-    r33 = c2;
+    // Eqn 5 - DO NOT USE EXCEPT OLD BENCHMARKS
+    // This is not even the correct equations for the real eqn 5
+    // The commented ones are the real eqn 5    
+      r11 = c1 * c2;  // r11 = c1 * c2 ;
+      r12 = - s1;     // r12 = s1 * c2;
+      r13 = c1*s2;    // r13 = -s2; 
+      
+      r21 = s1*c2;    // r21 = -s1 ;
+      r22 = c1;       // r22 = c1 ;
+      r23 = s1*s2;    // r23 = 0.0 ;
+
+      r31 = -s2;      // r31 = c1*s2;
+      r32 = 0.0;      // r32 = s1*s2;
+      r33 = c2;       // r33 = c2;
 
 
     // ! Eqn 8 of Brett 2024
     // r11 = c1 * c2 ;
-    // r12 = s1 * c2;
-    // r13 = -s2; 
+    // r12 = -s1;
+    // r13 = s2*c1; 
 
-    // r21 = -s1 ;
+    // r21 = s1*c2 ;
     // r22 = c1 ;
-    // r23 = 0.0 ;
+    // r23 = s1*s2 ;
 
-    // r31 = c1*s2;
-    // r32 = s1*s2;
+    // r31 = -s2;
+    // r32 = 0.0;
     // r33 = c2;
 
     Q[0][0] = r11 * r11; 
@@ -594,8 +724,6 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     for (int i = 0; i < 6; ++i){
       for (int l = 0; l < 6; ++l){
             myindex = (i * (nspec*(ngll*ngll*ngll))*6)  +  (l*nspec*ngll*ngll*ngll) + (myigll*nspec) + blockIdx.x;
-
-    
         d_Cxyz[myindex] = Crot[i][l];
       }
     }
@@ -605,35 +733,33 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
 extern "C" {
   // Function that launches the CUDA cpp project to eta kernel
  int cpp_project_eta_to_gll(int model_npoints, int nspec, int ngll, double modelv[5]){
-
+  
   // local variables: 
   int ngll_per_warp, ngllwarps_per_block;
-  
-  cudaFuncAttributes attrib;
+  cudaError_t ierr;
+  CPPCUSTOM_REAL  A, C, L, N, F;
 
   ngll_per_warp       = 32;
   ngllwarps_per_block = ceil(float(ngll*ngll*ngll)/float(ngll_per_warp)); 
 
-
-
-
-  // Allocate 160 kB of dynamic shared memory
-  // To go over the 48 kB default it needs to be dynamic
-  cudaFuncSetAttribute(project_eta_to_gll, cudaFuncAttributeMaxDynamicSharedMemorySize, 163840);
-  cudaFuncGetAttributes(&attrib, project_eta_to_gll);
-
-
-  // printf("maxDynamicSharedSizeBytes: %i \n", attrib.maxDynamicSharedSizeBytes);
-  // printf("preferredShmemCarveout   :    %i \n", attrib.preferredShmemCarveout);
-  // printf("Shared memory size       : %zu bytes \n", attrib.sharedSizeBytes);
-
+  A = modelv[0];
+  C = modelv[1];
+  L = modelv[2];
+  N = modelv[3];
+  F = modelv[4];
 
   project_eta_to_gll<<<dim3(nspec, 1, 1), 
                        dim3(ngll_per_warp, ngllwarps_per_block, 1)>>>
                        (model_npoints, ngll, nspec, d_xcoord, d_ycoord, d_zcoord, d_m3d, 
-                       d_eta1, d_eta2, modelv[0], modelv[1], modelv[2], modelv[3], modelv[4],
+                       A, C, L, N, F,
                        d_Cxyz);
+
   cudaDeviceSynchronize();
+  ierr = cudaGetLastError();
+    if (ierr != cudaSuccess) {
+        printf("CUDA project GLL launch error: %s\n", cudaGetErrorString(ierr));
+    }
+
   return 0;
  }
 }
@@ -647,35 +773,29 @@ extern "C" {
 
 
 extern "C" {
-int copyfromdevice(double *hloc, int size, int varid){
+int copyfromdevice(CPPCUSTOM_REAL *hloc, int size, int varid){
   
   switch (varid) {
     case 1:
-      cudaMemcpy(hloc, d_xcoord, size*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(hloc, d_xcoord, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyDeviceToHost);
       break;
     case 2:
-      cudaMemcpy(hloc, d_ycoord, size*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(hloc, d_ycoord, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyDeviceToHost);
       break;
     case 3:
-      cudaMemcpy(hloc, d_zcoord, size*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(hloc, d_zcoord, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyDeviceToHost);
       break;
     case 4:
-      cudaMemcpy(hloc, d_m3d, size*sizeof(double), cudaMemcpyDeviceToHost);
-      break;
-    case 5:
-      cudaMemcpy(hloc, d_eta1, size*sizeof(double), cudaMemcpyDeviceToHost);
-      break;
-    case 6:
-      cudaMemcpy(hloc, d_eta2, size*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(hloc, d_m3d, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyDeviceToHost);
       break;
     case 7:
-      cudaMemcpy(hloc, d_Cxyz, size*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(hloc, d_Cxyz, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyDeviceToHost);
       break;
     case 8:
-      cudaMemcpy(hloc, d_vani_real, size*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(hloc, d_vani_real, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyDeviceToHost);
       break;
     case 9:
-      cudaMemcpy(hloc, d_vani_imag, size*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(hloc, d_vani_imag, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyDeviceToHost);
       break;
     default:
       printf("Invalid VarID entered, must be 1-3 or 21 but was %i \n", varid);
