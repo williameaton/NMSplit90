@@ -45,6 +45,9 @@ __constant__ int Vcont[108] = {0, 0, 1, 0, 1, 1, 0, 2, 1, 0, 3, 2, 0, 4, 2,
                                5, 0, 2, 5, 1, 2, 5, 2, 2, 5, 3, 4, 5, 4, 4, 
                                5, 5, 4};
 
+
+__constant__ int Lvals[27] = {8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 3,  3, 3, 3, 2 , 2, 2,  2, 2,  1,  1, 1,  1,  1};
+
 // extern "C" {
 // int allocate_eta_arrays(int size){
 //   // Allocates the eta arrays
@@ -180,7 +183,8 @@ int assign_proc_to_device(int nprocs, int myrank){
       printf("Error: Unable to get device count!\n");
       return -1;
     }
-    devcount = 1;
+
+    devcount = 4;
 
     if(myrank == 0){
       printf("Number of GPU devices:  %i\n", devcount);
@@ -220,15 +224,20 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
                                                CPPCUSTOM_REAL * __restrict__ d_vani_imag){ 
   // Kernel is launched with dimensions: 
   // <<< dim3(nblocks_for_all_elems, nn1_total, 81), dim3(nelem_in_block, ngll_in_block, 1) >>>
-  int startelem, myspec, ispec, endelem, igllstart, igllend, imode, m1, m2, p, utripos, endispec;
-  CPPCUSTOM_REAL cont_r, cont_i; 
+  int startelem, myspec, ispec, endelem, igllstart, igllend, imode, 
+      p, utripos, endispec, row, col, lval;
+
+  CPPCUSTOM_REAL cont_r_m, cont_i_m, cont_r_p, cont_i_p; 
 
   extern __shared__ CPPCUSTOM_REAL shared_mem[];  // Dynamic shared memory
   
   
   // Block wise reduction
-  CPPCUSTOM_REAL* scont_r = shared_mem;
-  CPPCUSTOM_REAL* scont_i = scont_r + ngll_in_block*32;  // Offset for imaginary part
+  CPPCUSTOM_REAL* scont_r_m = shared_mem;
+  CPPCUSTOM_REAL* scont_i_m = scont_r_m + ngll_in_block*32;  
+
+  CPPCUSTOM_REAL* scont_r_p = scont_i_m + ngll_in_block*32;  
+  CPPCUSTOM_REAL* scont_i_p = scont_r_p + ngll_in_block*32;  
 
 
   startelem = blockIdx.x  * nelem_in_block;  // First element in the block
@@ -255,9 +264,28 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   // Which mode am i and which m1, m2 value am I solving? 
   int4 lut_values = __ldg(reinterpret_cast<const int4*>(&d_LUT[blockIdx.y * 4]));
   imode   = lut_values.x;  // The number of this mode
-  utripos = lut_values.y;  // The position in the Vani matrix (upper triangular)
-  m1      = lut_values.z;  // The row of the Vani element
-  m2      = lut_values.w;  // The column of the Vani element
+  utripos = lut_values.y;  // Index of the 
+  row     = lut_values.z;  // The row of the Vani element
+  col     = lut_values.w;  // The column of the Vani element
+
+  lval    = Lvals[imode];
+
+
+  // reflected (positive m1) position
+  int ltripos = utripos + 2*(lval-row)*(lval+1) - (lval-row)*(lval-row+1)/2;
+
+
+
+  // if(blockIdx.x == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0 && imode==0){
+  // printf("%i %i %i %i %i %i \n", blockIdx.y, lval, row, col, utripos, ltripos);
+  // }
+
+
+  // -1 ** |m1| ie the positive m1 
+  int m1 = row-lval;
+
+  //float sign = ((lval-row) % 2 == 0) ? 1.0f : -1.0f;
+
 
   // Which of the 81 contractions am i solving? 
   // Any time that we use vp or vq we use it as 
@@ -267,135 +295,135 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   // There are 81 contractions but only 36 are unique so we launch 
   // Block dim z of 36 and then work out the occurrences
   p = blockIdx.z;
-  int VP125nspec  = Vcont[3*p]*125*nspec;
-  int VQ125nspec  = Vcont[3*p +1]*125*nspec;
+  int VP125nspec  = Vcont[3*p]    * 125*nspec;
+  int VQ125nspec  = Vcont[3*p +1] * 125*nspec;
   int occurrences = Vcont[3*p +2];
   float occurrences_float = static_cast<float>(occurrences);  // Convert to float
 
+  cont_r_m = 0.0;  // negative m2
+  cont_i_m = 0.0;  // negative m2
 
-  cont_r = 0.0;
-  cont_i = 0.0;
+  cont_r_p = 0.0;  // positive m2
+  cont_i_p = 0.0;  // positive m2
 
-// Try optimising for the case that m1 = m2 
-if(m1 == m2 && VP125nspec == VQ125nspec){ 
-  // In this case we are going to load the same vectors twice 
-  // and the imaginary part will be zero, so we can avoid the atomic adds
-  int myind_1  =  imode*6*maxtl1*125*nspec + VP125nspec*maxtl1 + m1*125*nspec  + ispec;
+  int myind_1   =  imode*6*maxtl1*125*nspec + VP125nspec*maxtl1 + row*125*nspec  + ispec;
+  int myind_2   =  imode*6*maxtl1*125*nspec + VQ125nspec*maxtl1 + col*125*nspec  + ispec;
+  int startcxyz = (VP125nspec*6)+  VQ125nspec + ispec ;
 
-  //int startcxyz = (VP*(nspec*125)*6)+  (VP*nspec*125) + ispec ;
-  // so simplifies to 
-  int startcxyz = (VP125nspec*7) + ispec ;
 
   for (int igll = igllstart; igll < igllend; ++igll){
-    // NOTE: We pre-multiply all the strains by wglljac**0.5 so that 
-    // each of the terms ends up having * wglljac included
-    // without us having to load it from memory
+    // m1 <= 0 
+    float4  real_1     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_1 + (igll * nspec)]));
+    float4  imag_1     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_1 + (igll * nspec)]));
 
-    float4 real_1  = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_1 + (igll * nspec)]));
-    float4 imag_1  = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_1 + (igll * nspec)]));
-    float4 cxyz    = __ldg(reinterpret_cast<const float4*>(&d_Cxyz[startcxyz  + (igll*nspec)]));
+    // m2 >= 0 
+    float4  real_2     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_2 + (igll * nspec)]));
+    float4  imag_2     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_2 + (igll * nspec)]));
+    float4  cxyz       = __ldg(reinterpret_cast<const float4*>(&d_Cxyz[startcxyz  + (igll*nspec)]));
 
-    cont_r += (real_1.x * real_1.x  + imag_1.x * imag_1.x) * cxyz.x +
-              (real_1.y * real_1.y  + imag_1.y * imag_1.y) * cxyz.y +
-              (real_1.z * real_1.z  + imag_1.z * imag_1.z) * cxyz.z +
-              (real_1.w * real_1.w  + imag_1.w * imag_1.w) * cxyz.w;  
-  } 
 
+    // Case for upper right corner -- m1 <= 0 and m2 >= 0
+    cont_r_m  +=  (real_1.x * real_2.x  + imag_1.x * imag_2.x) * cxyz.x +
+                  (real_1.y * real_2.y  + imag_1.y * imag_2.y) * cxyz.y +
+                  (real_1.z * real_2.z  + imag_1.z * imag_2.z) * cxyz.z +  
+                  (real_1.w * real_2.w  + imag_1.w * imag_2.w) * cxyz.w;  
+
+    cont_i_m  +=  (real_1.x * imag_2.x  - real_2.x * imag_1.x) * cxyz.x +
+                  (real_1.y * imag_2.y  - real_2.y * imag_1.y) * cxyz.y +
+                  (real_1.z * imag_2.z  - real_2.z * imag_1.z) * cxyz.z +
+                  (real_1.w * imag_2.w  - real_2.w * imag_1.w) * cxyz.w;
+
+
+  // Now we can use the fact that 
+  // E_{-m} = (-1)**m E_m conjugate 
+  // We can therefore compute the equivalent for m1 > 0 as well
+
+      cont_r_p +=  (real_1.x * real_2.x  - imag_1.x * imag_2.x) * cxyz.x +
+                  (real_1.y * real_2.y  - imag_1.y * imag_2.y) * cxyz.y +
+                  (real_1.z * real_2.z  - imag_1.z * imag_2.z) * cxyz.z +  
+                  (real_1.w * real_2.w  - imag_1.w * imag_2.w) * cxyz.w;  
+
+      cont_i_p +=  (real_1.x * imag_2.x  + real_2.x * imag_1.x) * cxyz.x +
+                  (real_1.y * imag_2.y  + real_2.y * imag_1.y) * cxyz.y +
+                  (real_1.z * imag_2.z  + real_2.z * imag_1.z) * cxyz.z +
+                  (real_1.w * imag_2.w  + real_2.w * imag_1.w) * cxyz.w;
+
+  } // loop gll  
+
+
+  if(m1%2!=0){
+    cont_r_p = cont_r_p * -1.0;
+    cont_i_p = cont_i_p * -1.0;
+  }
 
   // ADD TO THE GLOBAL MATRIX USING A 2-STEP REDUCTIOn 
   // It needs to be this way around because for the final block_x 
   // there are (probably) not 32 elements left 
   int tid = (threadIdx.x * ngll_in_block) + threadIdx.y;  
 
-  scont_r[tid] = cont_r * occurrences_float;
-  __syncthreads();
+  scont_r_m[tid] = cont_r_m * occurrences_float;
+  scont_i_m[tid] = cont_i_m * occurrences_float;
 
-  if (nloc_el < nelem_in_block){ 
-
-    if (tid == 0) {
-      for (int i = 1; i < ngll_in_block*nloc_el/elemperthread; ++i){
-        scont_r[0] += scont_r[i] ;
-      } 
-      atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
-    }
-  } else  {
-    // Perform parallel reduction in shared memory
-    // 16 comes from the 32 threads in threadx dim, strided by 2
-    for (int stride = ngll_in_block * 16; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-          scont_r[tid] += scont_r[tid + stride];
-      }
-      __syncthreads();
-    }
-    if (tid == 0) {
-        atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
-    }
-  } // nloc_el < nelem_in_block
-
-}else{
-
-  int myind_1  =  imode*6*maxtl1*125*nspec + VP125nspec*maxtl1 + m1*125*nspec  + ispec;
-  int myind_2  =  imode*6*maxtl1*125*nspec + VQ125nspec*maxtl1 + m2*125*nspec  + ispec;
-
-  int startcxyz = (VP125nspec*6)+  VQ125nspec + ispec ;
+  scont_r_p[tid] = cont_r_p * occurrences_float;
+  scont_i_p[tid] = cont_i_p * occurrences_float;
   
-
-for (int igll = igllstart; igll < igllend; ++igll){
-  float4  real_1     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_1 + (igll * nspec)]));
-  float4  real_2     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_r[myind_2 + (igll * nspec)]));
-  float4  imag_1     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_1 + (igll * nspec)]));
-  float4  imag_2     = __ldg(reinterpret_cast<const float4*>(&d_allstrain_i[myind_2 + (igll * nspec)]));
-  float4  cxyz       = __ldg(reinterpret_cast<const float4*>(&d_Cxyz[startcxyz  + (igll*nspec)]));
-
-
-  cont_r +=  (real_1.x * real_2.x  + imag_1.x * imag_2.x) * cxyz.x +
-             (real_1.y * real_2.y  + imag_1.y * imag_2.y) * cxyz.y +
-             (real_1.z * real_2.z  + imag_1.z * imag_2.z) * cxyz.z +  
-             (real_1.w * real_2.w  + imag_1.w * imag_2.w) * cxyz.w;  
-
-  cont_i +=  (real_1.x * imag_2.x  - real_2.x * imag_1.x) * cxyz.x +
-             (real_1.y * imag_2.y  - real_2.y * imag_1.y) * cxyz.y +
-             (real_1.z * imag_2.z  - real_2.z * imag_1.z) * cxyz.z +
-             (real_1.w * imag_2.w  - real_2.w * imag_1.w) * cxyz.w;
-} 
-
-
-  // ADD TO THE GLOBAL MATRIX USING A 2-STEP REDUCTIOn 
-  // It needs to be this way around because for the final block_x 
-  // there are (probably) not 32 elements left 
-  int tid = (threadIdx.x * ngll_in_block) + threadIdx.y;  
-
-  scont_r[tid] = cont_r * occurrences_float;
-  scont_i[tid] = cont_i * occurrences_float;
   __syncthreads();
 
   if (nloc_el < nelem_in_block){ 
     if (tid == 0) {
       for (int i = 1; i < ngll_in_block*nloc_el/elemperthread; ++i){
-        scont_r[0] += scont_r[i] ;
-        scont_i[0] += scont_i[i] ;
+        scont_r_m[0] += scont_r_m[i] ;
+        scont_i_m[0] += scont_i_m[i] ;
+
+        scont_r_p[0] += scont_r_p[i] ;
+        scont_i_p[0] += scont_i_p[i] ;
+
       } 
-      atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
-      atomicAdd(&d_vani_imag[maxnn1 * imode + utripos], scont_i[0]);
+
+      // Add value in neg m1, pos m2
+      atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r_m[0]);
+      atomicAdd(&d_vani_imag[maxnn1 * imode + utripos], scont_i_m[0]);
+
+      // Add reflected value in positive m1, m2
+      atomicAdd(&d_vani_real[maxnn1 * imode + ltripos], scont_r_p[0]);
+      atomicAdd(&d_vani_imag[maxnn1 * imode + ltripos], scont_i_p[0]);
+
     }
   } else  {
     // Perform parallel reduction in shared memory
     for (int stride = ngll_in_block * 16; stride > 0; stride >>= 1) {
       if (tid < stride) {
-          scont_r[tid] += scont_r[tid + stride];
-          scont_i[tid] += scont_i[tid + stride];
+          scont_r_m[tid] += scont_r_m[tid + stride];
+          scont_i_m[tid] += scont_i_m[tid + stride];
+
+          scont_r_p[tid] += scont_r_p[tid + stride];
+          scont_i_p[tid] += scont_i_p[tid + stride];
+
+
       }
-      
       __syncthreads();
     }
+
     if (tid == 0) {
-        atomicAdd(&d_vani_real[maxnn1 * imode + utripos], scont_r[0]);
-        atomicAdd(&d_vani_imag[maxnn1 * imode + utripos], scont_i[0]);
+        int gidx1 = (maxnn1 * imode + utripos);
+
+        atomicAdd(&d_vani_real[gidx1], scont_r_m[0]);
+        atomicAdd(&d_vani_imag[gidx1], scont_i_m[0]);
+    
+    
+      if(col -lval >= lval - row && row < lval && col > lval){
+        
+        int gidx2 = (maxnn1 * imode + ltripos);
+
+        atomicAdd(&d_vani_real[gidx2], scont_r_p[0]);
+        atomicAdd(&d_vani_imag[gidx2], scont_i_p[0]);
+      }
+
     }
   } // nloc_el < nelem_in_block
-} // if p = q and m1 == m2
-}
 
+
+}
 
 
 
@@ -423,7 +451,7 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
     int ngll_in_block         = 4;
     int nblocks_for_all_elems = ceil(float(nspec)/float(nelem_in_block)) ;
     int ngll_per_loop         = ceil(125.0/float(ngll_in_block));
-    size_t sharedMemSize = 2 * sizeof(CPPCUSTOM_REAL) * ngll_in_block * 32;
+    size_t sharedMemSize      = 4 * sizeof(CPPCUSTOM_REAL) * ngll_in_block * 32;
 
 
     cudaStreamCreate(&Vanistream);
@@ -435,6 +463,8 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
           &d_Cxyz, &d_vani_real, &d_vani_imag
       };
 
+    //printf(" Launching: %i x %i x %i blocks \n", nblocks_for_all_elems, nn1_total, 36);
+
     // Prepare kernel launch parameters
     kernelParams.func           = (void*)vanikernel_allstrains_allmodes;
     kernelParams.gridDim        = dim3(nblocks_for_all_elems, nn1_total, 36);
@@ -443,8 +473,6 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
     kernelParams.kernelParams   = kernelArgs;
 
     //printf("Launch params: (%i %i %i ) x (%i %i %i )", nblocks_for_all_elems, nn1_total, 81, 32, ngll_in_block, 1 );
-
-
 
     // Add the kernel launch to the graph
     cudaGraphAddKernelNode(&VanikernelNode, Vanigraph, nullptr, 0, &kernelParams);
@@ -455,6 +483,7 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
     graphConstructed = true;  // Set the flag to true once the graph is constructed
   } 
 
+  cudaEventRecord(startEvent, Vanistream);
 
   // Reset d_vani_real and d_vani_imag to zero before the kernel launch
   // I tried adding this to the graph but hit a brick wall...
@@ -464,7 +493,6 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
   // Synchronize to ensure memory is cleared before launching the graph
   cudaStreamSynchronize(Vanistream);
 
-  cudaEventRecord(startEvent, Vanistream);
 
   cudaGraphLaunch(VanigraphExec, Vanistream);
 
@@ -739,6 +767,8 @@ extern "C" {
   cudaError_t ierr;
   CPPCUSTOM_REAL  A, C, L, N, F;
 
+  // Timing: 
+
   ngll_per_warp       = 32;
   ngllwarps_per_block = ceil(float(ngll*ngll*ngll)/float(ngll_per_warp)); 
 
@@ -748,11 +778,15 @@ extern "C" {
   N = modelv[3];
   F = modelv[4];
 
+
+
   project_eta_to_gll<<<dim3(nspec, 1, 1), 
                        dim3(ngll_per_warp, ngllwarps_per_block, 1)>>>
                        (model_npoints, ngll, nspec, d_xcoord, d_ycoord, d_zcoord, d_m3d, 
                        A, C, L, N, F,
                        d_Cxyz);
+
+
 
   cudaDeviceSynchronize();
   ierr = cudaGetLastError();

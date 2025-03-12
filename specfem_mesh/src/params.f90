@@ -7,19 +7,25 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose       = 0
+integer, parameter :: verbose       = 5
 logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
 
-integer, parameter :: nprocs       = 16
-integer, parameter :: nmodes       = 33
+integer, parameter :: nprocs        = 4
+integer, parameter :: nmodes        = 1!27
+ 
+! Optimisation stuff: 
+integer, parameter :: compute_cst_smax  = 6
+integer, parameter :: max_tl1           = 17 
+integer, parameter :: MaxBrettModelPts  = 100 
 
-integer, parameter :: max_tl1      = 21 !15 for small iterate
+character(len=3)   :: timingNEX = '160'
+
 
 ! Specfem mesh files: 
-!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX112/sliced/'
+character(len=250) :: datadir   = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX160/sliced/linear/sets4/'
 !character(len=250)  :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
-character(len=250)  :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
+!character(len=250)  :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
 !character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/whole_earth/'
 !character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
 
@@ -48,7 +54,11 @@ complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 ! Matrices: 
 complex(kind=SPLINE_REAL), allocatable :: Wmat(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vani(:,:)
+complex(kind=4), allocatable :: VaniAllModes_4(:,:,:)
+complex(kind=8), allocatable :: VaniAllModes_8(:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vcen(:,:)
+complex(kind=SPLINE_REAL), allocatable :: Vell(:,:)
+complex(kind=SPLINE_REAL), allocatable :: Tell(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Tmat(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Viso(:,:)
 
@@ -58,9 +68,6 @@ real(kind=CUSTOM_REAL), allocatable    :: eta2(:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: glob_eta1(:)
 real(kind=CUSTOM_REAL), allocatable    :: glob_eta2(:)
 
-! Optimisation stuff: 
-
-
 ! Perturbed elastic tensor in xyz at each GLL (6 x 6) voigt notation
 real(kind=SPLINE_REAL), allocatable    :: Cxyz(:,:,:,:,:,:)
 real(kind=CUSTOM_REAL), allocatable    :: Arad(:), Crad(:), Lrad(:), & 
@@ -68,9 +75,11 @@ real(kind=CUSTOM_REAL), allocatable    :: Arad(:), Crad(:), Lrad(:), &
 
 ! Spline arrays: 
 real(kind=SPLINE_REAL), allocatable :: rho_spl(:),  &  
-                                       g_spl(:),  &  
+                                       g_spl(:),    &  
                                        vp_spl(:),   & 
-                                       A0(:)
+                                       A0(:),       &
+                                       mu_spl(:),   & 
+                                       kappa_spl(:)
 
 
 

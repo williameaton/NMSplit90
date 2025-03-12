@@ -113,74 +113,18 @@ contains
         s11 = s1*s1
         s22 = s2*s2
         ! -------------- Manual bond matrix:  --------------
-        ! Q(1,1) = c11 * c22 
-        ! Q(2,1) = s11 * c22 
-        ! Q(3,1) = s22
-        ! Q(4,1) = -s1 * s2 * c2
-        ! Q(5,1) = -c1 * c2 * s2
-        ! Q(6,1) = c1 * c22 * s1 
-
-        ! Q(1,2) = s11
-        ! Q(2,2) = c11 
-        ! Q(3,2) = zero
-        ! Q(4,2) = zero
-        ! Q(5,2) = zero
-        ! Q(6,2) = -s1 * c1
-
-        ! Q(1,3) = s22 * c11
-        ! Q(2,3) = s11 * s22
-        ! Q(3,3) = c22 
-        ! Q(4,3) = s1*s2*c2
-        ! Q(5,3) = c1*c2*s2
-        ! Q(6,3) = s1*s22*c1
-
-        ! Q(1,4) = -two * s1 * s2 * c1
-        ! Q(2,4) = two * s1 * s2 * c1 
-        ! Q(3,4) = zero 
-        ! Q(4,4) = c1*c2 
-        ! Q(5,4) = -s1*c2
-        ! Q(6,4) = -s2*(c11 + s11*c2)
-
-        ! Q(1,5) = two * c11 * s2 * c2
-        ! Q(2,5) = two * s11 * c2 * s2
-        ! Q(3,5) = - two * s2 * c2
-        ! Q(4,5) = s1 * (c22 - s22)
-        ! Q(5,5) = c1 * (c22 - s22)
-        ! Q(6,5) = two * c1 * c2 * s1 * s2
-
-        ! Q(1,6) = - two * c1 * c2 * s1
-        ! Q(2,6) =   two * s1 * c1 * c2
-        ! Q(3,6) =  zero 
-        ! Q(4,6) = - c1 * s2
-        ! Q(5,6) = s1 * s2
-        ! Q(6,6) = c2*(c11 - s11)
-
-        
-        ! ! Eqn 5 of Brett 2024
-        r11 = c1 * c2 
-        r12 = - s1
-        r13 = c1*s2
-        
-        r21 = s1*c2
-        r22 = c1
-        r23 = s1*s2 
-
-        r31 = -s2
-        r32 = zero
-        r33 = c2
-
         ! Eqn 8 of Brett 2024
-        ! r11 = c1 * c2 
-        ! r12 = s1 * c2
-        ! r13 = -s2 
-        
-        ! r21 = -s1 
-        ! r22 = c1 
-        ! r23 = zero 
+        r11 = c1 * c2 ;
+        r12 = -s1;
+        r13 = s2*c1; 
 
-        ! r31 = c1*s2
-        ! r32 = s1*s2
-        ! r33 = c2
+        r21 = s1*c2 ;
+        r22 = c1 ;
+        r23 = s1*s2 ;
+
+        r31 = -s2;
+        r32 = zero;
+        r33 = c2;
 
 
         Q(1,1) = r11 * r11 
@@ -266,6 +210,47 @@ contains
 
 
 
+
+    subroutine compute_Cxyz_at_gll_generalVTI(sm, Aspl, Cspl, Lspl, Nspl, Fspl, n1, n2)
+        ! For a VTI model -- dont need to rotate the model 
+        use params, only: Cxyz
+        use allocation_module, only: deallocate_if_allocated
+        implicit none 
+        include "constants.h"
+
+        type(SetMesh) :: sm 
+        real(kind=CUSTOM_REAL), dimension(sm%nglob) :: Aspl, Cspl, Lspl, Nspl, Fspl
+        real(kind=CUSTOM_REAL) :: M(6,6), Cnat(6,6)
+        real(kind=CUSTOM_REAL) :: n1, n2
+        integer :: i, j, k, ispec, r_id, ib
+
+        call deallocate_if_allocated(Cxyz)
+        allocate(Cxyz(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 6, 6))
+
+        ! Compute rotation matrix per GLL in xyz
+        do ispec = 1, sm%nspec 
+            do i = 1, sm%ngllx
+                do j = 1, sm%nglly 
+                    do k = 1, sm%ngllz 
+
+                        ! Get C matrix in natural orientation for this gll
+                        ib = sm%ibool(i,j,k,ispec)
+                        call setup_Cnatural(Cnat, Aspl(ib), Cspl(ib), Lspl(ib), &
+                                             Nspl(ib), Fspl(ib))
+
+                        call compute_bond_matrix_explicit(n1, n2, M)
+                        Cxyz(i,j,k,ispec,:,:) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
+                    enddo
+                enddo
+            enddo   
+        enddo
+    end subroutine compute_Cxyz_at_gll_generalVTI
+
+
+
+
+
+
     subroutine compute_Cxyz_at_gll_radialACLNF(sm, nlenspl, Aspl, Cspl, Lspl, Nspl, Fspl, n1, n2)
         ! Nlen is the length of the array of unique A,C,L,N,F values
         ! probably = unique_r
@@ -342,10 +327,10 @@ contains
         endif 
 
         ! Compute rotation matrix per GLL in xyz
-        do ispec = 1,  sm%nspec 
-            do i = 1,  sm%ngllx
-                do j = 1,  sm%nglly 
-                    do k = 1,  sm%ngllz 
+        do ispec = 1, sm%nspec 
+            do i = 1, sm%ngllx
+                do j = 1, sm%nglly 
+                    do k = 1, sm%ngllz 
 
                         if(perturbation_on_PREM)then
                             call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)                            
@@ -361,7 +346,6 @@ contains
                 enddo
             enddo   
         enddo
-
     end subroutine compute_Cxyz_at_gll_constantACLNF
 
 

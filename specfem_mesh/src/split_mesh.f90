@@ -1,10 +1,7 @@
 program split_mesh
-    use params, only: nglob, nspec, ngllx, nglly, ngllz, rstore, nspec, & 
-                      ibool, x_glob, y_glob, z_glob, xstore, ystore, zstore, & 
-                      thetastore, datadir, verbose, nprocs
+    use params, only: datadir, verbose, nprocs
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
-    use mesh_utils, only: compute_rtp_from_xyz, map_local_global_double_precision,& 
-                          load_ibool, read_proc_coordinates
+    use specfem_mesh, only: SetMesh, create_setmesh
     implicit none 
     include "constants.h"
     
@@ -21,38 +18,42 @@ program split_mesh
     integer, allocatable :: ibool_map(:), ibool_new(:,:,:,:)
 
 
+    type(SetMesh) :: sm 
+
+
     ! Setup parameters: 
     region = 3      ! Inner core
-    
     tolerance = 1.0e-9 ! Tolerance for matching elements 
 
     ! Loop through all processors
     do iproc = 0, nprocs -1 
 
+        sm = create_setmesh(iproc, region)
+
         ! Get mesh for this processor
-        call read_proc_coordinates(iproc, region)
-        call load_ibool(iproc, region)
-        call compute_rtp_from_xyz(iproc, .false.)
+        call sm%read_proc_coordinates()
+        call sm%load_ibool()
+        call sm%compute_rtp_from_xyz(.false.)
 
         if(iproc.eq.0)then 
             ! if on first processor
             ! get the element sum for the initial node
             ! hopefully this is unique for each element in the mesh
             ! to within the tolerance defined
-            allocate(meshtag(nprocs, nspec))
-            allocate(elmtsum(nspec))
-            allocate(tag_global(nglob))
+            allocate(meshtag(nprocs, sm%nspec))
+            allocate(elmtsum(sm%nspec))
+            allocate(tag_global(sm%nglob))
 
             meshtag = zero
             elmtsum = zero
             ! Loop through the elements 
-            do ispec = 1, nspec 
-                do i = 1, ngllx
-                    do j = 1, nglly 
-                        do k = 1, ngllz 
+            do ispec = 1, sm%nspec 
+                do i = 1, sm%ngllx
+                    do j = 1, sm%nglly 
+                        do k = 1, sm%ngllz 
                             elmtsum(ispec) = elmtsum(ispec) + & 
-                                             xstore(i,j,k,ispec) + ystore(i,j,k,ispec) + zstore(i,j,k,ispec)& 
-                                           + rstore(i,j,k,ispec) + thetastore(i,j,k,ispec)/PI
+                                             sm%xstore(i,j,k,ispec) + sm%ystore(i,j,k,ispec) + sm%zstore(i,j,k,ispec)& 
+                                           + sm%rstore(i,j,k,ispec) + sm%thetastore(i,j,k,ispec)/PI
                         enddo 
                     enddo 
                 enddo 
@@ -62,22 +63,22 @@ program split_mesh
             ! For the other processors: 
 
             ! Get mesh for this processor
-            call read_proc_coordinates(iproc, region)
-            call load_ibool(iproc, region)
-            call compute_rtp_from_xyz(iproc, .false.)
+            call sm%read_proc_coordinates()
+            call sm%load_ibool()
+            call sm%compute_rtp_from_xyz(.false.)
 
             ! Now we have the original elmtsum we can see if it is present in another processor
             ! I.e. does the sum in an element on this proc match a sum on the main proc (0)
-            do ispec = 1, nspec 
+            do ispec = 1, sm%nspec 
 
                 ! Compute element sum for element on this processor
                 eproc = zero
-                do i = 1, ngllx
-                    do j = 1, nglly 
-                        do k = 1, ngllz 
+                do i = 1, sm%ngllx
+                    do j = 1, sm%nglly 
+                        do k = 1, sm%ngllz 
                             eproc = eproc + & 
-                            xstore(i,j,k,ispec) + ystore(i,j,k,ispec) + zstore(i,j,k,ispec) & 
-                            + rstore(i,j,k,ispec) + thetastore(i,j,k,ispec)/PI
+                            sm%xstore(i,j,k,ispec) + sm%ystore(i,j,k,ispec) + sm%zstore(i,j,k,ispec) & 
+                            + sm%rstore(i,j,k,ispec) + sm%thetastore(i,j,k,ispec)/PI
                         enddo 
                     enddo 
                 enddo 
@@ -85,7 +86,7 @@ program split_mesh
                 ! Now we need to search for this element sum in the original array 
                 ! Loop over each element in main proc (0) and see if the sum
                 ! matches the one on this processor
-                do iii = 1, nspec
+                do iii = 1, sm%nspec
                     if ( abs(eproc-elmtsum(iii)) .lt. tolerance) then 
                         ! Elements are shared on these procs -- inner cube
                         ! Tag this element on both
@@ -105,8 +106,8 @@ program split_mesh
             !  has dimensions of the original ibool array and stores the
             !  new ibool value in the same location that ibool stores
             !  the old ibool id 
-            call allocate_if_unallocated(nglob, ibool_map)
-            call allocate_if_unallocated(nspec, tag)
+            call allocate_if_unallocated(sm%nglob, ibool_map)
+            call allocate_if_unallocated(sm%nspec, tag)
             ibool_map = 0 
             tag = 0
 
@@ -115,19 +116,19 @@ program split_mesh
 
             ! The 1's in tag are the elements we DONT want so subtract this many
             ! from the original nspec
-            nspec_new = nspec - int(sum(tag))
+            nspec_new = sm%nspec - int(sum(tag))
 
             if (verbose.ge.2)then
-                write(*,*)'Original nspec  ', nspec
+                write(*,*)'Original nspec  ', sm%nspec
                 write(*,*)'Shared elements ', int(sum(tag))
                 write(*,*)'Updated nspec   ', nspec_new
             endif
 
             ! allocate the new arrays 
-            call allocate_if_unallocated(ngllx, nglly, ngllz, nspec_new,  ibool_new)
-            call allocate_if_unallocated(ngllx, nglly, ngllz, nspec_new,  xcoord_new)
-            call allocate_if_unallocated(ngllx, nglly, ngllz, nspec_new,  ycoord_new)
-            call allocate_if_unallocated(ngllx, nglly, ngllz, nspec_new,  zcoord_new)
+            call allocate_if_unallocated(sm%ngllx, sm%nglly, sm%ngllz, nspec_new,  ibool_new)
+            call allocate_if_unallocated(sm%ngllx, sm%nglly, sm%ngllz, nspec_new,  xcoord_new)
+            call allocate_if_unallocated(sm%ngllx, sm%nglly, sm%ngllz, nspec_new,  ycoord_new)
+            call allocate_if_unallocated(sm%ngllx, sm%nglly, sm%ngllz, nspec_new,  zcoord_new)
             ibool_new = 0
 
             ! This will keep track of the new ibool IDs
@@ -136,14 +137,14 @@ program split_mesh
             i_newspec = 1
 
             ! Loop over all elements in this processor's mesh
-            do ispec = 1, nspec
+            do ispec = 1, sm%nspec
                 if(tag(ispec).eq.0)then 
                     ! Element not shared with main proc: keep it! 
-                    do i = 1, ngllx
-                        do j = 1, nglly
-                            do k = 1, ngllz
+                    do i = 1, sm%ngllx
+                        do j = 1, sm%nglly
+                            do k = 1, sm%ngllz
                                 ! get original ibool 
-                                ib_orig = ibool(i,j,k,ispec)
+                                ib_orig = sm%ibool(i,j,k,ispec)
 
                                 ! Set the ibool map or retrieve id if already
                                 ! present
@@ -165,9 +166,9 @@ program split_mesh
                                 ibool_new(i, j, k, i_newspec) = this_nodes_id
 
                                 ! Copy over the relevant coordinates
-                                xcoord_new(i,j,k,i_newspec) = xstore(i,j,k,ispec)
-                                ycoord_new(i,j,k,i_newspec) = ystore(i,j,k,ispec)
-                                zcoord_new(i,j,k,i_newspec) = zstore(i,j,k,ispec)
+                                xcoord_new(i,j,k,i_newspec) = sm%xstore(i,j,k,ispec)
+                                ycoord_new(i,j,k,i_newspec) = sm%ystore(i,j,k,ispec)
+                                zcoord_new(i,j,k,i_newspec) = sm%zstore(i,j,k,ispec)
                             enddo 
                         enddo 
                     enddo 
@@ -207,9 +208,9 @@ program split_mesh
             status='unknown',form='unformatted',action='write')
             write(IOUT) maxval(ibool_new) ! new nglob
             write(IOUT) nspec_new
-            write(IOUT) NGLLX
-            write(IOUT) NGLLY
-            write(IOUT) NGLLZ
+            write(IOUT) sm%NGLLX
+            write(IOUT) sm%NGLLY
+            write(IOUT) sm%NGLLZ
             close(IOUT)
 
             ! Clean up for this processor just in case each proc has

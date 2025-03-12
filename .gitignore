@@ -24,6 +24,7 @@ specfem_mesh/plot_modes/modes/*.txt
 databases/*
 databases/*
 get_mode/*
+profiling/*
 
 specfem_mesh/3D_MODELS/voronoi/MCMC_models/*
 specfem_mesh/3D_MODELS/voronoi/*instances*
@@ -59,6 +60,9 @@ specfem_mesh/tests/*/*/*.txt
 specfem_mesh/tests/*.pdf
 specfem_mesh/tests/spline/*.pdf
 specfem_mesh/tests/v_ani_matrix/*.pdf
+specfem_mesh/tests/Tmat/rho_st_profiles*
+specfem_mesh/tests/Viso/kap_st_profiles*
+specfem_mesh/tests/amplitude/eigens*
 
 # Executables: 
 integrate_mesh

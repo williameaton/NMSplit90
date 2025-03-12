@@ -222,7 +222,7 @@ module model3d
         class(M3D) :: self
 
         character(len=350) :: trash
-        integer :: i, ios
+        integer :: i, ios, ierr
         character(len=20) :: fmtstr
 
         real(kind=SPLINE_REAL) :: t1, t2
@@ -254,14 +254,19 @@ module model3d
         ! if so then all fine. if less than 0 then throw error
         !
         if (self%nspat.gt.0) then 
-            allocate(self%idspats(self%nspat))
+            allocate(self%idspats(self%nspat), stat=ierr)
+            if(ierr.ne.0)then 
+                write(*,*)'ERROR allocating self%idspats on ', myrank
+            endif 
             do i = 1, self%nspat
                 read(1,*)self%idspats(i)
             enddo 
             self%exists_spat = .true.
 
-            allocate(self%valspats(self%npts, self%nspat))
-
+            allocate(self%valspats(self%npts, self%nspat), stat=ierr)
+            if(ierr.ne.0)then 
+                write(*,*)'ERROR allocating self%valspats on ', myrank
+            endif 
         elseif(self%nspat.eq.0) then 
             ! No spatially-varying variables: 
             self%exists_spat = .false.
@@ -274,8 +279,16 @@ module model3d
         ! Same for variables that are constant but also load their values: 
         read(1, *)self%nconst
         if(self%nconst.gt.0)then 
-            allocate(self%idconsts(self%nconst))
-            allocate(self%valconsts(self%nconst))
+            allocate(self%idconsts(self%nconst), stat=ierr)
+            if(ierr.ne.0)then 
+                write(*,*)'ERROR allocating self%idconsts on ', myrank
+            endif 
+            
+            allocate(self%valconsts(self%nconst), stat=ierr)
+            if(ierr.ne.0)then 
+                write(*,*)'ERROR allocating self%valconsts on ', myrank
+            endif 
+
             do i = 1, self%nconst
                 read(1,*)self%idconsts(i), self%valconsts(i)
             enddo 
@@ -309,11 +322,19 @@ module model3d
 
 
 
-
         ! Allocate memory for the x, y, z and spatially varying materials: 
-        allocate(self%xcoord(self%npts))
-        allocate(self%ycoord(self%npts))
-        allocate(self%zcoord(self%npts))
+        allocate(self%xcoord(self%npts), stat=ierr)
+        if(ierr.ne.0)then 
+            write(*,*)'ERROR allocating self%xcoord on ', myrank
+        endif 
+        allocate(self%ycoord(self%npts), stat=ierr)
+        if(ierr.ne.0)then 
+            write(*,*)'ERROR allocating self%ycoord on ', myrank
+        endif 
+        allocate(self%zcoord(self%npts), stat=ierr)
+        if(ierr.ne.0)then 
+            write(*,*)'ERROR allocating self%zcoord on ', myrank
+        endif 
 
         ! Read in each of the coordinates and it associated values:
 
@@ -340,16 +361,6 @@ module model3d
         close(1)
 
     end subroutine read_model_from_file
-
-
-
-
-
-
-
-
-
-
 
 
     subroutine create_KDtree(self)

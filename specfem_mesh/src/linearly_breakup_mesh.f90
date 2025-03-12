@@ -31,10 +31,13 @@ type(SetMesh) :: sm
 
 ! Setup parameters: 
 region        = 3      ! Inner core
-nprocs_before = 1      ! Current setup 
-nsets         = 8      ! new setup 
+nprocs_before = 6     ! Current setup 
+nsets         = 1      ! new setup 
 
 ntot_elem = 0 
+
+
+
 
 ! Count the total number of elements
 do iproc = 0, nprocs_before - 1 
@@ -48,6 +51,14 @@ enddo
 ! TODO: Could be more flexible to cases without absolutley perfect division
 if(mod(ntot_elem,nsets).ne.0)then 
     write(*,*)'Error: total number of elements is not divisible by nsets'
+    write(*,*)'Total number of elements: ', ntot_elem
+    write(*,*)'Requested sets: ',nsets
+    do i = 1, nsets-1
+        if (mod(ntot_elem,i).eq.0)then 
+            write(*,*)'Nets = : ',i
+        endif 
+    enddo 
+
     stop 
 endif 
 
@@ -161,7 +172,7 @@ do while (iset.lt.nsets) ! is this the correct finish?
                 if (count.gt.0)  nibool = nibool + 1
             enddo !iib
         enddo !iiproc
-        write(*,*,advance='yes')' done'
+        !write(*,*,'yes')' done'
 
 
         ! Write out to disc

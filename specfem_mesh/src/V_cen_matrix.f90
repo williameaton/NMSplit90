@@ -178,3 +178,70 @@ subroutine save_Vcen_matrix(l1, l2, fname)
     close(1)
 
 end subroutine save_Vcen_matrix
+
+
+subroutine save_Vell_matrix(l1, l2, fname)
+    use params, only: Vell
+    implicit none 
+    include "constants.h"
+    character(len=*) :: fname
+    integer :: l1, l2
+    integer :: col, row
+
+    open(1,file=trim(fname))
+    ! Write the real matrix 
+    do row =1, 2*l1 + 1
+        do col = 1, 2*l2 + 1
+            if (col .lt. 2*l2+1)then 
+            write(1,'(E15.6)', advance='no')real(Vell(row,col))
+            else 
+                write(1,'(E15.6)', advance='yes')real(Vell(row,col))
+            endif
+        enddo 
+    enddo 
+    do row =1, 2*l1 + 1
+        do col = 1, 2*l2 + 1
+            if (col .lt. 2*l2+1)then 
+            write(1,'(E15.6)', advance='no')aimag(Vell(row,col))
+            else 
+                write(1,'(E15.6)', advance='yes')aimag(Vell(row,col))
+            endif
+        enddo 
+    enddo 
+    close(1)
+
+end subroutine save_Vell_matrix
+
+
+
+subroutine save_Tell_matrix(l1, l2, fname)
+    use params, only: Tell
+    implicit none 
+    include "constants.h"
+    character(len=*) :: fname
+    integer :: l1, l2
+    integer :: col, row
+
+    open(1,file=trim(fname))
+    ! Write the real matrix 
+    do row =1, 2*l1 + 1
+        do col = 1, 2*l2 + 1
+            if (col .lt. 2*l2+1)then 
+            write(1,'(E15.6)', advance='no')real(Tell(row,col))
+            else 
+                write(1,'(E15.6)', advance='yes')real(Tell(row,col))
+            endif
+        enddo 
+    enddo 
+    do row =1, 2*l1 + 1
+        do col = 1, 2*l2 + 1
+            if (col .lt. 2*l2+1)then 
+            write(1,'(E15.6)', advance='no')aimag(Tell(row,col))
+            else 
+                write(1,'(E15.6)', advance='yes')aimag(Tell(row,col))
+            endif
+        enddo 
+    enddo 
+    close(1)
+
+end subroutine save_Tell_matrix

@@ -54,8 +54,8 @@ program compute_vani_splitting
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin  = .true.
-    logical, parameter :: save_to_bin    = .false.
+    logical, parameter :: load_from_bin  = .false.
+    logical, parameter :: save_to_bin    = .true.
     logical, parameter :: force_VTI      = .false.
     logical, parameter :: tromp93_model  = .false.
 
@@ -65,13 +65,16 @@ program compute_vani_splitting
     !integer, dimension(40), parameter :: modeNs =  (/2, 3, 3, 5, 6, 8, 8, 9, 9, 9, 11, 11, 11, 11, 13, 13, 13, 13, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 20, 20, 21, 21, 21, 22, 23, 23, 25, 25, 27/)
     !integer, dimension(40), parameter :: modeLs =  (/3, 1, 2, 2, 3, 1, 5, 2, 3, 4,  1,  4,  5,  6, 1,  2,  3,  6,   4,  3,  4,  5,  6,  7,  1,  8,  3,  4,  6,  1,  5,  6,  7,  8,  1,  4,  5,  1,  2,  2/)
 
-    ! The 33: 
-    integer, dimension(33), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21,5, 27, 9, 22, 15, 14/)
-    integer, dimension(33), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
 
     ! Added: 
-    !integer, dimension(6), parameter :: modeNs = (/5, 27, 9, 22, 15, 14/)
-    !integer, dimension(6), parameter :: modeLs = (/2,  2, 2,  1,  3,  4/)
+    ! REAL 27: 
+    !integer, dimension(nmodes), parameter :: modeNs = (/21, 27, 9, 7, 22, 27, 5, 2, 13, 8, 9, 18, 16, 13, 3, 11, 18, 23, 13, 6, 21, 23, 11, 3, 8, 5, 3  /)
+    !integer, dimension(nmodes), parameter :: modeLs = (/7,   1, 2, 5,  1,  2, 2, 3,  1, 5, 3,  4,  5,  3, 8,  4,  3,  4,  2, 3,  6,  5,  5, 1, 1, 3, 2  /)
+
+    ! Cross coupled: 
+    !integer, dimension(nmodes), parameter :: modeNs = (/21, 27, 9, 7, 22, 27, 5, 2, 13, 8, 9, 18, 16, 13, 3, 11, 18, 23, 13, 6, 21, 23, 11, 3, 8, 5, 3  /)
+    !integer, dimension(nmodes), parameter :: modeLs = (/7,   1, 2, 5,  1,  2, 2, 3,  1, 5, 3,  4,  5,  3, 8,  4,  3,  4,  2, 3,  6,  5,  5, 1, 1, 3, 2  /)
+
 
 
 #ifdef WITH_MPI
@@ -147,7 +150,8 @@ if(tromp93_model)then
 else
 
     ! Read Hen's model and build K-d tree: 
-     Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+    !  Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+     Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi//MCMC_models/instances/c1_m10900.txt"
     call Model3D%read_model_from_file()
     call Model3D%create_KDtree()
 endif
@@ -173,7 +177,7 @@ endif
 
 
 ! Force the N parameter to be non-zero: 
-vor_N = -0.01d0
+vor_N = -0.00d0
 
 
 if(ONLY_ONE_TASK_PER_SET)then 
@@ -328,7 +332,7 @@ do i_mode = 1, nmodes
         if(force_VTI)then 
             out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'_VTI.txt'
         else 
-            out_name =  './output/N-0.01/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
+            out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
         endif 
         Vani = Vani_modesum
         call save_Vani_matrix(l1, l1, out_name)

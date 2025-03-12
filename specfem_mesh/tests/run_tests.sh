@@ -6,7 +6,7 @@
 
 # -------------------------------------------------------
 # bash test_vani.sh
-bash run_spline.sh --nc --np
+#bash run_spline.sh --nc --np
 bash run_xlm.sh --nc --np
 bash run_plm.sh --nc --np
 bash run_ylm.sh --nc --np
@@ -24,10 +24,11 @@ pytest
 export this_dir=$(pwd)
 
 #source ./v_ani_matrix/cleanup.sh
+#source ./spline/cleanup.sh
+
 source ./plm/cleanup.sh
 source ./xlm/cleanup.sh
 source ./ylm/cleanup.sh
 source ./rot_mat/cleanup.sh
-source ./spline/cleanup.sh
 source ./integration/cleanup.sh
 source ./mode_normalisation/cleanup.sh

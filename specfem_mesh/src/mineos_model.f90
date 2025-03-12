@@ -24,6 +24,9 @@ module mineos_model
         real(kind=CUSTOM_REAL), allocatable :: rad_mineos(:)
         real(kind=CUSTOM_REAL), allocatable :: rho_mineos(:)
         real(kind=CUSTOM_REAL), allocatable :: vp_mineos(:)
+        real(kind=CUSTOM_REAL), allocatable :: vs_mineos(:)
+        real(kind=CUSTOM_REAL), allocatable :: mu_mineos(:)
+        real(kind=CUSTOM_REAL), allocatable :: kappa_mineos(:)
 
         contains 
             procedure :: process_mineos_model
@@ -78,6 +81,7 @@ module mineos_model
         allocate(self%rad_mineos(self%NR))
         allocate(self%rho_mineos(self%NR))
         allocate(self%vp_mineos(self%NR))
+        allocate(self%vs_mineos(self%NR))
 
         ! Warning if not radius 6371 km 
         if (self%RA.ne.SCALE_R .and. verbose.ge.1)then 
@@ -90,7 +94,7 @@ module mineos_model
 
         vsv_prev = 99.99_CUSTOM_REAL
         do i = 1 , self%NR
-            read(iomod,*,iostat=ios)  intjunk, self%radius(i), rho, self%vp_mineos(i), vph, vsv, vsh
+            read(iomod,*,iostat=ios)  intjunk, self%radius(i), rho, self%vp_mineos(i), vph, self%vs_mineos(i), vsh
 
             self%rho_mineos(i) = rho / RHOAV
 
@@ -112,6 +116,7 @@ module mineos_model
 
         ! Non dimensionalise the Vp: 
         self%vp_mineos = self%vp_mineos * (SCALE_T/SCALE_R)
+        self%vs_mineos = self%vs_mineos * (SCALE_T/SCALE_R)
 
         ! Find the discontinuities
         call self%find_disc()

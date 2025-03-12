@@ -2,7 +2,7 @@ program plot_vani_to_ensight
 ! program loads in a Vani matrix (complex) and outputs the splitting functions
     use params, only: Vani, nprocs, nmodes
     use v_ani, only: load_vani_from_file, convert_imag_to_real, save_Vani_real_matrix
-    use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, Hcomplex_to_cst, write_cst_complex_to_file
+    use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, Hcomplex_to_cst_8, write_cst_complex_to_file
     use specfem_mesh,       only: SetMesh, create_SetMesh
     use modes,              only: get_mode, Mode 
     use mineos_model,       only: mineos, mineos_ptr
@@ -27,7 +27,7 @@ program plot_vani_to_ensight
     logical, parameter :: output_to_ensight = .false.
     logical, parameter :: output_to_evengrid = .false.
 
-    logical, parameter :: cross_coupled = .false.
+    logical, parameter :: cross_coupled = .true.
 
 
     ! Modes: 
@@ -39,18 +39,18 @@ program plot_vani_to_ensight
     !integer, dimension(27), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21/)
     !integer, dimension(27), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8/)
 
-    ! integer, dimension(1), parameter :: modeN1s = (/16/)
-    ! integer, dimension(1), parameter :: modeL1s = (/5/)
-
-    ! integer, dimension(1), parameter :: modeN2s = (/17/)
-    ! integer, dimension(1), parameter :: modeL2s = (/4/)
-
-
-    integer, dimension(33), parameter :: modeN1s = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21,5, 27, 9, 22, 15, 14/)
-    integer, dimension(33), parameter :: modeL1s = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
+    integer, dimension(1), parameter :: modeN1s = (/16/)
+    integer, dimension(1), parameter :: modeL1s = (/5/)
 
     integer, dimension(1), parameter :: modeN2s = (/17/)
     integer, dimension(1), parameter :: modeL2s = (/4/)
+
+
+    ! integer, dimension(33), parameter :: modeN1s = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21,5, 27, 9, 22, 15, 14/)
+    ! integer, dimension(33), parameter :: modeL1s = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
+
+    ! integer, dimension(1), parameter :: modeN2s = (/17/)
+    ! integer, dimension(1), parameter :: modeL2s = (/4/)
 
 
     ! Load from file
@@ -105,7 +105,7 @@ do i_mode = 1,  nmodes
 
     call get_Ssum_bounds(l1, l2, smin, smax, num_s, ncols)
     allocate(cst_imag(num_s, ncols))
-    call Hcomplex_to_cst(Vani, l1, l2, cst_imag, ncols, num_s, t1, t2, 1)
+    call Hcomplex_to_cst_8(Vani, l1, l2, cst_imag, ncols, num_s, t1, t2, 1)
 
     if(cross_coupled)then 
         out_name =   'output/cst_'//trim(n1str)//trim(t1)//trim(l1str)//'_'//trim(n2str)//trim(t2)//trim(l2str)//trim(model_ti)//'.txt'

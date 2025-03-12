@@ -6,8 +6,8 @@ program compute_vani_cross
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                      compute_Vani_matrix, compute_vani_matrix_stored, & 
-                     compute_Cxyz_at_gll_radialACLNF
-use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst, write_cst_complex_to_file
+                     compute_Cxyz_at_gll_radialACLNF, compute_Cxyz_at_gll_generalVTI
+use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst_8, write_cst_complex_to_file
 
 #ifdef WITH_CUDA
     use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
@@ -60,7 +60,7 @@ use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst, write_cst_comple
     logical, parameter :: save_to_bin    = .true.
     logical, parameter :: force_VTI      = .false.
     logical, parameter :: tromp93_model  = .false.
-
+    logical, parameter :: benchmark_deuss  = .true.
 
 
     ! Added: 
@@ -69,7 +69,6 @@ use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst, write_cst_comple
 
     integer, dimension(1), parameter :: modeN2s = (/17/)
     integer, dimension(1), parameter :: modeL2s = (/4/)
-
 
 #ifdef WITH_MPI
     call MPI_INIT(ierr)
@@ -126,8 +125,6 @@ use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst, write_cst_comple
 region = 3
 
 
-
-
 #ifdef WITH_MPI
     call mineos%load_mineos_radial_info_MPI()
 #else
@@ -143,8 +140,16 @@ if(tromp93_model)then
     call load_ACLNF_from_files('/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/tromp93/ACLNF', 33)
 else
 
-    ! Read Hen's model and build K-d tree: 
-     Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+    
+
+    ! Cross couple benchmark
+    if(benchmark_deuss)then 
+        Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/DR_benchmark_model_alt2.txt"
+    else 
+        ! Read Hen's model and build K-d tree: 
+        Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+    endif 
+
     call Model3D%read_model_from_file()
     call Model3D%create_KDtree()
 endif
@@ -158,7 +163,7 @@ endif
 
 ! Model values are a % perturbation on PREM so need to divide by 100 
 ! to get actual value
-if(.not.tromp93_model)then
+if(.not.tromp93_model .and. .not.benchmark_deuss)then
     vor_A = Model3D%valconsts(1)/100.0d0
     vor_C = Model3D%valconsts(2)/100.0d0
     vor_L = Model3D%valconsts(3)/100.0d0
@@ -168,15 +173,13 @@ endif
 
 
 
-
-
 if(ONLY_ONE_TASK_PER_SET)then 
     iset = myset_start
     sm = create_SetMesh(iset, region)
 
     call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
 
-    if(.not.tromp93_model)then 
+    if(.not.tromp93_model .and. .not.benchmark_deuss)then 
         allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
         !call project_voroni_to_gll(sm, tree)
         call Model3D%project_to_gll(sm, glob_eta1, id=1)
@@ -187,14 +190,36 @@ if(ONLY_ONE_TASK_PER_SET)then
         endif 
     endif 
 
+    ! Benchmark:
+    if(benchmark_deuss)then 
+        ! These are not splines but we can use the arrays: 
+        allocate(Aspl(sm%nglob))
+        allocate(Cspl(sm%nglob))
+        allocate(Lspl(sm%nglob))
+        allocate(Nspl(sm%nglob))
+        allocate(Fspl(sm%nglob))
+
+        call Model3D%project_to_gll(sm, Aspl, id=1) ! A 
+        call Model3D%project_to_gll(sm, Cspl, id=2) ! C
+        call Model3D%project_to_gll(sm, Lspl, id=3) ! L
+        call Model3D%project_to_gll(sm, Nspl, id=4) ! N
+        call Model3D%project_to_gll(sm, Fspl, id=5) ! N
+    endif 
+
+
     call sm%compute_rotation_matrix()
 
 
     if(tromp93_model)then 
         call compute_Cxyz_at_gll_radialACLNF(sm, sm%interp%n_radial, &
                                              Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
-    else 
+    endif 
 
+    if(benchmark_deuss)then 
+        write(*,*)'DEUSS BENCHMARK...'
+        ! VTI model
+        call compute_Cxyz_at_gll_generalVTI(sm, Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
+    else   
         call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, vor_N, & 
                                             vor_F, glob_eta1, glob_eta2, &
                                             perturbation_on_prem=.true.)
@@ -220,14 +245,13 @@ do i_mode = 1, nmodes
     allocate(Vani(mode_1%tl1, mode_2%tl1))
     Vani = SPLINE_iZERO
 
-
     do iset = myset_start, myset_end
         if(.not.ONLY_ONE_TASK_PER_SET)then
             
             sm = create_SetMesh(iset, region)
             call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
 
-            if(.not.tromp93_model)then
+            if(.not.tromp93_model .and. .not.benchmark_deuss)then
                 allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
                 !call project_voroni_to_gll(sm, tree)
                 call Model3D%project_to_gll(sm, glob_eta1, id=1)
@@ -236,6 +260,22 @@ do i_mode = 1, nmodes
                     glob_eta1 = zero 
                     glob_eta2 = zero
                 endif 
+            endif 
+
+            ! Benchmark:
+            if(benchmark_deuss)then 
+                ! These are not splines but we can use the arrays: 
+                allocate(Aspl(sm%nglob))
+                allocate(Cspl(sm%nglob))
+                allocate(Lspl(sm%nglob))
+                allocate(Nspl(sm%nglob))
+                allocate(Fspl(sm%nglob))
+
+                call Model3D%project_to_gll(sm, Aspl, id=1) ! A 
+                call Model3D%project_to_gll(sm, Cspl, id=2) ! C
+                call Model3D%project_to_gll(sm, Lspl, id=3) ! L
+                call Model3D%project_to_gll(sm, Nspl, id=4) ! N
+                call Model3D%project_to_gll(sm, Fspl, id=5) ! F
             endif 
 
             call sm%compute_rotation_matrix()
@@ -276,14 +316,14 @@ do i_mode = 1, nmodes
 
                 call compute_Cxyz_at_gll_radialACLNF(sm, sm%interp%n_radial, & 
                                                      Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
+            elseif(benchmark_deuss) then
+                call compute_Cxyz_at_gll_generalVTI(sm, Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
             else 
                 call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, & 
                                                        vor_N, vor_F, glob_eta1, glob_eta2, &
                                                        perturbation_on_prem=.true.)
             endif 
-
         endif 
-
 
 
 
@@ -303,7 +343,9 @@ do i_mode = 1, nmodes
         if(.not.ONLY_ONE_TASK_PER_SET)then 
             if(tromp93_model)then 
                 deallocate(Aspl, Cspl, Lspl, Nspl, Fspl, rhospl, vpspl, A0)
-            else
+            elseif(benchmark_deuss)then
+                deallocate(Aspl, Cspl, Lspl, Nspl, Fspl)
+            else 
                 deallocate(glob_eta1, glob_eta2)
             endif 
             call sm%cleanup()
@@ -355,11 +397,10 @@ do i_mode = 1, nmodes
     ! Write as a CST
     call get_Ssum_bounds(l1, l2, smin, smax, num_s, ncols)
     allocate(cst(num_s, ncols))
-    call Hcomplex_to_cst(Vani, l1, l2, cst, ncols, num_s, t1, t2, 2)
+    call Hcomplex_to_cst_8(Vani, l1, l2, cst, ncols, num_s, t1, t2, 2)
     out_name = 'output/cst_'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)
     call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
     deallocate(cst)
-
 
 
 #endif

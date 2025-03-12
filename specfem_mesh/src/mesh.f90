@@ -1812,8 +1812,8 @@ module specfem_mesh
             ! let us now compute the gravity at 1500 points between 
             ! the centre and surface, using the mineos model: 
             npoints = 1500 
-            r_lower    = zero    
-            r_upper    = SCALE_R
+            r_lower = zero    
+            r_upper = SCALE_R
 
 
             minInterp = create_PieceInterp(npoints)

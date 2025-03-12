@@ -3,11 +3,11 @@ module vani_kernel
     use cudafor
     include "constants.h"
 
-    ! Dimensions: ngll^3 x nspec x tl1 x 6 x nmodes
+    ! Dimensions: nspec x ngll^3 x  tl1 x 6 x nmodes
     real(kind=8), device, allocatable :: d_allstrains_r(:,:,:,:,:), d_allstrains_i(:,:,:,:,:)
-    real(kind=8), device, allocatable :: d_wglljac_g(:, :) ! ngll^3 x nspec
-    real(kind=8), device, allocatable :: d_Cxyz_g(:, :, :, :) ! ngll^3 x nspec x 6 x 6
-    real(kind=8), device, allocatable :: d_vani_real_G(:,:), d_vani_imag_G(:,:)
+    real(kind=8), device, allocatable :: d_wglljac_g(:, :) ! nspec x ngll^3 
+    real(kind=8), device, allocatable :: d_Cxyz_g(:, :, :, :) !  nspec x ngll^3 x 6 x 6
+    real(kind=8), device, allocatable :: d_vani_real_G(:,:,:), d_vani_imag_G(:,:,:)
 
     real(kind=8), device, allocatable :: d_eta1(:,:,:,:), d_eta2(:,:,:,:)
 
@@ -18,7 +18,9 @@ module vani_kernel
 
     real(kind=8), device, allocatable :: Model3D_dev(:, :)
     real(kind=8), device :: Model_ACLNF(5)
-
+    
+    integer, device, allocatable :: d_modeLUT(:, :)
+    integer, device :: d_NN1_TOTAL
 
     contains 
 
@@ -94,20 +96,20 @@ module vani_kernel
         nblocks_for_all_elems = ceiling(real(nspec)/real(nelem_in_block))
         ngll_per_loop         = ceiling(125.d0/real(ngll_in_block))
 
-        if(myrank.eq.0)then 
-            write(*,*) 'Dimensions for calculation: '
-            write(*,*) '    - Nspec                     :', nspec
-            write(*,*) '    - tl1                       :', tl1
-            write(*,*) 'Grid dimensions: '
-            write(*,*) '    - To cover all elements     : ', nblocks_for_all_elems
-            write(*,*) '    - To cover all m1, m2       : ', tl1*tl1
-            write(*,*) '    - To cover all contractions : ', 9*9
-            write(*,*) 
-            write(*,*) 'Block dimensions: '
-            write(*,*) '    - Elements in a block       : ', nelem_in_block
-            write(*,*) '    - Ngll covered in the block : ', ngll_in_block
-            write(*,*) '    - Ngll in loop              : ', ngll_per_loop
-        endif 
+        ! if(myrank.eq.0)then 
+        !     write(*,*) 'Dimensions for calculation: '
+        !     write(*,*) '    - Nspec                     :', nspec
+        !     write(*,*) '    - tl1                       :', tl1
+        !     write(*,*) 'Grid dimensions: '
+        !     write(*,*) '    - To cover all elements     : ', nblocks_for_all_elems
+        !     write(*,*) '    - To cover all m1, m2       : ', tl1*tl1
+        !     write(*,*) '    - To cover all contractions : ', 9*9
+        !     write(*,*) 
+        !     write(*,*) 'Block dimensions: '
+        !     write(*,*) '    - Elements in a block       : ', nelem_in_block
+        !     write(*,*) '    - Ngll covered in the block : ', ngll_in_block
+        !     write(*,*) '    - Ngll in loop              : ', ngll_per_loop
+        ! endif 
 
 
         if(ngll.eq.5)then
@@ -451,8 +453,8 @@ module vani_kernel
         integer :: modeLs(nmodes)
 
 
-        real(kind=8),  dimension(ngll*ngll*ngll, nspec, max_tl1, 6) :: strains_real
-        real(kind=8),  dimension(ngll*ngll*ngll, nspec, max_tl1, 6) :: strains_imag
+        real(kind=8),  dimension(nspec, ngll*ngll*ngll, max_tl1, 6) :: strains_real
+        real(kind=8),  dimension(nspec, ngll*ngll*ngll, max_tl1, 6) :: strains_imag
         ! Local: 
         integer :: i,j,k,l,m,p,imode,ispec,igll
 
@@ -470,8 +472,8 @@ module vani_kernel
                         do k = 1, ngll
                             do m = 1, 2*modeLs(imode) + 1 
                                 do p = 1, 6
-                                    strains_real(igll, ispec, m, p) =  real(astrain(i,j,k,ispec, m, p, imode))
-                                    strains_imag(igll, ispec, m, p) = aimag(astrain(i,j,k,ispec, m, p, imode))
+                                    strains_real(ispec, igll, m, p) =  real(astrain(i,j,k,ispec, m, p, imode))
+                                    strains_imag(ispec, igll, m, p) = aimag(astrain(i,j,k,ispec, m, p, imode))
                                 enddo 
                             enddo 
                             igll = igll + 1
@@ -517,7 +519,7 @@ module vani_kernel
 
         ! Copy off device to CPU: 
         if(ngll.eq.5)then
-                call vani_knl_allstrains<<<dim3(nspec,tl1,tl1), dim3(ngll*ngll*ngll,1,1)>>>(imode, tl1, nspec)               
+                call vani_knl_allstrains_onemode<<<dim3(nspec,tl1,tl1), dim3(ngll*ngll*ngll,1,1)>>>(imode, tl1, nspec)               
         else 
             write(*,*)'Error. hardcoded for ngll = 5'
             stop
@@ -540,7 +542,7 @@ module vani_kernel
 
 
 
-    attributes(global) subroutine vani_knl_allstrains(imode, tl1, nspec)
+    attributes(global) subroutine vani_knl_allstrains_onemode(imode, tl1, nspec)
         integer, value  :: imode, tl1, nspec
 
         ! internal variables
@@ -577,30 +579,25 @@ module vani_kernel
         do p = 1, 9
             do q =1,9
                 ! Real part 
-                cont_r = cont_r  +  (d_allstrains_r(igll, ispec, m1, Vcont(p),imode) * d_allstrains_r(igll, ispec, m2, Vcont(q),imode)  + & 
-                                     d_allstrains_i(igll, ispec, m1, Vcont(p),imode) * d_allstrains_i(igll, ispec, m2, Vcont(q),imode)) * & 
-                                     d_Cxyz_g(igll, ispec, Vcont(p), Vcont(q))
+                cont_r = cont_r  +  (d_allstrains_r(ispec, igll,  m1, Vcont(p),imode) * d_allstrains_r(ispec, igll, m2, Vcont(q),imode)  + & 
+                                     d_allstrains_i(ispec, igll,  m1, Vcont(p),imode) * d_allstrains_i(ispec, igll, m2, Vcont(q),imode)) * & 
+                                     d_Cxyz_g(ispec, igll,  Vcont(p), Vcont(q))
 
                 ! Imag part 
-                cont_i = cont_i  +  (d_allstrains_r(igll, ispec, m1, Vcont(p),imode) * d_allstrains_i(igll, ispec, m2, Vcont(q),imode)  - & 
-                                     d_allstrains_r(igll, ispec, m2, Vcont(q),imode) * d_allstrains_i(igll, ispec, m1, Vcont(p),imode)) * & 
-                                     d_Cxyz_g(igll, ispec, Vcont(p), Vcont(q))
+                cont_i = cont_i  +  (d_allstrains_r(ispec, igll, m1, Vcont(p),imode) * d_allstrains_i(ispec, igll,  m2, Vcont(q),imode)  - & 
+                                     d_allstrains_r(ispec, igll, m2, Vcont(q),imode) * d_allstrains_i(ispec, igll,  m1, Vcont(p),imode)) * & 
+                                     d_Cxyz_g(ispec, igll, Vcont(p), Vcont(q))
                 enddo 
         enddo 
 
+        cont_r = cont_r * d_wglljac_g(ispec, igll)
+        cont_i = cont_i * d_wglljac_g(ispec, igll)
 
-        cont_r = cont_r * d_wglljac_g(igll,ispec)
-        cont_i = cont_i * d_wglljac_g(igll,ispec)
-
-        ! Extract the real and imaginary parts: 
-        ! atomic add not available for complex. 
-
-        trash = atomicadd(d_vani_real_G(m1, m2),  cont_r)
-        trash = atomicadd(d_vani_imag_G(m1, m2),  cont_i)
+        trash = atomicadd(d_vani_real_G(m1, m2,1),  cont_r)
+        trash = atomicadd(d_vani_imag_G(m1, m2,1),  cont_i)
+        !call syncthreads()
         
-        call syncthreads()
-        
-    end subroutine vani_knl_allstrains
+    end subroutine vani_knl_allstrains_onemode
 
 
 
@@ -623,8 +620,6 @@ module vani_kernel
         
         err = cudaGetDevice(mydevice)
         write(*,*)'myrank = ', myrank, ' my GPU device = ',  mydevice
-
-
     end subroutine check_cuda_device_allocations
 
 
@@ -727,32 +722,19 @@ module vani_kernel
     s1 = sin(n1)
     s2 = sin(n2)
 
-    ! Eqn 5 of Brett 2024
-    r11 = c1 * c2 
-    r12 = - s1
-    r13 = c1*s2
-    
-    r21 = s1*c2
-    r22 = c1
-    r23 = s1*s2 
-
-    r31 = -s2
-    r32 = zero
-    r33 = c2
-
 
     ! Eqn 8 of Brett 2024
-    ! r11 = c1 * c2 
-    ! r12 = s1 * c2
-    ! r13 = -s2 
+    r11 = c1 * c2 ;
+    r12 = -s1;
+    r13 = s2*c1; 
 
-    ! r21 = -s1 
-    ! r22 = c1 
-    ! r23 = zero 
+    r21 = s1*c2 ;
+    r22 = c1 ;
+    r23 = s1*s2 ;
 
-    ! r31 = c1*s2
-    ! r32 = s1*s2
-    ! r33 = c2
+    r31 = -s2;
+    r32 = zero;
+    r33 = c2;
 
 
     Q(1,1) = r11 * r11 
@@ -811,10 +793,202 @@ module vani_kernel
     enddo 
 
     ! convert this i,j,k,nspec to ngll^3 x nspec and store:
-    d_Cxyz_g(ngll*ngll*(igllx-1) + ngll*(iglly-1) + igllz, ispec , :, :) = Crot
+    d_Cxyz_g(ispec, ngll*ngll*(igllx-1) + ngll*(iglly-1) + igllz,  :, :) = Crot
 
 
     end subroutine project_eta_to_gll
+
+
+
+
+
+
+    subroutine compute_Vani_all_modes_at_once(ngll, nspec, nn1_total, nn1max)
+        use params, only: VaniAllModes_8, myrank, max_tl1, nmodes
+        implicit none 
+        ! IO variables
+        integer :: ngll, nspec, imode, nn1_total, nn1max, ierr, cuda_shared_mem, cuda_shared_mem2
+        character(len=300) :: errstring
+        ! Local host variables
+        real(kind=8) :: Vloc_r(max_tl1, max_tl1, nmodes), Vloc_i(max_tl1, max_tl1, nmodes)
+        integer :: success, nelem_in_block, ngll_in_warp, ngll_setsofthreads, &
+                   nspec_threads, ngll_warps, ngll_in_block, ngll_per_loop, nblocks_for_all_elems
+
+
+        ! Zero the matrices on the GPU 
+        d_vani_real_G = 0.0_8
+        d_vani_imag_G = 0.0_8
+
+
+        nelem_in_block        = 32
+        ngll_in_block         = 16
+        nblocks_for_all_elems = ceiling(real(nspec)/real(nelem_in_block))
+        ngll_per_loop         = ceiling(125.d0/real(ngll_in_block))
+
+        cuda_shared_mem = cudaDeviceGetSharedMemConfig(cuda_shared_mem2)
+
+        if(myrank.eq.0)then 
+            write(*,*) 'Dimensions for calculation: '
+            write(*,*) '    - Nspec                     :', nspec
+            write(*,*) 'Grid dimensions: '
+            write(*,*) '    - To cover all elements     : ', nblocks_for_all_elems
+            write(*,*) '    - To cover all nn1_total    : ', nn1_total
+            write(*,*) '    - To cover all contractions : ', 9*9
+            write(*,*) 
+            write(*,*) 'Block dimensions: '
+            write(*,*) '    - Elements in a block       : ', nelem_in_block
+            write(*,*) '    - Ngll covered in the block : ', ngll_in_block
+            write(*,*) '    - Ngll in loop              : ', ngll_per_loop
+            write(*,*) 
+            write(*,*) 'Shared memory: ', cuda_shared_mem, cuda_shared_mem2
+        endif 
+
+
+        if(ngll.eq.5)then   ! 164352
+                call vani_knl_allstrains_allmodes<<<dim3(nblocks_for_all_elems, nn1_total, 81), &
+                                                    dim3(nelem_in_block, ngll_in_block, 1)>>>(nspec, ngll_per_loop, nelem_in_block, ngll)               
+        else 
+            write(*,*)'Error. hardcoded for ngll = 5'
+            stop
+        endif 
+
+    
+        ierr  = cudaGetLastError()
+        errstring =  cudaGetErrorString(ierr)
+
+        !success =  cudaDeviceGetAttribute(ierr, cudaDevAttrMaxSharedMemoryPerBlock, 0)
+        !write(*,*)'cudaDevAttrMaxSharedMemoryPerBlock is ', ierr
+        !stop 
+
+        if(ierr.ne.0)then 
+            write(*,*)'CUDA ERROR: '//trim( errstring)
+            stop 
+        else
+            write(*,*)'SUCCESSFUL KERNEL '
+            stop 
+        endif
+        success = cudaDeviceSynchronize()
+
+
+
+        success = cudaMemcpy(Vloc_r,         & 
+                             d_vani_real_G,  &
+                             max_tl1 * max_tl1 * nmodes, cudaMemcpyDeviceToHost)
+   
+
+        success = cudaMemcpy(Vloc_i,         & 
+                             d_vani_imag_G,  &
+                             max_tl1 * max_tl1 * nmodes, cudaMemcpyDeviceToHost)
+
+        success = cudaDeviceSynchronize()
+        !write(*,*)'Finished kernel: '
+        !w!rite(*,*)Vloc_r(:,:,1)
+
+
+        ! Add the real and imaginary components to the global Vani
+        VaniAllModes_8 =  Vloc_r + SPLINE_iONE*Vloc_i
+    end subroutine compute_Vani_all_modes_at_once
+
+
+
+
+
+
+
+    attributes(global) subroutine vani_knl_allstrains_allmodes(nspec, ngll_per_loop, nelem_in_block, ngll)
+        integer, value  :: nspec, ngll_per_loop, nelem_in_block, ngll 
+
+        ! internal variables
+        integer        :: i, j, k, ispec, m1, m2, p, q, istat, igll, ldegree, utripos, myspec, startelem, endelem, ierr
+        real(kind=8)   :: cont_r, cont_i
+        real(kind=8)   :: trash
+        integer, dimension(9), parameter :: Vcont = (/1, 2, 3, 4, 4, 5, 5, 6, 6/)
+        logical :: found
+
+        real(kind=8), shared :: sreal1(32, 125)!, sreal2(nelem_in_block, ngll*ngll*ngll)
+        !real(kind=8), shared :: simag1(nelem_in_block, 125), simag2(nelem_in_block, 125), swgll(nelem_in_block, 125)
+
+        ! dim3(nblocks_for_all_elems, nn1_total, 81), dim3(nelem_in_block, ngll_in_block, 1)
+
+        ! On each block there will be (ngll_in_block) warps where each warp is going to be 32 elements
+
+        startelem = (blockidx%x-1)*nelem_in_block + 1
+        myspec = threadidx%x   ! 1 - 32
+
+        ispec     =   startelem + myspec-1
+        if(ispec.gt.nspec)return !safeguard
+
+        endelem = startelem + 31
+        if (endelem.gt.nspec)endelem=nspec
+
+        ! Each warp is responsible for ngll_per_loop gll points
+        ! Will go from igllstart to igllstart + ngll_per_loop
+        igllstart = (threadidx%y - 1)*ngll_per_loop + 1
+
+        igllend = igllstart + ngll_per_loop - 1
+
+        if(igllend.gt.125)igllend = 125 !safeguard
+
+
+        ! Which mode am i and which m1, m2 value am I solving? 
+        imode    = d_modeLUT(blockidx%y, 1)  ! The number of this mode
+        utripos  = d_modeLUT(blockidx%y, 2)  ! The position in the Vani matrix (upper triangular)
+
+        m1       = d_modeLUT(blockidx%y, 3)  ! The row of the Vani element
+        m2       = d_modeLUT(blockidx%y, 4)  ! The column of the Vani element
+
+
+        ! Which of the 81 contractions am i solving? 
+        p = (blockidx%z - 1) / 9 + 1    
+        q = (blockidx%z - 1) - (p - 1) * 9 + 1
+
+
+        cont_r = 0.0_8
+        cont_i = 0.0_8
+        
+
+        ! Copy some stuff to close shared memory
+        ! Only some elements are going to be needed in shared memory since not all elements accessed 
+        ! by this block - only 32 elements are accessed
+        ! sreal1 should be 32 x 125
+
+        !if(threadidx%x.eq.1 .and. threadidx%y.eq.1)then
+        sreal1(:, :) = d_allstrains_r(startelem:endelem, :, m1, Vcont(p), imode)
+            !sreal2(:, :) = d_allstrains_r(startelem:endelem, :, m2, Vcont(p), imode)
+        !ndif 
+        !simag1(:, :) = d_allstrains_i(startelem:endelem, :, m1, Vcont(q), imode)
+        !simag2(:, :) = d_allstrains_i(startelem:endelem, :, m2, Vcont(q), imode)
+
+        ! swgll(:, :)  = d_wglljac_g(startelem:endelem, :)
+
+        ! !s_c(igll, :, :)       = d_Cxyz(igll, ispec, :, :)
+
+
+
+
+
+        ! do igll = igllstart, igllend
+        !          ! Real part 
+        !          cont_r = cont_r  +  (sreal1(myspec, igll) * sreal2(myspec, igll)  + & 
+        !                               simag1(myspec, igll) * simag2(myspec, igll)) * & 
+        !                               d_Cxyz_g(myspec, igll,  Vcont(p), Vcont(q)) * swgll(myspec, igll)
+
+        !          ! Imag part 
+        !          cont_i = cont_i  +  (sreal1(myspec, igll) * simag2(myspec, igll)  - & 
+        !                               sreal2(myspec, igll) * simag1(myspec, igll)) * & 
+        !                               d_Cxyz_g(myspec, igll, Vcont(p), Vcont(q)) * swgll(myspec, igll)
+        ! enddo 
+
+        ! ! ! cont_r = cont_r 
+        ! ! ! cont_i = cont_i * d_wglljac_g(ispec, igll)
+
+
+        ! trash = atomicadd(d_vani_real_G(m1,m2, imode), cont_r)
+        ! trash = atomicadd(d_vani_imag_G(m1,m2, imode), cont_i)
+        ! !call syncthreads()
+    end subroutine vani_knl_allstrains_allmodes
+
+
 
 
 

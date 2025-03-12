@@ -30,7 +30,7 @@ program optimised_vani
     use iso_c_binding
     use Vanibindings
 
-
+    
     implicit none
     include "constants.h"
     include 'mpif.h'
@@ -86,18 +86,22 @@ program optimised_vani
     !integer, dimension(33), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
 
     ! FAKE 27: 
-    integer, dimension(nmodes), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 8, 11 ,18, 21, 3, 16,7, 27, 9, 5, 17, 16, 3, 23, 8, 11 ,18, 21, 13/)
-    integer, dimension(nmodes), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4 , 5, 5 ,  3, 7,  1,  5,4, 1,  3, 3, 1,  7,  2, 4 , 5, 5 ,  3, 7,  1/)
+    !integer, dimension(nmodes), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 8, 11 ,18, 21, 3, 16,7, 27, 9, 5, 17, 16, 3, 23, 8, 11 ,18, 21, 13/)
+    !integer, dimension(nmodes), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4 , 5, 5 ,  3, 7,  1,  5,4, 1,  3, 3, 1,  7,  2, 4 , 5, 5 ,  3, 7,  1/)
 
-    ! Half the 33
-    !integer, dimension(nmodes), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 8, 11 ,18, 21, 3, 16/)
-    !integer, dimension(nmodes), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4 , 5, 5 ,  3, 7,  1,  5/)
+    ! REAL 27: 
+    integer, dimension(nmodes), parameter :: modeNs = (/3, 21, 21, 8,  7, 16,23, 11, 18, 11,  23,  2, 18,13,  9, 6, 5, 3 ,13, 9, 27, 5, 27,  3, 8, 22, 13 /)
+    integer, dimension(nmodes), parameter :: modeLs = (/8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 3,  3, 3, 3, 2 , 2, 2,  2, 2,  1,  1, 1,  1,  1 /)
 
     !integer, dimension(nmodes), parameter :: modeNs = (/ 13, 3, 16, 23/) 
     !integer, dimension(nmodes), parameter :: modeLs = (/  1, 2,  7,  4/)
 
 
     real(kind=8) :: testval
+
+    INTEGER :: request1, request2
+    INTEGER, dimension(2) :: requests  ! Array of requests
+
 
     ! BINDING PARAMETERS: 
     integer :: cppprec
@@ -112,6 +116,10 @@ program optimised_vani
 
     real(4), allocatable, target :: flatarray_4(:), flatstrain_r_4(:), flatstrain_i_4(:), Vani_real_4(:), Vani_imag_4(:)
     real(8), allocatable, target :: flatarray_8(:), flatstrain_r_8(:), flatstrain_i_8(:), Vani_real_8(:), Vani_imag_8(:)
+
+
+    real(4), allocatable :: Vani_real_4_REDUCED(:), Vani_imag_4_REDUCED(:)
+
 
     real(kind=4), allocatable :: allcsts_r_4(:), allcsts_i_4(:), allcsts_r_RED_4(:), allcsts_i_RED_4(:)
     real(kind=8), allocatable :: allcsts_r_8(:), allcsts_i_8(:), allcsts_r_RED_8(:), allcsts_i_RED_8(:)
@@ -209,17 +217,15 @@ program optimised_vani
     ! Until I can think of a better system, lets setup a mode look up table on the gpu
     total_nn1 = 0
     do imode = 1, nmodes
-        l1       = modeLs(imode)
-        this_tl1 = 2*l1 +1
-        total_nn1 = total_nn1 + (this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2)
+        l1        = modeLs(imode)
+        this_tl1  = 2*l1 +1
+        total_nn1 = total_nn1 +  (l1+1)*(l1) + 1  !(this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2)
     enddo  
     allocate(modeLUT(total_nn1*4), stat=ierr)
     if(ierr.ne.0)then 
         write(*,*)'Error allocating modeLUT on', myrank
         stop 
     endif 
-
-
 
 
     ! Sizes of arrays:
@@ -236,13 +242,9 @@ program optimised_vani
 
     ! Setup global eta1, eta2 arrays
     ! Allocate Vani matrices
-    if(CPPDOUBLE)then 
-        allocate(VaniAllModes_8(max_tl1, max_tl1, nmodes), stat=ierr)
-        VaniAllModes_8 = SPLINE_iZERO
-    else 
-        allocate(VaniAllModes_4(max_tl1, max_tl1, nmodes), stat=ierr)
-        VaniAllModes_4 = SPLINE_iZERO
-    endif 
+    allocate(VaniAllModes_4(max_tl1, max_tl1, nmodes), stat=ierr)
+    VaniAllModes_4 = SPLINE_iZERO
+
     if(ierr.ne.0)then 
         write(*,*)'Error allocating VaniAllModes for proc ', myrank
         stop 
@@ -289,11 +291,8 @@ program optimised_vani
 
 
     ! Copy over the xcoord, ycoord, zcoord, rstore arrays: 
-    if(CPPDOUBLE)then 
-        allocate(flatarray_8(size_of_array), stat=ierr)
-    else 
-        allocate(flatarray_4(size_of_array), stat=ierr)
-    endif 
+    allocate(flatarray_4(size_of_array), stat=ierr)
+
     if(ierr.ne.0)then 
         write(*,*)'Error allocating flatarray for proc ', myrank
         stop 
@@ -305,21 +304,19 @@ program optimised_vani
         do j = 1, sm%nglly
             do i = 1, sm%ngllx
                 do ispec = 1, sm%nspec 
-                    if(CPPDOUBLE)then 
-                        flatarray_8(iii) = sm%xstore(i,j,k,ispec)
-                    else 
-                        flatarray_4(iii) = real(sm%xstore(i,j,k,ispec),kind=4)
-                    endif 
+                        flatarray_4(iii) = real(sm%xstore(i,j,k,ispec), kind=4)
                     iii = iii + 1
                 enddo 
             enddo 
         enddo 
     enddo 
-    if(CPPDOUBLE)then 
-        ta_ptr = c_loc(flatarray_8)
-    else 
+
+
+
+
+
         ta_ptr = c_loc(flatarray_4)
-    endif 
+
 
 
     ierr = copythisarraytodevice(ta_ptr, size_of_array, 1)
@@ -330,21 +327,21 @@ program optimised_vani
         do j = 1, sm%nglly
             do i = 1, sm%ngllx
                 do ispec = 1, sm%nspec 
-                    if(CPPDOUBLE)then 
-                        flatarray_8(iii) = sm%ystore(i,j,k,ispec)
-                    else 
+
+
+
                         flatarray_4(iii) = real(sm%ystore(i,j,k,ispec),kind=4)
-                    endif 
+
                     iii = iii + 1
                 enddo 
             enddo 
         enddo 
     enddo 
-    if(CPPDOUBLE)then 
-        ta_ptr = c_loc(flatarray_8)
-    else 
+
+
+
         ta_ptr = c_loc(flatarray_4)
-    endif 
+
     ierr = copythisarraytodevice(ta_ptr, size_of_array, 2)
 
 
@@ -354,21 +351,19 @@ program optimised_vani
         do j = 1, sm%nglly
             do i = 1, sm%ngllx
                 do ispec = 1, sm%nspec 
-                    if(CPPDOUBLE)then 
-                        flatarray_8(iii) = sm%zstore(i,j,k,ispec)
-                    else 
+
                         flatarray_4(iii) = real(sm%zstore(i,j,k,ispec),kind=4)
-                    endif                     
+           
                     iii = iii + 1
                 enddo 
             enddo 
         enddo 
     enddo 
-    if(CPPDOUBLE)then 
-        ta_ptr = c_loc(flatarray_8)
-    else 
+
+
+
         ta_ptr = c_loc(flatarray_4)
-    endif 
+
     ierr = copythisarraytodevice(ta_ptr, size_of_array, 3)
 
 
@@ -401,57 +396,31 @@ program optimised_vani
     if(myrank.eq.0)write(*,*)'Loaded all strain binaries from disc.'
 
 
-    if(CPPDOUBLE)then 
-        allocate(allcsts_r_8(ncstsvals), stat=ierr)
-        if(ierr.ne.0)then 
-            write(*,*)'Error allocating allcsts_r on ',myrank
-            stop
-        endif 
-        allocate(allcsts_i_8(ncstsvals), stat=ierr)
-        if(ierr.ne.0)then 
-            write(*,*)'Error allocating allcsts_r on ', myrank
-            stop
-        endif 
-                
-        if(myrank.eq.0)then 
-            allocate(allcsts_r_RED_8(ncstsvals), stat=ierr)
-            if(ierr.ne.0)then 
-                write(*,*)'Error allcsts_r_RED allcsts_r'
-                stop
-            endif 
-            allocate(allcsts_i_RED_8(ncstsvals), stat=ierr)
-            if(ierr.ne.0)then 
-                write(*,*)'Error allcsts_i_RED allcsts_r'
-                stop
-            endif 
-        endif 
+    allocate(allcsts_r_4(ncstsvals), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating allcsts_r on ',myrank
+        stop
+    endif 
+    allocate(allcsts_i_4(ncstsvals), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating allcsts_r on ', myrank
+        stop
+    endif 
 
-    else 
-        allocate(allcsts_r_4(ncstsvals), stat=ierr)
+    if(myrank.eq.0)then 
+        allocate(allcsts_r_RED_4(ncstsvals), stat=ierr)
         if(ierr.ne.0)then 
-            write(*,*)'Error allocating allcsts_r on ',myrank
+            write(*,*)'Error allcsts_r_RED allcsts_r'
             stop
         endif 
-        allocate(allcsts_i_4(ncstsvals), stat=ierr)
+        allocate(allcsts_i_RED_4(ncstsvals), stat=ierr)
         if(ierr.ne.0)then 
-            write(*,*)'Error allocating allcsts_r on ', myrank
+            write(*,*)'Error allcsts_i_RED allcsts_r'
             stop
-        endif 
-
-        if(myrank.eq.0)then 
-            allocate(allcsts_r_RED_4(ncstsvals), stat=ierr)
-            if(ierr.ne.0)then 
-                write(*,*)'Error allcsts_r_RED allcsts_r'
-                stop
-            endif 
-            allocate(allcsts_i_RED_4(ncstsvals), stat=ierr)
-            if(ierr.ne.0)then 
-                write(*,*)'Error allcsts_i_RED allcsts_r'
-                stop
-            endif 
         endif 
     endif 
-    
+
+
 
 
 
@@ -460,9 +429,9 @@ program optimised_vani
         l1       = modeLs(imode)
         this_tl1 = 2*l1 +1
 
-        thisnn1  = (this_tl1 * (this_tl1+1)/2) - l1*(l1+1)/2
+        thisnn1  =  (l1+1)*(l1) + 1
 
-        do iii = 1, (this_tl1 * (this_tl1+1)/2) - l1*(l1+1)/2
+        do iii = 1, thisnn1
             modeLUT(idx) = imode-1 ! mode
             idx = idx + 1
             modeLUT(idx) = iii -1   ! place in matrix
@@ -476,7 +445,6 @@ program optimised_vani
             ival = iii 
 
             call find_row_col(ival, thisrow, thiscol, l1)
-            
 
             modeLUT(idx) = thisrow -1  ! row in c++ -1 
             idx = idx + 1
@@ -486,6 +454,7 @@ program optimised_vani
 
         enddo 
     enddo  
+
 
     ! I think we want to keep this without the subtraction since it 
     ! is used for the spacing of the arrays etc 
@@ -510,18 +479,7 @@ program optimised_vani
     ! FOR NOW WE ARE USING THE MORE MEMORY INEFFICIENT VERSION OF ASSUMING THEY ALL 
     ! HAVE max_tl1 - this makes the indexing a bit simpler in the kernel for now.
     ! probs need a LUT otherwise
-    if(CPPDOUBLE)then 
-        allocate(flatstrain_r_8(strainsize), stat=ierr)
-        if(ierr.ne.0)then 
-            write(*,*)'Error in flatstrain_r on ', myrank
-            stop 
-        endif 
-        allocate(flatstrain_i_8(strainsize), stat=ierr)
-        if(ierr.ne.0)then 
-            write(*,*)'Error in flatstrain_i on ', myrank
-            stop 
-        endif 
-    else 
+
         allocate(flatstrain_r_4(strainsize), stat=ierr)
         if(ierr.ne.0)then 
             write(*,*)'Error in flatstrain_r on ', myrank
@@ -532,70 +490,36 @@ program optimised_vani
             write(*,*)'Error in flatstrain_i on ', myrank
             stop 
         endif 
-    endif 
+
 
 
     iii = 1
-    if(CPPDOUBLE)then 
-        do imode = 1, nmodes 
-            l1  = modeLs(imode)
-            do p = 1,6
-                do im =  1, max_tl1!-l1, l1 
-                    do k = 1, sm%ngllz
-                        do j = 1, sm%nglly
-                            do i = 1, sm%ngllx
-                                do ispec = 1, sm%nspec 
-                                    if (im.le. 2*l1 + 1)then 
-                                        flatstrain_r_8(iii) =  real(allstrains(i, j, k, ispec, im, p, imode), kind=8) *   sm%wglljac(i,j,k,ispec)**half
-                                        flatstrain_i_8(iii) = aimag(allstrains(i, j, k, ispec, im, p, imode)) *   sm%wglljac(i,j,k,ispec)**half
-                                    else
-                                        ! regions outside of the tl1 that is valid for this mode
-                                        flatstrain_r_8(iii) = zero 
-                                        flatstrain_i_8(iii) = zero 
-                                    endif 
-                                    iii = iii + 1
-                                enddo 
+    do imode = 1, nmodes 
+        l1  = modeLs(imode)
+        do p = 1,6
+            do im =  1, max_tl1!-l1, l1 
+                do k = 1, sm%ngllz
+                    do j = 1, sm%nglly
+                        do i = 1, sm%ngllx
+                            do ispec = 1, sm%nspec 
+                                if (im.le. 2*l1 + 1)then 
+                                    flatstrain_r_4(iii) =  real(allstrains(i, j, k, ispec, im, p, imode) *   sm%wglljac(i,j,k,ispec)**half ) 
+                                    flatstrain_i_4(iii) = aimag(allstrains(i, j, k, ispec, im, p, imode) *   sm%wglljac(i,j,k,ispec)**half ) 
+                                else
+                                    ! regions outside of the tl1 that is valid for this mode
+                                    flatstrain_r_4(iii) = zero 
+                                    flatstrain_i_4(iii) = zero 
+                                endif 
+                                iii = iii + 1
                             enddo 
                         enddo 
-                    enddo
-                enddo 
+                    enddo 
+                enddo
             enddo 
         enddo 
-        strain_r_ptr = c_loc(flatstrain_r_8)
-        strain_i_ptr = c_loc(flatstrain_i_8)
-    
-    else 
-        do imode = 1, nmodes 
-            l1  = modeLs(imode)
-            do p = 1,6
-                do im =  1, max_tl1!-l1, l1 
-                    do k = 1, sm%ngllz
-                        do j = 1, sm%nglly
-                            do i = 1, sm%ngllx
-                                do ispec = 1, sm%nspec 
-                                    if (im.le. 2*l1 + 1)then 
-                                        flatstrain_r_4(iii) =  real(allstrains(i, j, k, ispec, im, p, imode) *   sm%wglljac(i,j,k,ispec)**half ) 
-                                        flatstrain_i_4(iii) = aimag(allstrains(i, j, k, ispec, im, p, imode) *   sm%wglljac(i,j,k,ispec)**half ) 
-                                    else
-                                        ! regions outside of the tl1 that is valid for this mode
-                                        flatstrain_r_4(iii) = zero 
-                                        flatstrain_i_4(iii) = zero 
-                                    endif 
-                                    iii = iii + 1
-                                enddo 
-                            enddo 
-                        enddo 
-                    enddo
-                enddo 
-            enddo 
-        enddo 
-        strain_r_ptr = c_loc(flatstrain_r_4)
-        strain_i_ptr = c_loc(flatstrain_i_4)    
-    endif 
-
-
-  
-
+    enddo 
+    strain_r_ptr = c_loc(flatstrain_r_4)
+    strain_i_ptr = c_loc(flatstrain_i_4)    
 
 
     ! Need to transfer the megastrains! 
@@ -605,7 +529,6 @@ program optimised_vani
         stop 
     endif 
 
-
     
     ierr = allocate_Vani_arrays(nmodes*max_nn1)
     if(ierr.ne.0)then 
@@ -613,27 +536,20 @@ program optimised_vani
         stop 
     endif 
 
-    if(CPPDOUBLE)then 
-        allocate(Vani_real_8(nmodes*max_nn1), stat=ierr)
-        Vani_real_ptr = c_loc(Vani_real_8)
+    
+    allocate(Vani_real_4(nmodes*max_nn1), stat=ierr)
+    Vani_real_ptr = c_loc(Vani_real_4)
+    allocate(Vani_imag_4(nmodes*max_nn1), stat=ierr)
+    Vani_imag_ptr = c_loc(Vani_imag_4)
 
-        allocate(Vani_imag_8(nmodes*max_nn1), stat=ierr)
-        Vani_imag_ptr = c_loc(Vani_imag_8)
+ 
 
-    else 
-        allocate(Vani_real_4(nmodes*max_nn1), stat=ierr)
-        Vani_real_ptr = c_loc(Vani_real_4)
-        allocate(Vani_imag_4(nmodes*max_nn1), stat=ierr)
-        Vani_imag_ptr = c_loc(Vani_imag_4)
 
-    endif 
 
     if(ierr.ne.0)then 
         write(*,*)'Error in Vani_real on', myrank
         stop 
     endif 
-
-
 
 
     ierr = allocate_Cxyz_array(size_of_array*36)
@@ -643,21 +559,9 @@ program optimised_vani
     endif 
 
 
+    allocate(flat3Dmodel_4(MaxBrettModelPts*5), stat=ierr)
+    ptr_m3D = c_loc(flat3Dmodel_4)
 
-    ! Assuming a maximum number of points of 150 ish 
-    allocate(BrettModelToTransfer_8(MaxBrettModelPts, 5), stat=ierr)
-    if(ierr.ne.0)then 
-        write(*,*)'Error allocating BrettModelToTransfer on', myrank
-        stop 
-    endif 
-
-    if(CPPDOUBLE)then 
-        allocate(flat3Dmodel_8(MaxBrettModelPts*5), stat=ierr)
-        ptr_m3D = c_loc(flat3Dmodel_8)
-    else 
-        allocate(flat3Dmodel_4(MaxBrettModelPts*5), stat=ierr)
-        ptr_m3D = c_loc(flat3Dmodel_4)
-    endif
     if(ierr.ne.0)then 
         write(*,*)'Error allocating flat3Dmodel on', myrank
         stop 
@@ -670,15 +574,12 @@ program optimised_vani
     endif 
 
 
-    
-
     CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
-
 
 
     
     ! Loop over the models: 
-    do imodel_iter = 10900, 10910 !nmodeliter
+    do imodel_iter = 10900, 10915 !nmodeliter
         call buffer_int(iterstr, imodel_iter)
 
         call system_clock(count_rate=count_rate)
@@ -695,73 +596,51 @@ program optimised_vani
           
             call system_clock(count_rate=count_rate)
             call system_clock(start_clock)    
-            ! Load the model: 
-            !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
             Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c"//trim(chainstr)//"_m"//trim(iterstr)//".txt"
             call Model3D%read_model_from_file()
+
             ! Flatten 
             iii=1
-            if(CPPDOUBLE)then 
-                do i = 1, Model3D%npts
-                    flat3Dmodel_8(iii  ) = real(Model3D%xcoord(i), kind=8)
-                    flat3Dmodel_8(iii+1) = real(Model3D%ycoord(i), kind=8)
-                    flat3Dmodel_8(iii+2) = real(Model3D%zcoord(i), kind=8)
-                    flat3Dmodel_8(iii+3) = real(Model3D%valspats(i,1), kind=8)
-                    flat3Dmodel_8(iii+4) = real(Model3D%valspats(i,2), kind=8)
-                    iii = iii+5
-                enddo 
-                aclnf_8 = real(Model3D%valconsts/100.0d0, kind=8)
-            else 
-                do i = 1, Model3D%npts
-                    flat3Dmodel_4(iii  ) = real(Model3D%xcoord(i), kind=4)
-                    flat3Dmodel_4(iii+1) = real(Model3D%ycoord(i), kind=4)
-                    flat3Dmodel_4(iii+2) = real(Model3D%zcoord(i), kind=4)
-                    flat3Dmodel_4(iii+3) = real(Model3D%valspats(i,1), kind=4)
-                    flat3Dmodel_4(iii+4) = real(Model3D%valspats(i,2), kind=4)
-                    iii = iii+5
-                enddo 
+            do i = 1, Model3D%npts
+                flat3Dmodel_4(iii  ) = real(Model3D%xcoord(i), kind=4)
+                flat3Dmodel_4(iii+1) = real(Model3D%ycoord(i), kind=4)
+                flat3Dmodel_4(iii+2) = real(Model3D%zcoord(i), kind=4)
+                flat3Dmodel_4(iii+3) = real(Model3D%valspats(i,1), kind=4)
+                flat3Dmodel_4(iii+4) = real(Model3D%valspats(i,2), kind=4)
+                iii = iii+5
+            enddo 
+            aclnf_8 = real(Model3D%valconsts/100.0d0, kind=8)
 
-                aclnf_8 = real(Model3D%valconsts/100.0d0, kind=8)
-            endif 
 
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(34,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
             if(myrank.eq.0)write(*,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
-                         
 
             call system_clock(count_rate=count_rate)
             call system_clock(start_clock)
             ierr = copy_M3D_array(ptr_m3D, MaxBrettModelPts*5)
 
-          
             ierr = cpp_project_eta_to_gll(Model3D%npts, sm%nspec, sm%ngllx, & 
                                           aclnf_8) 
 
-
-
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(34,*) 'Copy model to device:', elapsed_time*1000, ' ms'
             if(myrank.eq.0)write(*, *) 'Copy model to device:', elapsed_time*1000, ' ms'
                               
-                                    
             ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1, nmodes, myrank)
-          
-
 
 
             call system_clock(count_rate=count_rate)
             call system_clock(start_clock)
+
+
 
             ierr = copyfromdevice(Vani_real_ptr, max_nn1*nmodes, 8)
             ierr = copyfromdevice(Vani_imag_ptr, max_nn1*nmodes, 9)
 
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(34,*) 'Copy back          :', elapsed_time*1000, ' ms'
             if(myrank.eq.0)write(*,*) ' Copy back          :', elapsed_time*1000, ' ms'
-
 
 
             ! Overall the number of cst values we need to compute and 
@@ -777,47 +656,66 @@ program optimised_vani
                 l1  = modeLs(imode)
                 n1  = modeNs(imode)
                 this_tl1 = 2*l1 + 1
-                thisnn1  = this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2
 
+                ! Now need all the values: 
+                thisnn1  = this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2
 
                 do iii = 1, thisnn1
                     ival = iii 
                     call find_row_col(ival, thisrow, thiscol, l1)
 
-                    if(CPPDOUBLE)then 
-                        VaniAllModes_8(thisrow, thiscol, imode) =  Vani_real_8((imode-1)*max_nn1 + iii) + & 
-                                                                   SPLINE_iONE*Vani_imag_8((imode-1)*max_nn1 + iii) 
+                    if(thisrow.eq.l1+1 .and. thiscol.gt.l1+1)then 
 
-                        ! For the values that are in colums < l we can use the symmetries of the matrix to compute
-                        ! The relationship between V_mm' and V_-m -m' is in D.153 - we can use this but this will give us 
-                        ! the elements  in V (col < m=0) that are on the wrong side of the diagonal, so then we can apply
-                        ! the fact it is hermitian - this is why we dont take the conjugate in the end.
-                        if(thisrow > l1 )then 
-                            VaniAllModes_8(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_8(thisrow, thiscol, imode) * (-one)**(thisrow + thiscol - two*real(l1 +1 ,kind=8) )
-                        endif 
+
+                        VaniAllModes_4(thisrow, thiscol, imode) = VaniAllModes_4(this_tl1 - thiscol  + 1, thisrow, imode) *  ((-one)**real( thiscol - l1 - 1, kind=8 ))
                     else 
+                        ! Normal index
                         VaniAllModes_4(thisrow, thiscol, imode) = Vani_real_4((imode-1)*max_nn1 + iii) + & 
                                                                     SPLINE_iONE*Vani_imag_4((imode-1)*max_nn1 + iii)
-
-                        if(thisrow > l1 )then 
-                            VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**(thisrow + thiscol - two*real(l1 +1 ,kind=8) )
+                        
+                        ! Maps the lower right triangular to the top left triangular
+                        if(thisrow > l1+1 )then 
+                            VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
                         endif 
-                    endif 
+                    endif
                 enddo 
 
 
-                
+                ! ! for debugging - Print the assembled matrix 
+                ! if(imode.eq.1)then
+                ! do thisrow = 1, this_tl1
+                !     do thiscol = 1, this_tl1
+                !         if (thiscol.eq.this_tl1)then 
+                !             write(*,'(E15.6)', advance='yes')real(VaniAllModes_4(thisrow, thiscol, imode))
+                !         else 
+                !             write(*,'(E15.6, a)', advance='no')real(VaniAllModes_4(thisrow, thiscol, imode)), ','
+                !         endif
+                !     enddo 
+                ! enddo 
+                ! endif
+                ! write(*,*)
+
+
+                ! if(imode.eq.1)then
+                ! do thisrow = 1, this_tl1
+                !     do thiscol = 1, this_tl1
+                !         if (thiscol.eq.this_tl1)then 
+                !             write(*,'(E15.6)', advance='yes')aimag(VaniAllModes_4(thisrow, thiscol, imode))
+                !         else 
+                !             write(*,'(E15.6, a)', advance='no')aimag(VaniAllModes_4(thisrow, thiscol, imode)), ','
+                !         endif
+                !     enddo 
+                ! enddo 
+                ! endif
+                ! write(*,*)
+
+                ! stop
+
 
                 call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
-                if(CPPDOUBLE)then 
-                    allocate(cst_8(num_s, ncols))
-                    call Hcomplex_to_cst_8(VaniAllModes_8(1:this_tl1, 1:this_tl1, imode), l1, l1, cst_8, ncols, num_s, t1, t1, 2)
-                else 
-                    allocate(cst_4(num_s, ncols))
-                    call Hcomplex_to_cst_4(VaniAllModes_4(1:this_tl1, 1:this_tl1, imode), l1, l1, cst_4, ncols, num_s, t1, t1, 2)
-                endif 
-                
-                
+                allocate(cst_4(num_s, ncols))
+                call Hcomplex_to_cst_4(VaniAllModes_4(1:this_tl1, 1:this_tl1, imode), l1, l1, cst_4, ncols, num_s, t1, t1, 2)
+
                 if (2*l1.gt.compute_cst_smax)then 
                     thissmax = compute_cst_smax
                 else 
@@ -825,49 +723,26 @@ program optimised_vani
                 endif 
 
 
-                if(CPPDOUBLE)then
-                    do is = 1, thissmax-smin+1, 2
-                        do it = 1, (smin+is-1) +1
-                            allcsts_r_8(icst) =   real(cst_8(is,it), kind=8)
-                            allcsts_i_8(icst) =  aimag(cst_8(is,it))
-                            icst = icst + 1
-                        enddo 
+                do is = 1, thissmax-smin+1, 2
+                    do it = 1, (smin+is-1) +1
+                        allcsts_r_4(icst) =  real(cst_4(is,it))
+                        allcsts_i_4(icst) =  aimag(cst_4(is,it))
+                        icst = icst + 1
                     enddo 
-                    deallocate(cst_8)
-                else 
-                    do is = 1, thissmax-smin+1, 2
-                        do it = 1, (smin+is-1) +1
-                            allcsts_r_4(icst) =  real(cst_4(is,it))
-                            allcsts_i_4(icst) =  aimag(cst_4(is,it))
-                            icst = icst + 1
-                        enddo 
-                    enddo 
-                    deallocate(cst_4)
-                endif 
+                enddo 
+                deallocate(cst_4)
+
             enddo      
 
-            if(CPPDOUBLE)then 
-                ! Now each process has compute the csts we can reduce them 
-                call MPI_Reduce(allcsts_r_8, allcsts_r_RED_8, ncstsvals, MPI_DOUBLE_PRECISION, &
-                                MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-                call MPI_Reduce(allcsts_i_8, allcsts_i_RED_8, ncstsvals, MPI_DOUBLE_PRECISION, &
-                                MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-                if(ierr .ne.0)then
-                    write(*,*)'ERROR ON MPI REDUC IMGG: myrank ', myrank
-                endif 
-            else 
-                ! Now each process has compute the csts we can reduce them 
-                call MPI_Reduce(allcsts_r_4, allcsts_r_RED_4, ncstsvals, MPI_REAL, &
-                MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-                if(ierr .ne.0)then
-                    write(*,*)'ERROR ON MPI REDUCE REAL: myrank ', myrank
-                endif 
-                call MPI_Reduce(allcsts_i_4, allcsts_i_RED_4, ncstsvals, MPI_REAL, &
-                                MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-                if(ierr .ne.0)then
-                    write(*,*)'ERROR ON MPI REDUC IMGG: myrank ', myrank
-                endif 
-            endif 
+        
+            ! Now each process has compute the csts we can reduce them 
+            call MPI_Ireduce(allcsts_r_4, allcsts_r_RED_4, ncstsvals, MPI_REAL, &
+                            MPI_SUM, 0, MPI_COMM_WORLD, request1, ierr) 
+            call MPI_Ireduce(allcsts_i_4, allcsts_i_RED_4, ncstsvals, MPI_REAL, &
+                            MPI_SUM, 0, MPI_COMM_WORLD, request2, ierr)
+            call MPI_Wait(request1, ierr)
+            call MPI_Wait(request2, ierr)
+            
 
 
             if(myrank.eq.0)then 
@@ -885,39 +760,27 @@ program optimised_vani
                     call buffer_int(nstr, n1)
                     call buffer_int(lstr, l1)
                 
-                    if(CPPDOUBLE)then 
-                        out_name =  './output/NEX_'//trim(timingNEX)//'cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
-                        open(1,file=trim(out_name), form='formatted')
-                        do s = 0, thissmax, 2
-                            do it = 1, s+1
-                                write(1,*) s, it-s-1, allcsts_r_RED_8(icst), allcsts_i_RED_8(icst)
-                                icst = icst + 1
-                            enddo !it
-                        enddo ! s 
-                    else 
-                        out_name =  './output/NEX_'//trim(timingNEX)//'cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
-                        open(1,file=trim(out_name), form='formatted')
-                        do s = 0, thissmax, 2
-                            do it = 1, s+1
-                                write(1,*) s, it-s-1, allcsts_r_RED_4(icst), allcsts_i_RED_4(icst)
-                                icst = icst + 1
-                            enddo !it
-                        enddo ! s 
-                    endif 
+                    out_name =  './output/NEX_'//trim(timingNEX)//'cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
+                    open(1,file=trim(out_name), form='formatted')
+                    do s = 0, thissmax, 2
+                        do it = 1, s+1
+                            write(1,*) s, it-s-1, allcsts_r_RED_4(icst), allcsts_i_RED_4(icst)
+                            icst = icst + 1
+                        enddo !it
+                    enddo ! s 
                     close(1) ! close file
+
                 enddo ! loop over modes for writing 
 
             endif 
 
             call system_clock(end_clock)
             elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-            if(myrank.eq.0)write(34,*)'CST computation     :', elapsed_time*1000, ' ms'
             if(myrank.eq.0)write(*,*) 'CST computation     :', elapsed_time*1000, ' ms'
                 
 
             CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
             
-        
             deallocate(Model3D%idspats)
             deallocate(Model3D%valspats)
             deallocate(Model3D%idconsts)
@@ -928,11 +791,9 @@ program optimised_vani
 
         enddo ! chain
 
-
         call system_clock(end_clock)
         elapsed_time = real(end_clock - loop_clock_start, kind=8) / real(count_rate, kind=8)
         if(myrank.eq.0)then 
-            write(34,*) 'Iteration time      :', elapsed_time*1000, ' ms'
             write(*,*)  'Iteration time      :', elapsed_time*1000, ' ms'
             write(*,*)  'Completed iteration : ', imodel_iter
             write(*,*)
@@ -941,11 +802,8 @@ program optimised_vani
 
     
     ! Cleanup memory 
-    if(CPPDOUBLE)then
-        deallocate(VaniAllModes_8)
-    else 
-        deallocate(VaniAllModes_4)
-    endif 
+    deallocate(VaniAllModes_4)
+
 
 
     call mpi_finalize(ierr)

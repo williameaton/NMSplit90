@@ -37,6 +37,31 @@ module woodhouse_kernels
     end function BNpmlsld
 
 
+    real(kind=CUSTOM_REAL) function Slm(l,m)
+        ! Computes Slm (D.69)
+        implicit none 
+        integer :: l, m
+        real(kind=CUSTOM_REAL) :: lf, mf
+
+        mf   = real(m,  kind=CUSTOM_REAL)
+        lf   = real(l,  kind=CUSTOM_REAL)
+
+        slm = (((lf + mf)*(lf-mf))/((two*lf + one)*(two*lf - one)))**half
+    end function Slm 
+
+
+    real(kind=CUSTOM_REAL) function Rlm(l,m)
+    ! Computes Rlm (D.82)
+    implicit none 
+    integer :: l, m
+    real(kind=CUSTOM_REAL) :: lf, mf
+
+    mf   = real(m,  kind=CUSTOM_REAL)
+    lf   = real(l,  kind=CUSTOM_REAL)
+
+    rlm = (lf*(lf+one) - three*mf*mf)/((two*lf + three)*(two*lf - one))
+    end function Rlm 
+
 
 subroutine WK_Trho(m_1, m_2, s, Tp)
     ! D.46 Woodhouse kernel T_\rho
@@ -412,6 +437,303 @@ end subroutine WK_Vphi_dot
 
 
 
+
+
+
+subroutine WK_TbarSrho(m_1, m_2, Tbsp)
+    ! D.83 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+
+    complex(kind=SPLINE_REAL) :: Tbsp(m_1%spl_len)
+
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+        ! S S
+        Tbsp = ((m_1%u_spl * m_2%v_spl/m_2%kf) * half * (m_1%kf*m_1%kf  - m_2%kf*m_2%kf - 6)) - & 
+             ((m_1%v_spl/m_1%kf * m_2%u_spl) * half * (m_1%kf*m_1%kf  - m_2%kf*m_2%kf + 6))
+    else
+        Tbsp = SPLINE_ZERO
+    endif 
+end subroutine WK_TbarSrho
+
+
+
+subroutine WK_TcaronSrho(m_1, m_2, Tcsp)
+    ! D.84 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+
+    complex(kind=SPLINE_REAL) :: Tcsp(m_1%spl_len)
+
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+
+
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+        ! S S
+        Tcsp = m_1%u_spl*m_2%u_spl + & 
+               half * (m_1%kf*m_1%kf + m_2%kf*m_2%kf - 6) * m_1%v_spl * m_2%v_spl/(m_1%kf * m_2%kf) 
+
+    elseif(m_1%t.eq.'T' .and. m_2%t.eq.'T')then 
+         ! S S
+        Tcsp = half * (m_1%kf*m_1%kf + m_2%kf*m_2%kf - 6) * m_1%w_spl * m_2%w_spl/(m_1%kf * m_2%kf) 
+    else
+        Tcsp = SPLINE_ZERO
+    endif 
+end subroutine WK_TcaronSrho
+
+
+
+subroutine WK_VbarSk(m_1, m_2, rad, Vsk)
+    ! D.87 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+    real(kind=SPLINE_REAL) :: rad(m_1%spl_len)
+    complex(kind=SPLINE_REAL) :: Vsk(m_1%spl_len)
+
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+        Vsk =  - ((m_1%du_spl + half * (m_1%kf**two - m_2%kf**two + 6) * m_1%v_spl/m_1%kf) * (m_2%du_spl + m_2%aux_f)/rad) &
+               - ((m_1%du_spl + m_1%aux_f) * (m_2%du_spl - half * (m_1%kf**2 - m_2%kf**2 - 6)  * m_2%v_spl/(rad*m_2%kf) ))
+    else 
+        Vsk = SPLINE_ZERO
+    endif 
+
+    ! Division by radius so will be nan
+    if(rad(1).eq.zero)Vsk(1) = SPLINE_ZERO
+end subroutine
+
+
+
+
+subroutine WK_VbarSmu(m_1, m_2, rad, VbarSmu)
+    ! D.88 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+    real(kind=SPLINE_REAL) :: rad(m_1%spl_len)
+    complex(kind=SPLINE_REAL) :: VbarSmu(m_1%spl_len)
+
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+
+        VbarSmu = - (one/three) * (two * m_1%du_spl + half*(m_1%kf**two - m_2%kf**two + six) * (three * m_1%dv_spl - four*(one/rad)*m_1%v_spl)/m_1%kf) * (two * m_2%du_spl - m_2%aux_f) &
+                - (   (half * (m_1%kf**two - m_2%kf**two - six)*m_1%du_spl + half*(m_1%kf**two + m_2%kf**two + six) * m_1%dv_spl/m_1%kf) &
+                    + (half * (m_1%kf**two - m_2%kf**two + six) * m_2%kf**two * (one/rad) * m_1%v_spl/m_1%kf)) * m_2%aux_x &
+                + ((half * (m_1%kf**two - m_2%kf**two + six) * m_2%kf**two) + (three*(m_1%kf**two + m_2%kf**two - six)) )*(one/rad)*(m_1%v_spl*m_2%v_spl)/(m_1%kf*m_2%kf) &
+                - (one/three) * (two * m_1%du_spl - m_1%aux_f) * (two * m_2%du_spl -  half*(m_1%kf**two - m_2%kf**two - six)*(three * m_2%dv_spl/m_2%kf - four*m_2%v_spl/(rad*m_2%kf))) &
+                + m_1%aux_x*((half*(m_1%kf**two - m_2%kf**two + six)*m_2%du_spl  - half*(m_1%kf**two + m_2%kf**two - six)*m_2%dv_spl/m_2%kf) + (half*(m_1%kf**two)*(m_1%kf**two - m_2%kf**two - six) * m_2%v_spl /(rad * m_2%kf) ) ) &
+                - ((half*(m_1%kf**two)*(m_1%kf**two - m_2%kf**two - six))  - (three*(m_1%kf**two + m_2%kf**two - six))* (m_1%v_spl * m_2%v_spl)/(rad * m_1%kf * m_2%kf))  
+
+    elseif(m_1%t.eq.'T' .and. m_2%t.eq.'T')then 
+
+        VbarSmu = ((half * (m_1%kf**two - m_2%kf**two + six) * m_2%kf**two) + (three*(m_1%kf**two + m_2%kf**two - six)) )*(one/rad)*(m_1%w_spl*m_2%w_spl)/(m_1%kf*m_2%kf) &
+                - (half * (m_1%kf**two + m_2%kf**two - six)) * m_2%aux_z * m_2%dw_spl/m_2%kf  & 
+                - ((half*(m_1%kf**two)*(m_1%kf**two - m_2%kf**two - six))  - (three*(m_1%kf**two + m_2%kf**two - six))* (m_1%w_spl * m_2%w_spl)/(rad * m_1%kf * m_2%kf))  &
+                - (half * (m_1%kf**two + m_2%kf**two - six) * m_1%dw_spl * m_2%aux_z)
+    else 
+        VbarSmu = SPLINE_ZERO
+    endif 
+
+    if(rad(1).eq.zero)VbarSmu(1) = SPLINE_ZERO
+end subroutine WK_VbarSmu
+
+
+
+
+subroutine WK_VbarSrho(m_1, m_2, rad, g, rho, Vsrho)
+    ! D.89 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+    real(kind=SPLINE_REAL) :: rad(m_1%spl_len), g(m_1%spl_len), rho(m_1%spl_len)
+    complex(kind=SPLINE_REAL) :: Vsrho(m_1%spl_len)
+
+    real(kind=SPLINE_REAL) :: piG
+
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+    ! non dim? 
+    piG = one
+
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+ 
+        Vsrho = (rad * m_1%p_spl   +   four*piG * rho * rad * m_1%u_spl   +   g*m_1%u_spl) * m_2%aux_f                  &
+            - half*(m_1%kf**two - m_2%kf**two + six)*g*m_1%v_spl*m_2%u_spl/(m_1%kf*rad)                               &
+            + three * g * m_1%u_spl * m_2%u_spl/rad                                                                   &
+            + m_1%p_spl * (half*(m_1%kf**two + m_2%kf**two - six)*m_2%v_spl/m_2%kf  - (m_1%kf**two)*m_2%u_spl)/rad    &
+            + m_1%aux_f*(rad*m_2%dp_spl + four*piG*rho*rad*m_2%u_spl + g* m_2%u_spl)                                  &
+            + half*(m_1%kf**two - m_2%kf**two - six)* g * m_2%v_spl * m_1%u_spl/(rad * m_2%kf) &
+            + three * g * m_1%u_spl * m_2%u_spl / rad &
+            + (half*(m_1%kf**two + m_2%kf**two - six)*(m_1%v_spl/m_1%kf) - m_2%kf**two * m_1%u_spl) * m_2%p_spl / rad
+    else 
+        Vsrho = SPLINE_ZERO
+    endif 
+    if(rad(1).eq.zero)Vsrho(1) = SPLINE_ZERO
+
+end subroutine WK_VbarSrho
+
+
+
+subroutine WK_VcaronSk(m_1, m_2, rad, VcSk)
+    ! D.90 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+    real(kind=SPLINE_REAL)    :: rad(m_1%spl_len)
+    complex(kind=SPLINE_REAL) :: VcSk(m_1%spl_len)
+
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+        VcSk =  half*(-m_1%du_spl + m_1%aux_f + (m_1%kf**two - m_2%kf**two + six)*m_1%v_spl/(rad*m_1%kf) )*(m_2%du_spl + m_2%aux_f) & 
+             +  half*(m_1%du_spl + m_1%aux_f)*(-m_2%du_spl + m_2%aux_f - (m_1%kf**two - m_2%kf**two - six)*m_2%v_spl/(rad*m_2%kf))
+    else 
+        VcSk = SPLINE_ZERO
+    endif 
+    if(rad(1).eq.zero)VcSk(1) = SPLINE_ZERO
+
+end subroutine WK_VcaronSk
+
+
+
+
+subroutine WK_VcaronSmu(m_1, m_2, rad, VcSmu)
+    ! D.91 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+    real(kind=SPLINE_REAL)    :: rad(m_1%spl_len)
+    complex(kind=SPLINE_REAL) :: VcSmu(m_1%spl_len)
+    real(kind=SPLINE_REAL) :: k12pk22, k12mk22 
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+    k12pk22 = m_1%kf**two + m_2%kf**two
+    k12mk22 = m_1%kf**two - m_2%kf**two
+
+    !! NOTE THAT on the 4th line of D.91 -- i am assuming the half f is meant to be an f'
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+
+        VcSmu =  half*( (k12pk22-eight)*(k12pk22 - six) - two*((m_1%kf*m_2%kf)**two) )*(m_1%v_spl*m_2%v_spl)/(rad*rad * m_1%kf * m_2%kf) & 
+              +  half*(k12pk22 - six)* ( m_1%aux_x*m_2%aux_x - m_1%dv_spl*m_2%aux_x/m_1%kf                                               & 
+                                        - m_2%dv_spl*m_1%aux_x/m_2%kf )                                             & 
+              - (m_1%du_spl + m_1%aux_f/two  -  (k12mk22 + six)*m_1%v_spl/(rad*m_1%kf))*(two*m_2%du_spl - m_2%aux_f)/three                & 
+              - (m_2%du_spl + m_2%aux_f/two  +  (k12mk22 - six)*m_2%v_spl/(rad*m_2%kf))*(two*m_1%du_spl - m_1%aux_f)/three
+    elseif(m_1%t.eq.'T' .and. m_2%t.eq.'T')then 
+        VcSmu =  half*( (k12pk22-eight)*(k12pk22 - six) - two*((m_1%kf*m_2%kf)**two) )*(m_1%w_spl*m_2%w_spl)/(rad*rad * m_1%kf * m_2%kf) & 
+              +  half*(k12pk22 - six)* (m_1%aux_z*m_2%aux_z - m_1%dw_spl*m_2%aux_z/m_1%kf - m_2%dw_spl*m_1%aux_z/m_2%kf) 
+    else 
+        VcSmu = SPLINE_ZERO
+    endif 
+                
+    if(rad(1).eq.zero)VcSmu(1) = SPLINE_ZERO
+
+end subroutine WK_VcaronSmu
+
+
+
+subroutine WK_VcaronSrho(m_1, m_2, rad, g, rho, VcSrho)
+    ! D.92 Woodhouse kernel
+    implicit none 
+
+    type(Mode) :: m_1
+    type(Mode) :: m_2
+    real(kind=SPLINE_REAL)    :: rad(m_1%spl_len), g(m_1%spl_len), rho(m_1%spl_len)
+    complex(kind=SPLINE_REAL) :: VcSrho(m_1%spl_len)
+
+    real(kind=SPLINE_REAL) :: piG
+    real(kind=SPLINE_REAL) :: k12pk22, k12mk22 
+
+    k12pk22 = m_1%kf**two + m_2%kf**two
+    k12mk22 = m_1%kf**two - m_2%kf**two
+
+
+    if(safety_checks)then 
+        if(m_1%spl_len.ne.m_2%spl_len)then 
+            write(*,*)"Error in WK_Trho. Mode splines arent same length "
+            write(*,*)"Mode 1: ", m_1%spl_len
+            write(*,*)"Mode 2: ", m_2%spl_len
+            stop 
+        endif
+    endif 
+
+    ! non dim? 
+    piG = one
+
+    if(m_1%t.eq.'S' .and. m_2%t.eq.'S')then 
+        VcSrho = half * m_1%u_spl * (two*m_2%dp_spl + eight*piG*rho*m_2%u_spl + (k12mk22-six)*g*m_2%v_spl/(rad*m_2%kf)) & 
+               + half * m_2%u_spl * (two*m_1%dp_spl + eight*piG*rho*m_1%u_spl - (k12mk22+six)*g*m_1%v_spl/(rad*m_1%kf)) & 
+               + half * (k12pk22 - six)* ( m_1%v_spl*m_2%p_spl/m_1%kf  +  m_2%v_spl*m_1%p_spl/m_2%kf )/rad
+    else 
+        VcSrho  = SPLINE_ZERO
+    endif 
+    if(rad(1).eq.zero)VcSrho(1) = SPLINE_ZERO
+
+end subroutine WK_VcaronSrho
 
 
 end module woodhouse_kernels

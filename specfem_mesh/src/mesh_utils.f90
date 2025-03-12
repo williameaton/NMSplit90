@@ -33,26 +33,27 @@ module mesh_utils
     end function delta_int
 
 
-    subroutine find_row_col(i, row, col, l)
-        ! Find row and column related to index, i, of an upper triangular
-        ! of square matrix (2l+1) x (2l+1) where the index is contiguous
-        ! across a row 
-        integer :: i, row, col, l
-        integer :: r, num_elements_in_row
+subroutine find_row_col(i, row, col, l)
+    ! Find row and column related to index, i, for a subset of the upper triangular
+    ! matrix (2l+1) x (2l+1), where only columns >= l are included.
+    integer :: i, row, col, l
+    integer :: r, num_elements_in_row, col_start
+    
+    ! Iterate through rows to find the corresponding row and column
+    do r = 1, 2*l+1
+        col_start = max(l + 1, r)  ! The first column to consider in this row
+        num_elements_in_row = 2*l + 1  - col_start + 1
         
-        ! Find the row for the given index i
-        num_elements_in_row = 0
-        do r = 1, 2*l+1
-            num_elements_in_row = 2*l + 2 - r
-            if (i <= num_elements_in_row) then
-                row = r
-                col = i + r - 1
-                return
-            else
-                i = i - num_elements_in_row
-            end if
-        end do
-        end subroutine find_row_col
+        if (i <= num_elements_in_row) then
+            row = r
+            col = i + col_start - 1
+            return
+        else
+            i = i - num_elements_in_row
+        end if
+    end do
+    
+end subroutine find_row_col
 
 
 end module mesh_utils
