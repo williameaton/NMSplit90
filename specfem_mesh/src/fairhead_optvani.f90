@@ -1,0 +1,845 @@
+
+program fairhead_optimised_vani
+    ! This is a version of optimised vani that couples to the Fairhead codesuite 
+    ! for joint inversions
+    use params, only: VaniAllModes_4, VaniAllModes_8, verbose, myrank, MPI_SPLINE_COMPLEX, & 
+                        MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT,   &
+                         nmodes, nprocs, all_warnings, datadir, max_tl1, & 
+                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax, timingNEX
+    use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
+    use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
+                        compute_Vani_matrix, compute_vani_matrix_stored, & 
+                        convert_imag_to_real, save_Vani_real_matrix
+    use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst_4, Hcomplex_to_cst_8, write_cst_complex_to_file
+    use mesh_utils, only: find_row_col
+    use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
+    use m_KdTree, only: KdTree, KdTreeSearch
+    use voronoi, only: vor_x, vor_y, vor_z, & 
+                        vor_A, vor_C, vor_L, vor_N, vor_F, &
+                        load_voronoi_model, project_voroni_to_gll
+    use specfem_mesh, only: SetMesh, create_SetMesh
+    use modes, only: get_mode, Mode 
+    use mineos_model, only: mineos, mineos_ptr
+    use vani_kernel, only: d_allstrains_r, d_allstrains_i, copy_allstrain_to_device, & 
+                           d_wglljac_g, d_Cxyz_g, d_vani_imag_G, d_vani_real_G, & 
+                           compute_Vani_onemode_allstrains, check_cuda_device_allocations,& 
+                           Model3D_dev, cuda_project_eta_to_GLL, Model_ACLNF, & 
+                           d_rad, d_eta1, d_eta2, d_xcoord, d_ycoord, d_zcoord, d_NN1_TOTAL, & 
+                           d_modeLUT, compute_Vani_all_modes_at_once
+    use cudafor 
+    
+    use iso_c_binding
+    use Vanibindings
+
+    
+    implicit none
+    include "constants.h"
+    include 'mpif.h'
+
+    integer :: iset, i,j,k,s, p, ispec, l1, l2, n1, m1,m2, n2, ierr, & 
+                tl2, h, b, cluster_size, sets_per_process, & 
+                myset_start, myset_end, i_mode, smin, smax, num_s, & 
+                ncols, this_tl1, imode, im, imodel_iter, igll, iproc, & 
+                success, idx, thisrow, thiscol, is, it, ncstsvals, icst,& 
+                thissmax,allscalars,cxyzsize,LUTsize,m3dsize
+    character(len=2) nstr, lstr
+    character(len=5) iterstr
+    character(len=3) chainstr
+    character(len=450) :: out_name
+    real :: gb_per_set
+
+
+    real(kind=8), allocatable :: Vani_modesum_r(:), Vani_modesum_i(:)
+    character(len=20) :: model_ti
+    complex(kind=SPLINE_REAL), allocatable :: allstrains(:, :, :, :, :, :, :)
+
+    integer :: max_nn1
+
+    real(kind=8), allocatable :: wglljac_loc(:, :)
+    real(kind=8), allocatable :: Cxyz_loc(:, :, :, :)
+
+    real(kind=4), allocatable :: BrettModelToTransfer_4(:,:)
+    real(kind=8), allocatable :: BrettModelToTransfer_8(:,:)
+
+    integer, allocatable, target :: modeLUT(:)
+
+    ! KD tree: 
+    type(KdTree)           :: tree
+    type(SetMesh)          :: sm  
+
+    integer :: thisnn1, ival
+    integer :: start_clock, end_clock, count_rate, total_nn1, iii, loop_clock_start
+    real(8) :: elapsed_time
+
+    ! Fairhead stuff: 
+    integer         :: iter, upID, NodeID
+    integer         :: status(MPI_STATUS_SIZE)
+    integer(kind=8) :: FHnvoronoi, niterations
+    integer         :: juliarank
+    real(kind=8),allocatable  :: FHinitmodel(:)
+    real(kind=8), target      :: FHupdates(6)
+ 
+
+
+    ! Modes: 
+    ! REAL 27: 
+    !integer, dimension(nmodes), parameter :: modeNs = (/3, 21, 21, 8,  7, 16,23, 11, 18, 11,  23,  2, 18,13,  9, 6, 5, 3 ,13, 9, 27, 5, 27,  3, 8, 22, 13 /)
+    !integer, dimension(nmodes), parameter :: modeLs = (/8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 3,  3, 3, 3, 2 , 2, 2,  2, 2,  1,  1, 1,  1,  1 /)
+    
+    integer, dimension(nmodes), parameter :: modeNs = (/3, 21/)
+    integer, dimension(nmodes), parameter :: modeLs = (/8, 7/)
+
+
+
+
+    INTEGER :: request1, request2
+    INTEGER, dimension(2) :: requests  ! Array of requests
+
+    ! BINDING PARAMETERS TO CPP : 
+    integer :: cppprec
+    logical :: cppdouble
+    integer :: size_of_array
+    integer(kind=8) :: strainsize, straingb
+    type(C_PTR) :: ta_ptr, eta1_ptr, eta2_ptr, cxyz_ptr, LUT_ptr, strain_r_ptr, strain_i_ptr, Vani_real_ptr, Vani_imag_ptr, wgll_ptr
+
+    real(4), pointer :: flat3Dmodel_4(:)
+    real(8), pointer :: flat3Dmodel_8(:)
+    type(C_PTR) :: ptr_m3D, ptr_FHupdates
+
+    real(4), allocatable, target :: flatarray_4(:), flatstrain_r_4(:), flatstrain_i_4(:), Vani_real_4(:), Vani_imag_4(:)
+    real(8), allocatable, target :: flatarray_8(:), flatstrain_r_8(:), flatstrain_i_8(:), Vani_real_8(:), Vani_imag_8(:)
+
+
+    real(4), allocatable :: Vani_real_4_REDUCED(:), Vani_imag_4_REDUCED(:)
+
+
+    real(kind=4), allocatable :: allcsts_r_4(:), allcsts_i_4(:), allcsts_r_RED_4(:), allcsts_i_RED_4(:)
+    real(kind=8), allocatable :: allcsts_r_8(:), allcsts_i_8(:), allcsts_r_RED_8(:), allcsts_i_RED_8(:)
+
+    complex(kind=4), allocatable :: cst_4(:,:)
+    complex(kind=8), allocatable :: cst_8(:,:)
+
+
+    real(kind=4) :: aclnf_4(5)
+    real(kind=8) :: aclnf_8(5)
+
+
+    ! Simulation parameters: 
+    integer               :: model_chain 
+    integer, parameter    :: region      = 3
+    character, parameter  :: t1          = 'S'
+    logical, parameter    :: force_VTI   = .false.
+
+
+    ! Setup MPI 
+    call MPI_INIT(ierr)
+    call MPI_COMM_SIZE(MPI_COMM_WORLD, cluster_size, ierr)
+    call MPI_COMM_RANK(MPI_COMM_WORLD, myrank, ierr)
+
+    ! Work out the Julia rank for fairhead
+    print *, "Fortran MPI process running with rank ", myrank
+    if(myrank.eq.0)then
+        juliarank = 1 
+    elseif(myrank.eq.1)then
+        juliarank = 0 
+    else 
+        write(*,*)"Error: myrank is not 0 or 1. Are you using more than 2 processes?"
+        stop
+    endif
+
+
+    ! C++ precision
+    cppprec = get_cpp_precision()
+    if(cppprec==4)then 
+        CPPDOUBLE = .false.
+    elseif(cppprec==8)then 
+        CPPDOUBLE = .true.
+    else 
+        write(*,*)'Error, cppprec should be 4 or 8 but was ', cppprec
+    endif 
+
+    ! Setup MPI precisions: 
+    if(SPLINE_REAL.eq.4)then 
+        MPI_SPLINE_REAL    = MPI_REAL
+        MPI_SPLINE_COMPLEX = MPI_COMPLEX
+   elseif(SPLINE_REAL.eq.8)then
+        MPI_SPLINE_REAL    = MPI_DOUBLE_PRECISION 
+        MPI_SPLINE_COMPLEX = MPI_DOUBLE_COMPLEX
+   endif
+   if(CUSTOM_REAL.eq.4)then
+        MPI_CUSTOM_REAL = MPI_REAL
+   elseif(CUSTOM_REAL.eq.8)then
+        MPI_CUSTOM_REAL = MPI_DOUBLE_PRECISION 
+   endif 
+
+    ! For some reason Myrank = 6 seems to not print...is this an issue? 
+    ierr =  assign_proc_to_device(nprocs, myrank)
+
+    ! ASSUMING 1 mesh per proc
+    sets_per_process = nprocs/cluster_size
+    myset_start      = myrank*sets_per_process
+    myset_end        = myset_start + sets_per_process - 1 
+
+
+    ! Check equal load balance across the processes:
+    if(all_warnings)then 
+        if( mod(nprocs,cluster_size).ne.0)then 
+            write(*,*)'Error: you are using '
+            write(*,*)'     -- nprocs ',nprocs 
+            write(*,*)'     -- nnodes ',cluster_size 
+            write(*,*)'And therefore nnodes is not divisible by nnodes. Stop.'
+            stop 
+        else 
+            if(myrank.eq.0 .and.verbose.ge.1)write(*,*)'Sets for each node:', sets_per_process
+            print *, 'Process: ', myrank, 'does sets', myset_start, 'to ', myset_end
+        endif 
+    endif 
+
+
+    IIN  = myrank
+    IOUT = IIN + 2000
+
+    ! Setup mineos: 
+    call mineos%load_mineos_radial_info()
+    mineos_ptr => mineos
+
+    ! Load mesh data for this proc (1 set per proc)
+    ! True false indicates load from disc and dont save to disc
+    sm   = create_SetMesh(myset_start, region)
+    call sm%setup_mesh_sem_details(.true., .false.)
+    call sm%compute_rotation_matrix()
+
+    ! Until I can think of a better system, lets setup a mode look up table on the gpu
+    total_nn1 = 0
+    do imode = 1, nmodes
+        l1        = modeLs(imode)
+        this_tl1  = 2*l1 +1
+        total_nn1 = total_nn1 +  (l1+1)*(l1) + 1  !(this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2)
+    enddo  
+    allocate(modeLUT(total_nn1*4), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating modeLUT on', myrank
+        stop 
+    endif 
+
+
+    ! Sizes of arrays:
+    size_of_array = sm%ngllx * sm%nglly * sm%ngllz * sm%nspec   ! standard mesh scalar
+    strainsize    = nmodes * max_tl1 * sm%ngllx * sm%nglly * sm%ngllz * sm%nspec * 6 
+
+
+    ! Safety check: 
+    if(max_tl1.ne. maxval(modeLs)*2 + 1)then 
+        write(*,*)'max tl1 is not the max of that in the model1 array - should be ', maxval(modeLs)*2 + 1, ' but is ', max_tl1
+        stop 
+    endif 
+
+
+    ! Setup global eta1, eta2 arrays
+    ! Allocate Vani matrices
+    allocate(VaniAllModes_4(max_tl1, max_tl1, nmodes), stat=ierr)
+    VaniAllModes_4 = SPLINE_iZERO
+
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating VaniAllModes for proc ', myrank
+        stop 
+    endif 
+
+
+    ! Loading strains and determining estimate of the memory cost: 
+    ! Dimension of strains would be: ngllx, nglly, ngllz, nspec, 2*l1+1, 6, nmodes
+    ! In double precision (8 bytes) for complex numbers (x2): 
+
+    ! Strain for each mode is about 14 Mb for NEX 176 1 of sets 16
+    if(myrank.eq.0)then
+        write(*,*)
+        write(*,*)'-------------------- GPU MEMORY ESTIMATES --------------------' 
+        allscalars = size_of_array * cppprec * 3 ! x, y, z 
+        cxyzsize   = size_of_array * cppprec * 36 
+        LUTsize    = total_nn1*4   * 4
+        m3dsize    = MaxBrettModelPts*5*cppprec
+        straingb   = strainsize * cppprec * 2 ! imag + real 
+        gb_per_set = real(allscalars+cxyzsize+LUTsize+m3dsize+straingb)/1073741824.0
+
+        write(*,*)' C++ precision          :             ', cppprec
+        write(*,*)' Number of modes        :             ', nmodes
+        write(*,*)' Standard DP mesh scalar:             ', allscalars, ' bytes'
+        write(*,*)' Cxyz matrix            :             ', cxyzsize, ' bytes'
+        write(*,*)' Look up table          :             ', LUTsize, ' bytes'
+        write(*,*)' 3D Voronoi Model       :             ', m3dsize, ' bytes'
+        write(*,*)' Strain arrays          : ', straingb, ' bytes'
+        write(*,*)' ........................................................... '
+        write(*,*)' Total per processor    :       ', gb_per_set, 'Gb'
+        write(*,*)' Total for all sets     :       ', gb_per_set*nprocs, 'Gb'
+        write(*,*)'-------------------------------------------------------------' 
+        write(*,*)
+    endif
+
+
+    ! Load all strains once and for all for each m value
+    ierr=0
+    allocate(allstrains(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, max_tl1, 6, nmodes), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating allstrains for proc ', myrank
+        stop 
+    endif 
+
+
+
+    ! Copy over the xcoord, ycoord, zcoord, rstore arrays: 
+    allocate(flatarray_4(size_of_array), stat=ierr)
+
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating flatarray for proc ', myrank
+        stop 
+    endif 
+
+    ! Copy x coordinates
+    iii = 1
+    do k = 1, sm%ngllz
+        do j = 1, sm%nglly
+            do i = 1, sm%ngllx
+                do ispec = 1, sm%nspec 
+                        flatarray_4(iii) = real(sm%xstore(i,j,k,ispec), kind=4)
+                    iii = iii + 1
+                enddo 
+            enddo 
+        enddo 
+    enddo 
+    ta_ptr = c_loc(flatarray_4)
+    ierr = copythisarraytodevice(ta_ptr, size_of_array, 1)
+
+    ! Copy y coordinates
+    iii = 1
+    do k = 1, sm%ngllz
+        do j = 1, sm%nglly
+            do i = 1, sm%ngllx
+                do ispec = 1, sm%nspec 
+                        flatarray_4(iii) = real(sm%ystore(i,j,k,ispec),kind=4)
+                    iii = iii + 1
+                enddo 
+            enddo 
+        enddo 
+    enddo 
+    ta_ptr = c_loc(flatarray_4)
+    ierr = copythisarraytodevice(ta_ptr, size_of_array, 2)
+
+
+    ! Copy z coordinates
+    iii = 1
+    do k = 1, sm%ngllz
+        do j = 1, sm%nglly
+            do i = 1, sm%ngllx
+                do ispec = 1, sm%nspec 
+                        flatarray_4(iii) = real(sm%zstore(i,j,k,ispec),kind=4)
+                    iii = iii + 1
+                enddo 
+            enddo 
+        enddo 
+    enddo 
+    ta_ptr = c_loc(flatarray_4)
+    ierr = copythisarraytodevice(ta_ptr, size_of_array, 3)
+
+
+    allstrains = SPLINE_iZERO
+
+    ncstsvals = 0 
+    do imode = 1, nmodes
+        n1       = modeNs(imode)
+        l1       = modeLs(imode)
+        this_tl1 = 2*l1 +1
+        do im =  -l1, l1 
+            call sm%load_mode_strain_binary(n1, t1, l1, im, &  
+                                            allstrains(:,:,:,:,l1+im+1,:,imode))
+        enddo 
+
+        ! There are (l+1) s values we need (for self coupling) where 
+        ! Each of those s there are s + 1 
+        ! Maxing at s = 6
+        if (2*l1.gt.compute_cst_smax)then 
+            thissmax = compute_cst_smax
+        else 
+            thissmax = 2*l1 
+        endif 
+        do s = 0, thissmax, 2 
+            ncstsvals = ncstsvals + (s+1)
+        enddo 
+        
+    enddo  
+    if(myrank.eq.0)write(*,*)'Loaded all strain binaries from disc.'
+
+
+    allocate(allcsts_r_4(ncstsvals), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating allcsts_r on ',myrank
+        stop
+    endif 
+    allocate(allcsts_i_4(ncstsvals), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating allcsts_r on ', myrank
+        stop
+    endif 
+
+    if(myrank.eq.0)then 
+        allocate(allcsts_r_RED_4(ncstsvals), stat=ierr)
+        if(ierr.ne.0)then 
+            write(*,*)'Error allcsts_r_RED allcsts_r'
+            stop
+        endif 
+        allocate(allcsts_i_RED_4(ncstsvals), stat=ierr)
+        if(ierr.ne.0)then 
+            write(*,*)'Error allcsts_i_RED allcsts_r'
+            stop
+        endif 
+    endif 
+
+
+
+    idx = 1
+    do imode = 1, nmodes
+        l1       = modeLs(imode)
+        this_tl1 = 2*l1 +1
+
+        thisnn1  =  (l1+1)*(l1) + 1
+
+        do iii = 1, thisnn1
+            modeLUT(idx) = imode-1 ! mode
+            idx = idx + 1
+            modeLUT(idx) = iii -1   ! place in matrix
+            idx = idx + 1
+
+            ! Get the row and column of this point in the matrix
+            ! ie the m1, m2: 
+            ! Note that the find_row_col fucks up the iii value so
+            ! copy it to a new integer before parsing -- this took me
+            ! way too long to work out
+            ival = iii 
+
+            call find_row_col(ival, thisrow, thiscol, l1)
+
+            modeLUT(idx) = thisrow -1  ! row in c++ -1 
+            idx = idx + 1
+
+            modeLUT(idx) = thiscol -1  ! col in c++ -1 
+            idx = idx + 1
+        enddo 
+    enddo  
+
+    ! I think we want to keep this without the subtraction since it 
+    ! is used for the spacing of the arrays etc 
+    max_nn1 = max_tl1*(max_tl1+1)/2
+
+
+    LUT_ptr = c_loc(modeLUT)
+    ierr = copy_LUT_array(LUT_ptr, total_nn1*4)
+    if(ierr.ne.0)then 
+        write(*,*)'Error in copy_LUT_array on ', myrank
+        stop
+    endif 
+
+
+    ! Compute the size of all the strains:
+    ! (sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, max_tl1, 6, nmodes)
+    ! Now we have collapsed the matrix we can store only the number of tl1s 
+    ! that each mode needs 
+
+    ! FOR NOW WE ARE USING THE MORE MEMORY INEFFICIENT VERSION OF ASSUMING THEY ALL 
+    ! HAVE max_tl1 - this makes the indexing a bit simpler in the kernel for now.
+    ! probs need a LUT otherwise
+    allocate(flatstrain_r_4(strainsize), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error in flatstrain_r on ', myrank
+        stop 
+    endif 
+    allocate(flatstrain_i_4(strainsize), stat=ierr)
+    if(ierr.ne.0)then 
+        write(*,*)'Error in flatstrain_i on ', myrank
+        stop 
+    endif 
+
+    ! The strain mega-array
+    iii = 1
+    do imode = 1, nmodes 
+        l1  = modeLs(imode)
+        do p = 1,6
+            do im =  1, max_tl1!-l1, l1 
+                do k = 1, sm%ngllz
+                    do j = 1, sm%nglly
+                        do i = 1, sm%ngllx
+                            do ispec = 1, sm%nspec 
+                                if (im.le. 2*l1 + 1)then 
+                                    flatstrain_r_4(iii) =  real(allstrains(i, j, k, ispec, im, p, imode) *   sm%wglljac(i,j,k,ispec)**half ) 
+                                    flatstrain_i_4(iii) = aimag(allstrains(i, j, k, ispec, im, p, imode) *   sm%wglljac(i,j,k,ispec)**half ) 
+                                else
+                                    ! regions outside of the tl1 that is valid for this mode
+                                    flatstrain_r_4(iii) = zero 
+                                    flatstrain_i_4(iii) = zero 
+                                endif 
+                                iii = iii + 1
+                            enddo 
+                        enddo 
+                    enddo 
+                enddo
+            enddo 
+        enddo 
+    enddo 
+    strain_r_ptr = c_loc(flatstrain_r_4)
+    strain_i_ptr = c_loc(flatstrain_i_4)    
+
+
+    ! Need to transfer the mega-strains! 
+    ierr = copy_allstrains(strain_r_ptr, strain_i_ptr, strainsize)
+    if(ierr.ne.0)then 
+        write(*,*)'Error in copy_allstrains on ', myrank
+        stop 
+    endif 
+
+    ! Allocate the arrays for the output Vani matrix (flattened)
+    ierr = allocate_Vani_arrays(nmodes*max_nn1)
+    if(ierr.ne.0)then 
+        write(*,*)'Error in allocate_Vani_arrays on', myrank
+        stop 
+    endif 
+    
+    ! Local F90 versions on host cpu 
+    allocate(Vani_real_4(nmodes*max_nn1), stat=ierr)
+    Vani_real_ptr = c_loc(Vani_real_4)
+    allocate(Vani_imag_4(nmodes*max_nn1), stat=ierr)
+    Vani_imag_ptr = c_loc(Vani_imag_4)
+
+    if(ierr.ne.0)then 
+        write(*,*)'Error in allocating Vani_real on', myrank
+        stop 
+    endif 
+
+    ! Allocate the Cxyz array
+    ierr = allocate_Cxyz_array(size_of_array*36)
+    if(ierr.ne.0)then 
+        write(*,*)'Error in function allocate_Cxyz_array', myrank
+        stop 
+    endif 
+
+
+    ! The flat model array that is used on the GPU
+    allocate(flat3Dmodel_4(MaxBrettModelPts*5), stat=ierr)
+    ! Get ptr to host flatmodel array
+    ptr_m3D = c_loc(flat3Dmodel_4)
+
+    if(ierr.ne.0)then 
+        write(*,*)'Error allocating flat3Dmodel on', myrank
+        stop 
+    endif 
+
+    ! Allocate Model array on the device
+    ierr = allocate_M3D_array(MaxBrettModelPts*5)
+    if(ierr.ne.0)then 
+        write(*,*)'Error running allocate_M3D_array on', myrank
+        stop 
+    endif 
+
+
+
+    ! Now we need to receive the initial model send by Fairhead: 
+    ! Get the number of voronoi cells in initial model 
+    call MPI_RECV(FHnvoronoi, 1, MPI_INT64_T, juliarank, 1, MPI_COMM_WORLD, status, ierr)
+    ! Get the ACLNF for initial model
+    call MPI_RECV(aclnf_8, 5, MPI_DOUBLE_PRECISION, juliarank, 2, MPI_COMM_WORLD, status, ierr)
+
+    ! Now get the model values: tag 3
+    ! it doesnt like nmodelparam being kind=8
+    allocate(FHinitmodel(FHnvoronoi*5))
+    call MPI_RECV(FHinitmodel, int(FHnvoronoi)*5, MPI_DOUBLE_PRECISION, juliarank, 3, MPI_COMM_WORLD, status, ierr)
+
+    ! Get number of model iterations: 
+    call MPI_RECV(niterations, 1, MPI_INT64_T, juliarank, 4, MPI_COMM_WORLD, status, ierr)
+
+    write(*,*)'NMSPLIT90 has: '
+    write(*,*)' Fairhead number of iterations    : ', niterations
+    write(*,*)' Fairhead initial model points    : ', FHnvoronoi
+    write(*,*)' Fairhead initial model ACLNF     : ', aclnf_8
+    write(*,*)' Fairhead initial model           : ', FHinitmodel
+
+    ! Copy over the original model to GPU:
+    flat3Dmodel_4(:) = zero 
+    flat3Dmodel_4(1:int(FHnvoronoi)*5) = real(FHinitmodel, kind=4)
+    ierr = copy_M3D_array(ptr_m3D, MaxBrettModelPts*5)
+    write(*,*)'F90: Copied initial model to GPU'
+
+
+    ! Ensure that there is a pointer to the updates array: 
+    ptr_FHupdates = c_loc(FHupdates)
+
+
+    ! Julia needs to know the number of cst values it will receive
+    call MPI_SEND(ncstsvals, 1, MPI_INTEGER, juliarank, 6, MPI_COMM_WORLD, ierr)
+
+
+
+    ! For now we will ignore any mode calcluations for the first iteration since its never going to
+    ! be used anyway 
+
+    ! ! ------------------------------------------------------------------------------------------
+    ! ! THINGS THAT HAPPEN EACH MODEL 
+
+
+    ! Fairhead is going to generate a perturbation to the system and send that over. 
+    ! The options are: 
+    !   ID      Action          N vals sent     Ordering
+    !  1,2,3    Modify ACLNF    3               ID, index of ACLNF (1-5), value
+    !  4,5,6    Modify angles   3               ID, nodeID, new eta1, new eta2
+    !  7        Move node       5               ID, nodeID, new x, new y, new z
+    !  8        Birth node      7               ID, new x, new y, new z, index of ACLNF, new value * 
+    !  9        Kill node       2               ID, nodeID
+    ! All values sent as floats so can be sent in single MPI call 
+    !* (note eta1, eta2 are inherited from last node in the order)
+    !* unsure why the birth is also modifying the ACLNF
+
+     call system_clock(count_rate=count_rate)
+    do iter = 1, 10
+        call system_clock(loop_clock_start)
+
+        ! Listen for the update: FHupdates
+        call MPI_RECV(FHupdates, 6, MPI_DOUBLE_PRECISION, juliarank, 5, MPI_COMM_WORLD, status, ierr)
+
+        ! Process the update
+        ! 3rd argument is the size of the M3D array
+        ! returns the updated number of voronoi points
+        !npts = update_FH_model(ptr_FHupdates, ptr_m3D, MaxBrettModelPts*5)
+        upID  = int(FHupdates(1))
+        ! Node ID wont always be sent but, if it is, then its in slot 2
+        ! index the nodes starting at 0 
+        NodeID = int(FHupdates(2))-1 
+
+        if(upID.le.3)then 
+            ! Velocity change
+            write(*,*)'F90: changed velocity for iter ', iter
+
+            aclnf_8(int(FHupdates(2))) = FHupdates(3)
+        elseif(upID.ge.4.and.upID.le.6)then
+            write(*,*)'F90: changed angles for iter ', iter
+
+            ! Symmetry axis update - eta1, eta2 are send as
+            flat3Dmodel_4(NodeID*5 +4 : NodeID*5 +5) = FHupdates(3:4)
+        elseif(upID.eq.7)then
+            write(*,*)'F90: moved node for iter ', iter
+            ! Move node - update x,y,z
+            flat3Dmodel_4(NodeID*5 +1 : NodeID*5 +3) = FHupdates(3:5)
+        elseif(upID.eq.8)then
+            write(*,*)'F90: birthed node for iter', iter
+            ! Birth node
+            ! It takes the eta1, eta 2 from the node before it in the list for some reason
+            flat3Dmodel_4(FHnvoronoi*5 +1: FHnvoronoi*5 +3) = FHupdates(2:4)
+            flat3Dmodel_4(FHnvoronoi*5 +4: FHnvoronoi*5 +5) = flat3Dmodel_4((FHnvoronoi-1)*5+4 : (FHnvoronoi-1)*5 +5)
+            FHnvoronoi = FHnvoronoi + 1
+            ! Also updates the ACF for some reason: 
+            aclnf_8(int(FHupdates(5))) = FHupdates(6)
+        elseif(upID.eq.9)then
+            write(*,*)'F90: killed node for iter ', iter
+            ! Kill node
+            ! This is trickier. First we need to identify the node and then shuffle down the nodes values that
+            ! are above it in the array so its overwritten
+            flat3Dmodel_4(NodeID*5 +1: (FHnvoronoi-1)*5) = flat3Dmodel_4((NodeID+1)*5 +1: FHnvoronoi*5)
+            flat3Dmodel_4((FHnvoronoi-1)*5 +1: FHnvoronoi*5) = zero 
+            FHnvoronoi = FHnvoronoi - 1
+        else
+            !ERROR 
+            write(*,*)"Error updating FH model. ID is not 1-9:", upID
+            stop
+        endif
+
+
+        ! call system_clock(end_clock)
+        ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+        ! if(myrank.eq.0)write(*,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
+
+        ! call system_clock(count_rate=count_rate)
+        ! call system_clock(start_clock)
+        ierr = copy_M3D_array(ptr_m3D, MaxBrettModelPts*5)
+        ierr = cpp_project_eta_to_gll(int(FHnvoronoi), sm%nspec, sm%ngllx, aclnf_8) 
+
+        ! call system_clock(end_clock)
+        ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+        ! if(myrank.eq.0)write(*, *) 'Copy model to device:', elapsed_time*1000, ' ms'
+        
+        ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1, nmodes, myrank)
+
+
+        ! call system_clock(count_rate=count_rate)
+        ! call system_clock(start_clock)
+
+
+        ierr = copyfromdevice(Vani_real_ptr, max_nn1*nmodes, 8)
+        ierr = copyfromdevice(Vani_imag_ptr, max_nn1*nmodes, 9)
+
+        ! call system_clock(end_clock)
+        ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+        ! if(myrank.eq.0)write(*,*) ' Copy back          :', elapsed_time*1000, ' ms'
+
+
+
+        ! Overall the number of cst values we need to compute and 
+        ! conduct reduction of is as follows: 
+        ! Each mode of degree l = we need the s from 0 to 2l (inclusive)
+        ! for each s there are s+1 values we need to transfer (only computing the negative)
+        ! Due to hermitian nature 
+        ! call system_clock(count_rate=count_rate)
+        ! call system_clock(start_clock)
+        icst = 1
+        do imode = 1, nmodes
+
+            l1  = modeLs(imode)
+            n1  = modeNs(imode)
+            this_tl1 = 2*l1 + 1
+
+            ! Now need all the values: 
+            thisnn1  = this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2
+
+            do iii = 1, thisnn1
+                ival = iii 
+                call find_row_col(ival, thisrow, thiscol, l1)
+
+                if(thisrow.eq.l1+1 .and. thiscol.gt.l1+1)then 
+
+
+                    VaniAllModes_4(thisrow, thiscol, imode) = VaniAllModes_4(this_tl1 - thiscol  + 1, thisrow, imode) *  ((-one)**real( thiscol - l1 - 1, kind=8 ))
+                else 
+                    ! Normal index
+                    VaniAllModes_4(thisrow, thiscol, imode) = Vani_real_4((imode-1)*max_nn1 + iii) + & 
+                                                                SPLINE_iONE*Vani_imag_4((imode-1)*max_nn1 + iii)
+                    
+                    ! Maps the lower right triangular to the top left triangular
+                    if(thisrow > l1+1 )then 
+                        VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
+                    endif 
+                endif
+            enddo 
+
+
+            ! ! for debugging - Print the assembled matrix 
+            ! if(imode.eq.1)then
+            ! do thisrow = 1, this_tl1
+            !     do thiscol = 1, this_tl1
+            !         if (thiscol.eq.this_tl1)then 
+            !             write(*,'(E15.6)', advance='yes')real(VaniAllModes_4(thisrow, thiscol, imode))
+            !         else 
+            !             write(*,'(E15.6, a)', advance='no')real(VaniAllModes_4(thisrow, thiscol, imode)), ','
+            !         endif
+            !     enddo 
+            ! enddo 
+            ! endif
+            ! write(*,*)
+
+
+            ! if(imode.eq.1)then
+            ! do thisrow = 1, this_tl1
+            !     do thiscol = 1, this_tl1
+            !         if (thiscol.eq.this_tl1)then 
+            !             write(*,'(E15.6)', advance='yes')aimag(VaniAllModes_4(thisrow, thiscol, imode))
+            !         else 
+            !             write(*,'(E15.6, a)', advance='no')aimag(VaniAllModes_4(thisrow, thiscol, imode)), ','
+            !         endif
+            !     enddo 
+            ! enddo 
+            ! endif
+            ! write(*,*)
+
+            ! stop
+
+
+            call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
+            allocate(cst_4(num_s, ncols))
+            call Hcomplex_to_cst_4(VaniAllModes_4(1:this_tl1, 1:this_tl1, imode), l1, l1, cst_4, ncols, num_s, t1, t1, 2)
+
+            if (2*l1.gt.compute_cst_smax)then 
+                thissmax = compute_cst_smax
+            else 
+                thissmax = 2*l1 
+            endif 
+
+
+            do is = 1, thissmax-smin+1, 2
+                do it = 1, (smin+is-1) +1
+                    allcsts_r_4(icst) =  real(cst_4(is,it))
+                    allcsts_i_4(icst) =  aimag(cst_4(is,it))
+                    icst = icst + 1
+                enddo 
+            enddo 
+            deallocate(cst_4)
+
+        enddo      
+
+
+        ! NO reduction needed on one proc
+        ! Now each process has compute the csts we can reduce them 
+        ! call MPI_Ireduce(allcsts_r_4, allcsts_r_RED_4, ncstsvals, MPI_REAL, &
+        !                 MPI_SUM, 0, MPI_COMM_WORLD, request1, ierr) 
+        ! call MPI_Ireduce(allcsts_i_4, allcsts_i_RED_4, ncstsvals, MPI_REAL, &
+        !                 MPI_SUM, 0, MPI_COMM_WORLD, request2, ierr)
+        ! call MPI_Wait(request1, ierr)
+        ! call MPI_Wait(request2, ierr)
+
+        
+
+
+        ! if(myrank.eq.0)then 
+        !     icst = 1
+        !     do imode = 1, nmodes
+        !         l1  = modeLs(imode)
+        !         n1  = modeNs(imode)
+
+        !         if (2*l1.gt.compute_cst_smax)then 
+        !             thissmax = compute_cst_smax
+        !         else 
+        !             thissmax = 2*l1 
+        !         endif 
+
+        !         !call buffer_int(nstr, n1)
+        !         !call buffer_int(lstr, l1)
+            
+        !         !out_name =  './output/NEX_'//trim(timingNEX)//'cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
+        !         !open(1,file=trim(out_name), form='formatted')
+        !         !do s = 0, thissmax, 2
+        !         !    do it = 1, s+1
+        !         !        write(1,*) s, it-s-1, allcsts_r_RED_4(icst), allcsts_i_RED_4(icst)
+        !         !        icst = icst + 1
+        !         !    enddo !it
+        !         !enddo ! s 
+        !         !close(1) ! close file
+
+        !     enddo ! loop over modes for writing 
+
+        ! endif 
+
+        ! SEND THE CST TO Julia
+        call MPI_SEND(allcsts_r_RED_4, ncstsvals, MPI_REAL, juliarank, 98, MPI_COMM_WORLD, ierr)
+        call MPI_SEND(allcsts_i_RED_4, ncstsvals, MPI_REAL, juliarank, 99, MPI_COMM_WORLD, ierr)
+
+
+        ! call system_clock(end_clock)
+        ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
+        ! if(myrank.eq.0)write(*,*) 'CST computation     :', elapsed_time*1000, ' ms'        
+
+
+
+        call system_clock(end_clock)
+        elapsed_time = real(end_clock - loop_clock_start, kind=8) / real(count_rate, kind=8)
+        if(myrank.eq.0)then 
+            write(*,*)  'Iteration time      :', elapsed_time*1000, ' ms'
+            write(*,*)  'Completed iteration : ', imodel_iter
+            write(*,*)
+        endif 
+
+        
+    enddo !iterations
+
+
+
+    ! ! ------------------------------------------------------------------------------------------
+    ! ! STUFF TO DO AFTER ALL THE ITERATIONS ARE COMPLETE: 
+    ! ! Cleanup memory 
+    ! deallocate(VaniAllModes_4)
+
+
+
+    call mpi_finalize(ierr)
+end program fairhead_optimised_vani

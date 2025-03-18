@@ -20,7 +20,7 @@ endif
 
 bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh plot_vani \
                break_mesh opt_vani comp_split reopt plot_model cross_vani \
-               rot_ell
+               rot_ell FH_vani
 
 # Basic files for all programs 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90 ylm_plm.f90 thrj.f90
@@ -101,6 +101,16 @@ opt_vani_SOURCES = $(MED_SRCS)       \
                         binding.o     \
                         optimised_vani.f90
 
+FH_vani_SOURCES = $(MED_SRCS)       \
+                        cuda_proxies.f90 \
+                        V_ani_matrix.f90 \
+                        cst.f90          \
+                        voronoi.f90      \
+                        vani_kernel.o    \
+                        vanicpp.o        \
+                        binding.o     \
+                        fairhead_optvani.f90
+
 reopt_SOURCES = $(MED_SRCS)       \
                         cuda_proxies.f90 \
                         V_ani_matrix.f90 \
@@ -134,6 +144,7 @@ comp_split_SOURCES     = $(MED_SRCS)  visual.f90 V_cen_matrix.f90  compute_split
 
 
 opt_vani_LDADD = vani_kernel.o vanicpp.o binding.o -lcoretran 
+FH_vani_LDADD = vani_kernel.o vanicpp.o binding.o -lcoretran 
 reopt_LDADD = vani_kernel.o -lcoretran 
 compute_vani_LDADD = vani_kernel.o -lcoretran 
 cross_vani_LDADD = vani_kernel.o -lcoretran 

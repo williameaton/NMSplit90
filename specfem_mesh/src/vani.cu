@@ -184,7 +184,7 @@ int assign_proc_to_device(int nprocs, int myrank){
       return -1;
     }
 
-    devcount = 4;
+    devcount = 1;
 
     if(myrank == 0){
       printf("Number of GPU devices:  %i\n", devcount);
@@ -660,31 +660,31 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     // Eqn 5 - DO NOT USE EXCEPT OLD BENCHMARKS
     // This is not even the correct equations for the real eqn 5
     // The commented ones are the real eqn 5    
-      r11 = c1 * c2;  // r11 = c1 * c2 ;
-      r12 = - s1;     // r12 = s1 * c2;
-      r13 = c1*s2;    // r13 = -s2; 
+      // r11 = c1 * c2;  // r11 = c1 * c2 ;
+      // r12 = - s1;     // r12 = s1 * c2;
+      // r13 = c1*s2;    // r13 = -s2; 
       
-      r21 = s1*c2;    // r21 = -s1 ;
-      r22 = c1;       // r22 = c1 ;
-      r23 = s1*s2;    // r23 = 0.0 ;
+      // r21 = s1*c2;    // r21 = -s1 ;
+      // r22 = c1;       // r22 = c1 ;
+      // r23 = s1*s2;    // r23 = 0.0 ;
 
-      r31 = -s2;      // r31 = c1*s2;
-      r32 = 0.0;      // r32 = s1*s2;
-      r33 = c2;       // r33 = c2;
+      // r31 = -s2;      // r31 = c1*s2;
+      // r32 = 0.0;      // r32 = s1*s2;
+      // r33 = c2;       // r33 = c2;
 
 
-    // ! Eqn 8 of Brett 2024
-    // r11 = c1 * c2 ;
-    // r12 = -s1;
-    // r13 = s2*c1; 
+    // Eqn 8 of Brett 2024
+    r11 = c1 * c2 ;
+    r12 = -s1;
+    r13 = s2*c1; 
 
-    // r21 = s1*c2 ;
-    // r22 = c1 ;
-    // r23 = s1*s2 ;
+    r21 = s1*c2 ;
+    r22 = c1 ;
+    r23 = s1*s2 ;
 
-    // r31 = -s2;
-    // r32 = 0.0;
-    // r33 = c2;
+    r31 = -s2;
+    r32 = 0.0;
+    r33 = c2;
 
     Q[0][0] = r11 * r11; 
     Q[1][0] = r21 * r21; 
