@@ -144,7 +144,7 @@ else
 
     ! Cross couple benchmark
     if(benchmark_deuss)then 
-        Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/DR_benchmark_model_alt2.txt"
+        Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/DR_benchmark_model_alt.txt"
     else 
         ! Read Hen's model and build K-d tree: 
         Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"

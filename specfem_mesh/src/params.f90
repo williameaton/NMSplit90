@@ -7,12 +7,12 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose       = 5
+integer, parameter :: verbose       = 0
 logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
 
-integer, parameter :: nprocs        = 4
-integer, parameter :: nmodes        = 1!27
+integer, parameter :: nprocs        = 4 
+integer, parameter :: nmodes        = 2 !27
  
 ! Optimisation stuff: 
 integer, parameter :: compute_cst_smax  = 6
@@ -36,9 +36,9 @@ character(len=60),  parameter  :: model_fname = 'model'
 character(len=60),  parameter  :: bin_prefix = 'prem_ani_att'
 
 ! 1066a mineos model
-!character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/1066a/'
-!character(len=60),  parameter  :: model_fname = '1066a_mineos_model'
-!character(len=60),  parameter  :: bin_prefix = '1066a_noatt'
+! character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/1066a/'
+! character(len=60),  parameter  :: model_fname = '1066a_mineos_model'
+! character(len=60),  parameter  :: bin_prefix = '1066a_noatt'
 
 ! Assumptions: 
 logical, parameter :: Z_AXIS_EARTH_ROTATION = .true.

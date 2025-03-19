@@ -27,7 +27,7 @@ program plot_vani_to_ensight
     logical, parameter :: output_to_ensight = .false.
     logical, parameter :: output_to_evengrid = .false.
 
-    logical, parameter :: cross_coupled = .true.
+    logical, parameter :: cross_coupled = .false.
 
 
     ! Modes: 
@@ -39,9 +39,8 @@ program plot_vani_to_ensight
     !integer, dimension(27), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21/)
     !integer, dimension(27), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8/)
 
-    integer, dimension(1), parameter :: modeN1s = (/16/)
-    integer, dimension(1), parameter :: modeL1s = (/5/)
-
+    !integer, dimension(1), parameter :: modeN1s = (/16/)
+    !integer, dimension(1), parameter :: modeL1s = (/5/)
     integer, dimension(1), parameter :: modeN2s = (/17/)
     integer, dimension(1), parameter :: modeL2s = (/4/)
 
@@ -49,8 +48,9 @@ program plot_vani_to_ensight
     ! integer, dimension(33), parameter :: modeN1s = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21,5, 27, 9, 22, 15, 14/)
     ! integer, dimension(33), parameter :: modeL1s = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
 
-    ! integer, dimension(1), parameter :: modeN2s = (/17/)
-    ! integer, dimension(1), parameter :: modeL2s = (/4/)
+    integer, dimension(nmodes), parameter :: modeN1s = (/2, 3, 3, 6, 8, 8, 9, 11, 11, 13, 13, 13, 16, 16, 17, 18, 18, 21, 21, 23, 23/)
+    integer, dimension(nmodes), parameter :: modeL1s = (/3, 1, 2, 3, 1, 5, 3, 4,  5,  1,  2,  3,  5,  7,  1,  3,  4,  6,  7,  4,  5/)
+
 
 
     ! Load from file
@@ -88,7 +88,7 @@ do i_mode = 1,  nmodes
     if(cross_coupled)then 
         modefile = './output/vani'//trim(n1str)//trim(t1)//trim(l1str)//'_'//trim(n2str)//trim(t2)//trim(l2str)//trim(model_ti)//'.txt'
     else
-        modefile = './output/N-0.01/sem_fast_'//trim(n1str)//trim(t1)//trim(l1str)//trim(model_ti)//'.txt'
+        modefile = './output/sem_fast_'//trim(n1str)//trim(t1)//trim(l1str)//trim(model_ti)//'.txt'
     endif 
     call load_vani_from_file(l1, l2, modefile)
     
@@ -110,7 +110,7 @@ do i_mode = 1,  nmodes
     if(cross_coupled)then 
         out_name =   'output/cst_'//trim(n1str)//trim(t1)//trim(l1str)//'_'//trim(n2str)//trim(t2)//trim(l2str)//trim(model_ti)//'.txt'
     else
-        out_name = 'output/N-0.01/cst_'//trim(n1str)//trim(t1)//trim(l1str)//trim(model_ti)//'.txt'
+        out_name = 'output/cst_'//trim(n1str)//trim(t1)//trim(l1str)//trim(model_ti)//'.txt'
     endif 
 
     call write_cst_complex_to_file(out_name, cst_imag, ncols, num_s, smin, 2)
