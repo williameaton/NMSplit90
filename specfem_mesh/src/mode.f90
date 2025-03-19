@@ -226,23 +226,30 @@ module modes
             write(*,*)'Warning: Q do not match error - ', abs(self%qmod - qqmod)
         endif 
         
+
+        ! There is a difference in normalisation between the eigenfunctions of 
+        ! DT98 and MINEOS where 
+        ! DT = omega * MINEOS 
+        ! For nondimensional this will then be self%wcom*SCALE_T
+
+
         ! Format buffer into arrays 
         if(ntype.eq.1 .or. ntype.eq.4)then
             ! Toroidal only
-            self%w(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)
-            self%dw(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL)
+            self%w(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)   * self%wcom*SCALE_T
+            self%dw(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL) * self%wcom*SCALE_T
         else
             ! Spheroidal 
-            self%u(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)
-            self%du(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL)
+            self%u(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)   * self%wcom*SCALE_T
+            self%du(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL)    * self%wcom*SCALE_T
             if (ntype == 2) then
                 ! Radial
                 self%v(1 : self%len)  = SPLINE_ZERO
                 self%dv(1 : self%len) = SPLINE_ZERO
             else if (ntype == 3) then
                 ! Spheroidal
-                self%v(1 : self%len)  = real(buf(2 * self%len + 1 : 3 * self%len), kind=SPLINE_REAL)
-                self%dv(1 : self%len) = real(buf(3 * self%len + 1 : 4 * self%len), kind=SPLINE_REAL)
+                self%v(1 : self%len)  = real(buf(2 * self%len + 1 : 3 * self%len), kind=SPLINE_REAL) * self%wcom*SCALE_T
+                self%dv(1 : self%len) = real(buf(3 * self%len + 1 : 4 * self%len), kind=SPLINE_REAL) * self%wcom*SCALE_T
             endif
 
             self%p(1 : self%len)  = real(buf(4 * self%len + 1 : 5 * self%len), kind=SPLINE_REAL)

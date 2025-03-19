@@ -59,4 +59,4 @@ real(kind=CUSTOM_REAL), parameter :: ACCENORM  = PI * GRAV * RHOAV * SCALE_R
 real(kind=CUSTOM_REAL), parameter :: MOMENORM  = PI * GRAV * (RHOAV ** 2) * (SCALE_R ** 5)
 
 ! Rate of rotation
-real(kind=CUSTOM_REAL), parameter :: OMEGA    = (TWO_PI/86400.0_CUSTOM_REAL) * SCALE_T
+real(kind=CUSTOM_REAL), parameter :: OMEGA    = (TWO_PI/86164.0_CUSTOM_REAL) * SCALE_T

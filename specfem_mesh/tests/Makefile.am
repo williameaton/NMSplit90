@@ -1,7 +1,7 @@
 VPATH = ../src
 
 # cpp flag is needed for preprocessing #ifdef etc 
-AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas  -I../src
+AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas  -I../src -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 
 
 # List ALL test programs: 
@@ -29,7 +29,8 @@ bin_PROGRAMS = test_plm_function    \
                test_viso            \
                test_gmag            \
                vcen_semi            \
-               test_amp
+               test_amp             \
+               reproduce_tromp93
 
 
 d_cst  = cst
@@ -47,7 +48,7 @@ d_viso = Viso
 d_grav = gravity
 d_vcen = Vcen
 d_amp  = amplitude
-
+d_t93  = reproduce_Tromp93
 
 # Define basic sources groups 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90  \
@@ -56,7 +57,7 @@ SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90  \
 MED_SRCS =  $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90 \
                           mode.f90 integrate.f90 gravity.f90 woodhouse.f90 piecewise_interpolation.f90  \
                           lagrange_any.f90 mesh.f90 prem.f90  \
-                          output.f90 
+                          output.f90 model3D_reader.f90
 
 
 VANI_SRCS = $(MED_SRCS) cuda_proxies.f90 V_ani_matrix.f90
@@ -72,6 +73,7 @@ CST_SRCS  = $(MED_SRCS) cuda_proxies.f90 V_ani_matrix.f90 cst.f90
 GRAV_SRCS = $(MED_SRCS) 
 VCEN_SRCS = $(MED_SRCS) V_cen_matrix.f90
 AMP_SRCS  = $(MED_SRCS) 
+T93_SRCS  = $(MED_SRCS) voronoi.f90 cuda_proxies.f90 V_ani_matrix.f90 cst.f90
 
 test_plm_function_SOURCES     = $(SETUP_SRCS) $(d_plm)/test_plm.f90
 test_plm_values_SOURCES       = $(SETUP_SRCS) $(d_plm)/test_plm_values.f90
@@ -98,7 +100,11 @@ viso_semi_SOURCES             = $(VISO_SRCS)  $(d_viso)/viso_radial.f90
 test_gmag_SOURCES             = $(GRAV_SRCS)  $(d_grav)/test_gmag.f90
 vcen_semi_SOURCES             = $(VCEN_SRCS)  $(d_vcen)/vcen_woodhouse.f90
 test_amp_SOURCES              = $(AMP_SRCS)   $(d_amp)/rotation_amplitude.f90
+reproduce_tromp93_SOURCES     = $(T93_SRCS)   $(d_t93)/reproduce_vani.f90
 
+
+reproduce_tromp93_LDADD = -lcoretran 
+test_tromp1995_LDADD    = -lcoretran 
 
 # Test groups: 
 plm_tests:  test_ylm_function test_ylm_values

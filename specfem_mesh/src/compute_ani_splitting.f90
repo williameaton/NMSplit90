@@ -54,8 +54,8 @@ program compute_vani_splitting
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin  = .false.
-    logical, parameter :: save_to_bin    = .true.
+    logical, parameter :: load_from_bin  = .true.
+    logical, parameter :: save_to_bin    = .false.
     logical, parameter :: force_VTI      = .false.
     logical, parameter :: tromp93_model  = .false.
 
@@ -65,15 +65,18 @@ program compute_vani_splitting
     !integer, dimension(40), parameter :: modeNs =  (/2, 3, 3, 5, 6, 8, 8, 9, 9, 9, 11, 11, 11, 11, 13, 13, 13, 13, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 20, 20, 21, 21, 21, 22, 23, 23, 25, 25, 27/)
     !integer, dimension(40), parameter :: modeLs =  (/3, 1, 2, 2, 3, 1, 5, 2, 3, 4,  1,  4,  5,  6, 1,  2,  3,  6,   4,  3,  4,  5,  6,  7,  1,  8,  3,  4,  6,  1,  5,  6,  7,  8,  1,  4,  5,  1,  2,  2/)
 
-
     ! Added: 
     ! REAL 27: 
     !integer, dimension(nmodes), parameter :: modeNs = (/21, 27, 9, 7, 22, 27, 5, 2, 13, 8, 9, 18, 16, 13, 3, 11, 18, 23, 13, 6, 21, 23, 11, 3, 8, 5, 3  /)
     !integer, dimension(nmodes), parameter :: modeLs = (/7,   1, 2, 5,  1,  2, 2, 3,  1, 5, 3,  4,  5,  3, 8,  4,  3,  4,  2, 3,  6,  5,  5, 1, 1, 3, 2  /)
 
-    ! Cross coupled: 
-    !integer, dimension(nmodes), parameter :: modeNs = (/21, 27, 9, 7, 22, 27, 5, 2, 13, 8, 9, 18, 16, 13, 3, 11, 18, 23, 13, 6, 21, 23, 11, 3, 8, 5, 3  /)
-    !integer, dimension(nmodes), parameter :: modeLs = (/7,   1, 2, 5,  1,  2, 2, 3,  1, 5, 3,  4,  5,  3, 8,  4,  3,  4,  2, 3,  6,  5,  5, 1, 1, 3, 2  /)
+
+    ! Deuss fig lists: 
+    ! integer, dimension(nmodes), parameter :: modeNs = (/2, 3, 3, 6, 8, 8, 9, 11, 11, 13, 13, 13, 16, 16, 17, 18, 18, 21, 21, 23, 23/)
+    ! integer, dimension(nmodes), parameter :: modeLs = (/3, 1, 2, 3, 1, 5, 3, 4,  5,  1,  2,  3,  5,  7,  1,  3,  4,  6,  7,  4,  5/)
+
+    integer, dimension(1), parameter :: modeNs = (/21/)
+    integer, dimension(1), parameter :: modeLs = (/6/)
 
 
 
@@ -132,8 +135,6 @@ program compute_vani_splitting
 region = 3
 
 
-
-
 #ifdef WITH_MPI
     call mineos%load_mineos_radial_info_MPI()
 #else
@@ -150,19 +151,12 @@ if(tromp93_model)then
 else
 
     ! Read Hen's model and build K-d tree: 
-    !  Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
-     Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi//MCMC_models/instances/c1_m10900.txt"
+      Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+    ! Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi//MCMC_models/instances/c1_m10900.txt"
     call Model3D%read_model_from_file()
     call Model3D%create_KDtree()
 endif
 
-
-! Benchmark value
-!vor_A =  0.4d0
-!vor_C = -0.2d0
-!vor_L =  0.3d0
-!vor_N = -0.5d0
-!vor_F =  0.1d0
 
 ! Model values are a % perturbation on PREM so need to divide by 100 
 ! to get actual value
@@ -175,9 +169,12 @@ if(.not.tromp93_model)then
     tree = KdTree(Model3D%xcoord, Model3D%ycoord, Model3D%zcoord) 
 endif 
 
-
 ! Force the N parameter to be non-zero: 
-vor_N = -0.00d0
+vor_A =  0.4d0
+vor_C = -0.2d0
+vor_L =  0.3d0
+vor_N = -0.5d0
+vor_F =  0.1d0
 
 
 if(ONLY_ONE_TASK_PER_SET)then 

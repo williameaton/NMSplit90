@@ -115,8 +115,10 @@ module mineos_model
         self%rad_mineos = self%radius / SCALE_R
 
         ! Non dimensionalise the Vp: 
-        self%vp_mineos = self%vp_mineos * (SCALE_T/SCALE_R)
-        self%vs_mineos = self%vs_mineos * (SCALE_T/SCALE_R)
+
+        self%vp_mineos = self%vp_mineos / (SCALE_V)
+        self%vs_mineos = self%vs_mineos / (SCALE_V)
+
 
         ! Find the discontinuities
         call self%find_disc()

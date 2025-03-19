@@ -352,3 +352,66 @@ subroutine write_real_scalar_to_ensight(sm, realscal, suffix, part)
     close(REALSCALOUT)
 
 end subroutine write_real_scalar_to_ensight
+
+
+
+subroutine write_real_vector_to_ensight(sm, xscal, yscal, zscal, suffix, part)
+    ! Write a real vector array to ensight
+    use specfem_mesh, only: SetMesh
+    use params, only:  en_dir, en_fname, REALSCALOUT, & 
+                      intfmt, realfmt, CASEUNIT
+
+    implicit none 
+    include "constants.h"
+
+    type(SetMesh) :: sm
+
+    ! IO variables: 
+    integer :: part
+    real(kind=CUSTOM_REAL) :: xscal(sm%nglob), yscal(sm%nglob), zscal(sm%nglob)
+    character(len=*) :: suffix
+
+    ! Local 
+    integer :: i
+    character(len=79)   :: buffer
+    character(len=250)  :: fname
+
+
+    ! Variable file 
+    fname = trim(en_fname)//'.'//trim(suffix)
+    open(unit=REALSCALOUT, file=trim(en_dir)//trim(fname), & 
+         status='unknown',form='formatted', action='write')
+
+    ! Case file: 
+    open(unit=CASEUNIT,file=trim(en_dir)//trim(en_fname)//'.case', & 
+          status='old', form='formatted', action='write', position='append')
+    write(CASEUNIT,'(a/)')'vector per node: '//suffix//'  '//trim(fname)
+    close(CASEUNIT)
+
+    ! Write the bits we need 
+    ! Description line
+    buffer = 'Scalar for '//trim(suffix)
+    write(REALSCALOUT, '(a)')buffer
+
+    ! Add the part lines
+    buffer = 'part'
+    write(REALSCALOUT, '(a)')buffer
+    write(REALSCALOUT, intfmt)part
+
+    ! Add coordinate tag line
+    buffer = 'coordinates'
+    write(REALSCALOUT, '(a)')buffer
+
+    do i = 1, sm%nglob
+        write(REALSCALOUT, realfmt)xscal(i)
+    enddo 
+    do i = 1, sm%nglob
+        write(REALSCALOUT, realfmt)yscal(i)
+    enddo 
+    do i = 1, sm%nglob
+        write(REALSCALOUT, realfmt)zscal(i)
+    enddo 
+
+    close(REALSCALOUT)
+
+end subroutine write_real_vector_to_ensight
