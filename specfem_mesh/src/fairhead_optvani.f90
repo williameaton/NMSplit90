@@ -37,7 +37,7 @@ program fairhead_optimised_vani
     include 'mpif.h'
 
     integer :: iset, i,j,k,s, p, ispec, l1, l2, n1, m1,m2, n2, ierr, & 
-                tl2, h, b, cluster_size, sets_per_process, & 
+                tl2, h, b, gcluster_size, f90cluster_size, sets_per_process, & 
                 myset_start, myset_end, i_mode, smin, smax, num_s, & 
                 ncols, this_tl1, imode, im, imodel_iter, igll, iproc, & 
                 success, idx, thisrow, thiscol, is, it, ncstsvals, icst,& 
@@ -72,22 +72,24 @@ program fairhead_optimised_vani
     real(8) :: elapsed_time
 
     ! Fairhead stuff: 
+    INTEGER         :: MPI_COMM_F90, MPIF90colour
+    integer         :: myf90rank
     integer         :: iter, upID, NodeID
     integer         :: status(MPI_STATUS_SIZE)
     integer(kind=8) :: FHnvoronoi, niterations
     integer         :: juliarank
     real(kind=8),allocatable  :: FHinitmodel(:)
     real(kind=8), target      :: FHupdates(6)
- 
+    integer, allocatable :: dummyrecbuffer(:)
 
 
     ! Modes: 
     ! REAL 27: 
-    !integer, dimension(nmodes), parameter :: modeNs = (/3, 21, 21, 8,  7, 16,23, 11, 18, 11,  23,  2, 18,13,  9, 6, 5, 3 ,13, 9, 27, 5, 27,  3, 8, 22, 13 /)
-    !integer, dimension(nmodes), parameter :: modeLs = (/8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 3,  3, 3, 3, 2 , 2, 2,  2, 2,  1,  1, 1,  1,  1 /)
+    integer, dimension(nmodes), parameter :: modeNs = (/3, 21, 21, 8,  7, 16,23, 11, 18, 11,  23,  2, 18,13,  9, 6, 5, 3 ,13, 9, 27, 5, 27,  3, 8, 22, 13 /)
+    integer, dimension(nmodes), parameter :: modeLs = (/8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 3,  3, 3, 3, 2 , 2, 2,  2, 2,  1,  1, 1,  1,  1 /)
     
-    integer, dimension(nmodes), parameter :: modeNs = (/3, 21/)
-    integer, dimension(nmodes), parameter :: modeLs = (/8, 7/)
+    !integer, dimension(nmodes), parameter :: modeNs = (/3, 21/)
+    !integer, dimension(nmodes), parameter :: modeLs = (/8, 7/)
 
 
 
@@ -131,21 +133,41 @@ program fairhead_optimised_vani
     logical, parameter    :: force_VTI   = .false.
 
 
-    ! Setup MPI 
+    ! Setup original MPI. This includes ALL nodes and therefore 
+    ! the communication with the Julia code
     call MPI_INIT(ierr)
-    call MPI_COMM_SIZE(MPI_COMM_WORLD, cluster_size, ierr)
+    call MPI_COMM_SIZE(MPI_COMM_WORLD, gcluster_size, ierr)
     call MPI_COMM_RANK(MPI_COMM_WORLD, myrank, ierr)
 
-    ! Work out the Julia rank for fairhead
-    print *, "Fortran MPI process running with rank ", myrank
-    if(myrank.eq.0)then
-        juliarank = 1 
-    elseif(myrank.eq.1)then
-        juliarank = 0 
-    else 
-        write(*,*)"Error: myrank is not 0 or 1. Are you using more than 2 processes?"
-        stop
+
+    ! Create a communicator for Fortran ranks (1-n)
+    if (myrank == 0) then
+        write(*,*)'ERROR: F90 process has rank zero but should be Fairhead Julia on rank 0'
+        !myf90rank = MPI_UNDEFINED  
+        stop 
+    else
+        ! Shift ranks (1->0, 2->1, ...)
+        myf90rank = myrank - 1       
     endif
+    
+    ! Takes MPI_COMM_WORLD and creates MPI_COMM_F90 
+    ! If rank > 0 then color is 1 for this rank, else is undefined
+    ! The ranks with color 1 will be put into MPI_COMM_F90 with their new ranks
+    ! Should be able to get away with this since 
+    MPIF90colour = 1
+    call MPI_Comm_split(MPI_COMM_WORLD, MPIF90colour, myf90rank, MPI_COMM_F90, ierr)
+
+
+    ! The first process will always be the Julia code: 
+    ! Reduce the cluster size to exclude rank 0
+    call MPI_COMM_SIZE(MPI_COMM_F90, f90cluster_size, ierr)
+    if(f90cluster_size.ne.gcluster_size-1)then 
+        write(*,*)'Mismatch in comm sizes'
+        stop 
+    endif 
+
+    ! Work out the Julia rank for fairhead
+    juliarank = 0 
 
 
     ! C++ precision
@@ -173,34 +195,34 @@ program fairhead_optimised_vani
    endif 
 
     ! For some reason Myrank = 6 seems to not print...is this an issue? 
-    ierr =  assign_proc_to_device(nprocs, myrank)
+    ierr =  assign_proc_to_device(nprocs, myf90rank)
 
-    ! ASSUMING 1 mesh per proc
-    sets_per_process = nprocs/cluster_size
-    myset_start      = myrank*sets_per_process
+    ! ASSUMING 1 mesh per proc for this optimised code
+    ! Need to edit to myrank - 1 now
+    sets_per_process = nprocs/f90cluster_size
+    myset_start      = myf90rank*sets_per_process
     myset_end        = myset_start + sets_per_process - 1 
 
 
     ! Check equal load balance across the processes:
-    if(all_warnings)then 
-        if( mod(nprocs,cluster_size).ne.0)then 
-            write(*,*)'Error: you are using '
-            write(*,*)'     -- nprocs ',nprocs 
-            write(*,*)'     -- nnodes ',cluster_size 
-            write(*,*)'And therefore nnodes is not divisible by nnodes. Stop.'
-            stop 
-        else 
-            if(myrank.eq.0 .and.verbose.ge.1)write(*,*)'Sets for each node:', sets_per_process
-            print *, 'Process: ', myrank, 'does sets', myset_start, 'to ', myset_end
-        endif 
+
+    if( mod(nprocs, f90cluster_size).ne.0)then 
+        write(*,*)'Error: you are using '
+        write(*,*)'     -- nprocs ', nprocs 
+        write(*,*)'     -- nnodes ', f90cluster_size 
+        write(*,*)'     (Note the rank 0 is reserved for Julia Fairhead)'
+        write(*,*)'and therefore nnodes is not divisible by nnodes. Stop.'
+        stop 
+    else 
+        if(myf90rank.eq.0 .and.verbose.ge.1)write(*,*)'Sets for each node:', sets_per_process
+        print *, 'F90 process: ', myf90rank, 'does sets', myset_start, 'to ', myset_end
     endif 
 
-
-    IIN  = myrank
+    IIN  = myf90rank
     IOUT = IIN + 2000
 
-    ! Setup mineos: 
-    call mineos%load_mineos_radial_info()
+    ! Setup mineos only on f90 nodes
+    call mineos%load_mineos_radial_info_MPI(MPI_COMM_F90)
     mineos_ptr => mineos
 
     ! Load mesh data for this proc (1 set per proc)
@@ -211,14 +233,14 @@ program fairhead_optimised_vani
 
     ! Until I can think of a better system, lets setup a mode look up table on the gpu
     total_nn1 = 0
-    do imode = 1, nmodes
+    do imode  = 1, nmodes
         l1        = modeLs(imode)
         this_tl1  = 2*l1 +1
         total_nn1 = total_nn1 +  (l1+1)*(l1) + 1  !(this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2)
     enddo  
     allocate(modeLUT(total_nn1*4), stat=ierr)
     if(ierr.ne.0)then 
-        write(*,*)'Error allocating modeLUT on', myrank
+        write(*,*)'Error allocating modeLUT on', myf90rank
         stop 
     endif 
 
@@ -241,7 +263,7 @@ program fairhead_optimised_vani
     VaniAllModes_4 = SPLINE_iZERO
 
     if(ierr.ne.0)then 
-        write(*,*)'Error allocating VaniAllModes for proc ', myrank
+        write(*,*)'Error allocating VaniAllModes for proc ', myf90rank
         stop 
     endif 
 
@@ -251,7 +273,7 @@ program fairhead_optimised_vani
     ! In double precision (8 bytes) for complex numbers (x2): 
 
     ! Strain for each mode is about 14 Mb for NEX 176 1 of sets 16
-    if(myrank.eq.0)then
+    if(myf90rank.eq.0)then
         write(*,*)
         write(*,*)'-------------------- GPU MEMORY ESTIMATES --------------------' 
         allscalars = size_of_array * cppprec * 3 ! x, y, z 
@@ -280,7 +302,7 @@ program fairhead_optimised_vani
     ierr=0
     allocate(allstrains(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, max_tl1, 6, nmodes), stat=ierr)
     if(ierr.ne.0)then 
-        write(*,*)'Error allocating allstrains for proc ', myrank
+        write(*,*)'Error allocating allstrains for proc ', myf90rank
         stop 
     endif 
 
@@ -290,7 +312,7 @@ program fairhead_optimised_vani
     allocate(flatarray_4(size_of_array), stat=ierr)
 
     if(ierr.ne.0)then 
-        write(*,*)'Error allocating flatarray for proc ', myrank
+        write(*,*)'Error allocating flatarray for proc ', myf90rank
         stop 
     endif 
 
@@ -324,7 +346,6 @@ program fairhead_optimised_vani
     ta_ptr = c_loc(flatarray_4)
     ierr = copythisarraytodevice(ta_ptr, size_of_array, 2)
 
-
     ! Copy z coordinates
     iii = 1
     do k = 1, sm%ngllz
@@ -342,8 +363,7 @@ program fairhead_optimised_vani
 
 
     allstrains = SPLINE_iZERO
-
-    ncstsvals = 0 
+    ncstsvals  = 0 
     do imode = 1, nmodes
         n1       = modeNs(imode)
         l1       = modeLs(imode)
@@ -366,21 +386,21 @@ program fairhead_optimised_vani
         enddo 
         
     enddo  
-    if(myrank.eq.0)write(*,*)'Loaded all strain binaries from disc.'
+    if(myf90rank.eq.0)write(*,*)'Loaded all strain binaries from disc.'
 
 
     allocate(allcsts_r_4(ncstsvals), stat=ierr)
     if(ierr.ne.0)then 
-        write(*,*)'Error allocating allcsts_r on ',myrank
+        write(*,*)'Error allocating allcsts_r on ',myf90rank
         stop
     endif 
     allocate(allcsts_i_4(ncstsvals), stat=ierr)
     if(ierr.ne.0)then 
-        write(*,*)'Error allocating allcsts_r on ', myrank
+        write(*,*)'Error allocating allcsts_r on ', myf90rank
         stop
     endif 
 
-    if(myrank.eq.0)then 
+    if(myf90rank.eq.0)then 
         allocate(allcsts_r_RED_4(ncstsvals), stat=ierr)
         if(ierr.ne.0)then 
             write(*,*)'Error allcsts_r_RED allcsts_r'
@@ -429,11 +449,10 @@ program fairhead_optimised_vani
     ! is used for the spacing of the arrays etc 
     max_nn1 = max_tl1*(max_tl1+1)/2
 
-
     LUT_ptr = c_loc(modeLUT)
     ierr = copy_LUT_array(LUT_ptr, total_nn1*4)
     if(ierr.ne.0)then 
-        write(*,*)'Error in copy_LUT_array on ', myrank
+        write(*,*)'Error in copy_LUT_array on ', myf90rank
         stop
     endif 
 
@@ -442,18 +461,17 @@ program fairhead_optimised_vani
     ! (sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, max_tl1, 6, nmodes)
     ! Now we have collapsed the matrix we can store only the number of tl1s 
     ! that each mode needs 
-
     ! FOR NOW WE ARE USING THE MORE MEMORY INEFFICIENT VERSION OF ASSUMING THEY ALL 
     ! HAVE max_tl1 - this makes the indexing a bit simpler in the kernel for now.
     ! probs need a LUT otherwise
     allocate(flatstrain_r_4(strainsize), stat=ierr)
     if(ierr.ne.0)then 
-        write(*,*)'Error in flatstrain_r on ', myrank
+        write(*,*)'Error in flatstrain_r on ', myf90rank
         stop 
     endif 
     allocate(flatstrain_i_4(strainsize), stat=ierr)
     if(ierr.ne.0)then 
-        write(*,*)'Error in flatstrain_i on ', myrank
+        write(*,*)'Error in flatstrain_i on ', myf90rank
         stop 
     endif 
 
@@ -490,14 +508,14 @@ program fairhead_optimised_vani
     ! Need to transfer the mega-strains! 
     ierr = copy_allstrains(strain_r_ptr, strain_i_ptr, strainsize)
     if(ierr.ne.0)then 
-        write(*,*)'Error in copy_allstrains on ', myrank
+        write(*,*)'Error in copy_allstrains on ', myf90rank
         stop 
     endif 
 
     ! Allocate the arrays for the output Vani matrix (flattened)
     ierr = allocate_Vani_arrays(nmodes*max_nn1)
     if(ierr.ne.0)then 
-        write(*,*)'Error in allocate_Vani_arrays on', myrank
+        write(*,*)'Error in allocate_Vani_arrays on', myf90rank
         stop 
     endif 
     
@@ -508,14 +526,14 @@ program fairhead_optimised_vani
     Vani_imag_ptr = c_loc(Vani_imag_4)
 
     if(ierr.ne.0)then 
-        write(*,*)'Error in allocating Vani_real on', myrank
+        write(*,*)'Error in allocating Vani_real on', myf90rank
         stop 
     endif 
 
     ! Allocate the Cxyz array
     ierr = allocate_Cxyz_array(size_of_array*36)
     if(ierr.ne.0)then 
-        write(*,*)'Error in function allocate_Cxyz_array', myrank
+        write(*,*)'Error in function allocate_Cxyz_array', myf90rank
         stop 
     endif 
 
@@ -526,14 +544,14 @@ program fairhead_optimised_vani
     ptr_m3D = c_loc(flat3Dmodel_4)
 
     if(ierr.ne.0)then 
-        write(*,*)'Error allocating flat3Dmodel on', myrank
+        write(*,*)'Error allocating flat3Dmodel on', myf90rank
         stop 
     endif 
 
     ! Allocate Model array on the device
     ierr = allocate_M3D_array(MaxBrettModelPts*5)
     if(ierr.ne.0)then 
-        write(*,*)'Error running allocate_M3D_array on', myrank
+        write(*,*)'Error running allocate_M3D_array on', myf90rank
         stop 
     endif 
 
@@ -541,23 +559,29 @@ program fairhead_optimised_vani
 
     ! Now we need to receive the initial model send by Fairhead: 
     ! Get the number of voronoi cells in initial model 
-    call MPI_RECV(FHnvoronoi, 1, MPI_INT64_T, juliarank, 1, MPI_COMM_WORLD, status, ierr)
+    ! We need to use MPI_COMM_WORLD because its communicating with Julia
+    call MPI_Bcast(FHnvoronoi, 1, MPI_INT64_T, juliarank, MPI_COMM_WORLD, ierr)
     ! Get the ACLNF for initial model
-    call MPI_RECV(aclnf_8, 5, MPI_DOUBLE_PRECISION, juliarank, 2, MPI_COMM_WORLD, status, ierr)
+    call MPI_Bcast(aclnf_8, 5, MPI_DOUBLE_PRECISION, juliarank, MPI_COMM_WORLD, ierr)
 
     ! Now get the model values: tag 3
     ! it doesnt like nmodelparam being kind=8
     allocate(FHinitmodel(FHnvoronoi*5))
-    call MPI_RECV(FHinitmodel, int(FHnvoronoi)*5, MPI_DOUBLE_PRECISION, juliarank, 3, MPI_COMM_WORLD, status, ierr)
+    call MPI_Bcast(FHinitmodel, int(FHnvoronoi)*5, MPI_DOUBLE_PRECISION, juliarank, MPI_COMM_WORLD, ierr)
 
     ! Get number of model iterations: 
-    call MPI_RECV(niterations, 1, MPI_INT64_T, juliarank, 4, MPI_COMM_WORLD, status, ierr)
+    call MPI_Bcast(niterations, 1, MPI_INT64_T, juliarank, MPI_COMM_WORLD, ierr)
 
-    write(*,*)'NMSPLIT90 has: '
-    write(*,*)' Fairhead number of iterations    : ', niterations
-    write(*,*)' Fairhead initial model points    : ', FHnvoronoi
-    write(*,*)' Fairhead initial model ACLNF     : ', aclnf_8
-    write(*,*)' Fairhead initial model           : ', FHinitmodel
+    if(myf90rank.eq.1)then 
+        write(*,*)
+        write(*,*)'NMSPLIT90 has: '
+        write(*,*)' Fairhead number of iterations    : ', niterations
+        write(*,*)' Fairhead initial model points    : ', FHnvoronoi
+        write(*,*)' Fairhead initial model ACLNF     : ', aclnf_8
+        write(*,*)' Fairhead initial model           : ', FHinitmodel
+        write(*,*)
+    endif 
+
 
     ! Copy over the original model to GPU:
     flat3Dmodel_4(:) = zero 
@@ -565,23 +589,20 @@ program fairhead_optimised_vani
     ierr = copy_M3D_array(ptr_m3D, MaxBrettModelPts*5)
     write(*,*)'F90: Copied initial model to GPU'
 
-
     ! Ensure that there is a pointer to the updates array: 
     ptr_FHupdates = c_loc(FHupdates)
 
 
-    ! Julia needs to know the number of cst values it will receive
-    call MPI_SEND(ncstsvals, 1, MPI_INTEGER, juliarank, 6, MPI_COMM_WORLD, ierr)
-
-
+    ! Julia needs to know the number of cst values it will receive from each rank
+    ! should be identical but Julia will check this 
+    allocate(dummyrecbuffer(gcluster_size))
+    call MPI_Gather(ncstsvals, 1, MPI_INTEGER, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 
     ! For now we will ignore any mode calcluations for the first iteration since its never going to
     ! be used anyway 
 
     ! ! ------------------------------------------------------------------------------------------
     ! ! THINGS THAT HAPPEN EACH MODEL 
-
-
     ! Fairhead is going to generate a perturbation to the system and send that over. 
     ! The options are: 
     !   ID      Action          N vals sent     Ordering
@@ -595,11 +616,12 @@ program fairhead_optimised_vani
     !* unsure why the birth is also modifying the ACLNF
 
      call system_clock(count_rate=count_rate)
-    do iter = 1, 10
+    do iter = 1, niterations
         call system_clock(loop_clock_start)
 
+
         ! Listen for the update: FHupdates
-        call MPI_RECV(FHupdates, 6, MPI_DOUBLE_PRECISION, juliarank, 5, MPI_COMM_WORLD, status, ierr)
+        call MPI_Bcast(FHupdates, 6, MPI_DOUBLE_PRECISION, juliarank, MPI_COMM_WORLD, ierr)
 
         ! Process the update
         ! 3rd argument is the size of the M3D array
@@ -612,20 +634,20 @@ program fairhead_optimised_vani
 
         if(upID.le.3)then 
             ! Velocity change
-            write(*,*)'F90: changed velocity for iter ', iter
+            if(myrank.eq.1)write(*,*)'F90: changed velocity for iter ', iter
 
             aclnf_8(int(FHupdates(2))) = FHupdates(3)
         elseif(upID.ge.4.and.upID.le.6)then
-            write(*,*)'F90: changed angles for iter ', iter
+            if(myrank.eq.1)write(*,*)'F90: changed angles for iter ', iter
 
             ! Symmetry axis update - eta1, eta2 are send as
             flat3Dmodel_4(NodeID*5 +4 : NodeID*5 +5) = FHupdates(3:4)
         elseif(upID.eq.7)then
-            write(*,*)'F90: moved node for iter ', iter
+            if(myrank.eq.1)write(*,*)'F90: moved node for iter ', iter
             ! Move node - update x,y,z
             flat3Dmodel_4(NodeID*5 +1 : NodeID*5 +3) = FHupdates(3:5)
         elseif(upID.eq.8)then
-            write(*,*)'F90: birthed node for iter', iter
+            if(myrank.eq.1)write(*,*)'F90: birthed node for iter', iter
             ! Birth node
             ! It takes the eta1, eta 2 from the node before it in the list for some reason
             flat3Dmodel_4(FHnvoronoi*5 +1: FHnvoronoi*5 +3) = FHupdates(2:4)
@@ -634,7 +656,7 @@ program fairhead_optimised_vani
             ! Also updates the ACF for some reason: 
             aclnf_8(int(FHupdates(5))) = FHupdates(6)
         elseif(upID.eq.9)then
-            write(*,*)'F90: killed node for iter ', iter
+            if(myrank.eq.1)write(*,*)'F90: killed node for iter ', iter
             ! Kill node
             ! This is trickier. First we need to identify the node and then shuffle down the nodes values that
             ! are above it in the array so its overwritten
@@ -650,7 +672,7 @@ program fairhead_optimised_vani
 
         ! call system_clock(end_clock)
         ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-        ! if(myrank.eq.0)write(*,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
+        ! if(myf90rank.eq.0)write(*,*) 'Read model + flatten:', elapsed_time*1000, ' ms'
 
         ! call system_clock(count_rate=count_rate)
         ! call system_clock(start_clock)
@@ -659,9 +681,9 @@ program fairhead_optimised_vani
 
         ! call system_clock(end_clock)
         ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-        ! if(myrank.eq.0)write(*, *) 'Copy model to device:', elapsed_time*1000, ' ms'
+        ! if(myf90rank.eq.0)write(*, *) 'Copy model to device:', elapsed_time*1000, ' ms'
         
-        ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1, nmodes, myrank)
+        ierr = launch_vanikernel(sm%ngllx, sm%nspec, total_nn1, max_nn1,  max_tl1, nmodes, myf90rank)
 
 
         ! call system_clock(count_rate=count_rate)
@@ -673,7 +695,7 @@ program fairhead_optimised_vani
 
         ! call system_clock(end_clock)
         ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-        ! if(myrank.eq.0)write(*,*) ' Copy back          :', elapsed_time*1000, ' ms'
+        ! if(myf90rank.eq.0)write(*,*) ' Copy back          :', elapsed_time*1000, ' ms'
 
 
 
@@ -744,7 +766,7 @@ program fairhead_optimised_vani
             ! write(*,*)
 
             ! stop
-
+            
 
             call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
             allocate(cst_4(num_s, ncols))
@@ -771,61 +793,33 @@ program fairhead_optimised_vani
 
         ! NO reduction needed on one proc
         ! Now each process has compute the csts we can reduce them 
-        ! call MPI_Ireduce(allcsts_r_4, allcsts_r_RED_4, ncstsvals, MPI_REAL, &
-        !                 MPI_SUM, 0, MPI_COMM_WORLD, request1, ierr) 
-        ! call MPI_Ireduce(allcsts_i_4, allcsts_i_RED_4, ncstsvals, MPI_REAL, &
-        !                 MPI_SUM, 0, MPI_COMM_WORLD, request2, ierr)
-        ! call MPI_Wait(request1, ierr)
-        ! call MPI_Wait(request2, ierr)
-
-        
-
-
-        ! if(myrank.eq.0)then 
-        !     icst = 1
-        !     do imode = 1, nmodes
-        !         l1  = modeLs(imode)
-        !         n1  = modeNs(imode)
-
-        !         if (2*l1.gt.compute_cst_smax)then 
-        !             thissmax = compute_cst_smax
-        !         else 
-        !             thissmax = 2*l1 
-        !         endif 
-
-        !         !call buffer_int(nstr, n1)
-        !         !call buffer_int(lstr, l1)
-            
-        !         !out_name =  './output/NEX_'//trim(timingNEX)//'cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(iterstr)//'_'//trim(chainstr)//'.txt'
-        !         !open(1,file=trim(out_name), form='formatted')
-        !         !do s = 0, thissmax, 2
-        !         !    do it = 1, s+1
-        !         !        write(1,*) s, it-s-1, allcsts_r_RED_4(icst), allcsts_i_RED_4(icst)
-        !         !        icst = icst + 1
-        !         !    enddo !it
-        !         !enddo ! s 
-        !         !close(1) ! close file
-
-        !     enddo ! loop over modes for writing 
-
-        ! endif 
-
+        !call MPI_Ireduce(allcsts_r_4, allcsts_r_RED_4, ncstsvals, MPI_REAL, &
+        !                MPI_SUM, 0, MPI_COMM_F90, request1, ierr) 
+        !call MPI_Ireduce(allcsts_i_4, allcsts_i_RED_4, ncstsvals, MPI_REAL, &
+        !                MPI_SUM, 0, MPI_COMM_F90, request2, ierr)
+        !call MPI_Wait(request1, ierr)
+        !call MPI_Wait(request2, ierr)
         ! SEND THE CST TO Julia
-        call MPI_SEND(allcsts_r_RED_4, ncstsvals, MPI_REAL, juliarank, 98, MPI_COMM_WORLD, ierr)
-        call MPI_SEND(allcsts_i_RED_4, ncstsvals, MPI_REAL, juliarank, 99, MPI_COMM_WORLD, ierr)
+        !call MPI_SEND(allcsts_r_RED_4, ncstsvals, MPI_REAL, juliarank, 98, MPI_COMM_WORLD, ierr)
+        !call MPI_SEND(allcsts_i_RED_4, ncstsvals, MPI_REAL, juliarank, 99, MPI_COMM_WORLD, ierr)
 
+
+        ! Let us now reduce the csts directlry on the Julia node 
+        call MPI_Reduce(allcsts_r_4, allcsts_r_RED_4, ncstsvals, MPI_REAL, &
+                        MPI_SUM, juliarank, MPI_COMM_WORLD, ierr) 
+        call MPI_Reduce(allcsts_i_4, allcsts_i_RED_4, ncstsvals, MPI_REAL, &
+                        MPI_SUM, juliarank, MPI_COMM_WORLD, ierr) 
 
         ! call system_clock(end_clock)
         ! elapsed_time = real(end_clock - start_clock, kind=8) / real(count_rate, kind=8)
-        ! if(myrank.eq.0)write(*,*) 'CST computation     :', elapsed_time*1000, ' ms'        
-
+        ! if(myf90rank.eq.0)write(*,*) 'CST computation     :', elapsed_time*1000, ' ms'        
 
 
         call system_clock(end_clock)
         elapsed_time = real(end_clock - loop_clock_start, kind=8) / real(count_rate, kind=8)
-        if(myrank.eq.0)then 
+        if(myf90rank.eq.0)then 
             write(*,*)  'Iteration time      :', elapsed_time*1000, ' ms'
-            write(*,*)  'Completed iteration : ', imodel_iter
+            write(*,*)  'Completed iteration : ', iter
             write(*,*)
         endif 
 

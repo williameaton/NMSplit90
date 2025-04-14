@@ -39,8 +39,8 @@ program tromp_1995
     mineos_ptr => mineos
 
     ! Choose a mode: 
-    nl = 6
-    ll = 2
+    nl = 21
+    ll = 6
 
     mode_1 = get_mode(nl, 'S', ll, mineos_ptr)
 
@@ -63,16 +63,6 @@ program tromp_1995
     ! Interpolate the mode splines
     call interp%interpolate_mode_eigenfunctions(mode_1)
 
-
-    if (mode_1%t.eq.'S')then 
-        mode_1%v_spl  = mode_1%v_spl/mode_1%kf
-        mode_1%dv_spl = mode_1%dv_spl/mode_1%kf
-    elseif(mode_1%t.eq.'T')then 
-        mode_1%w_spl  = mode_1%w_spl/mode_1%kf
-        mode_1%dw_spl = mode_1%dw_spl/mode_1%kf
-    else
-        write(*,*)'type_1 needs to be S or T but is', mode_1%t
-    endif
     
     ! Constant value over the radius
     allocate(Arad(npoints))
@@ -97,7 +87,7 @@ program tromp_1995
                 do I = 1, I_n(N+1)
                     sum = sum + integrate_GNIr2(s, mode_1%l, N, I, mode_1%u_spl, & 
                                                 mode_1%du_spl, & 
-                                                mode_1%v_spl, mode_1%dv_spl, npoints, & 
+                                                mode_1%v_spl/mode_1%kf, mode_1%dv_spl/mode_1%kf, npoints, & 
                                                 interp%radial, Arad, Crad, Lrad, &
                                                 Nrad, Frad, mode_1%t)
                 enddo
@@ -126,7 +116,7 @@ program tromp_1995
     outfmt = trim(outfmt)//',a)'
 
     write(out_name, trim(outfmt))'./v_ani_matrix/radial_', mode_1%n, mode_1%t, mode_1%l, '.txt'
-    call save_Vani_matrix(mode_1%l, out_name)
+    call save_Vani_matrix(mode_1%l, mode_1%l, out_name)
 
 
 end program tromp_1995

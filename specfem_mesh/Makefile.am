@@ -15,7 +15,7 @@ if USE_OPENMPI
     AM_FCFLAGS += -D WITH_MPI -Ktrap=inv
 endif 
 
-
+LDADD = -lcoretran
 
 
 bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh plot_vani \
@@ -143,18 +143,17 @@ comp_split_SOURCES     = $(MED_SRCS)  visual.f90 V_cen_matrix.f90  compute_split
 
 
 
-opt_vani_LDADD = vani_kernel.o vanicpp.o binding.o -lcoretran 
-FH_vani_LDADD = vani_kernel.o vanicpp.o binding.o -lcoretran 
-reopt_LDADD = vani_kernel.o -lcoretran 
-compute_vani_LDADD = vani_kernel.o -lcoretran 
-cross_vani_LDADD = vani_kernel.o -lcoretran 
-plot_vani_LDADD = vani_kernel.o -lcoretran 
-plot_model_LDADD = vani_kernel.o -lcoretran 
-comp_split_LDADD = vani_kernel.o -lcoretran 
+opt_vani_LDADD = vani_kernel.o vanicpp.o binding.o 
+FH_vani_LDADD = vani_kernel.o vanicpp.o binding.o 
+reopt_LDADD = vani_kernel.o 
+compute_vani_LDADD = vani_kernel.o 
+cross_vani_LDADD = vani_kernel.o 
+plot_vani_LDADD = vani_kernel.o 
+plot_model_LDADD = vani_kernel.o 
+comp_split_LDADD = vani_kernel.o 
 
-linbreak_mesh_LDADD = -lcoretran 
-split_mesh_LDADD = -lcoretran 
-rot_ell_LDADD = -lcoretran 
+ 
+
 
 # Specify where to find the object file (if necessary)
 EXTRA_DIST = vani_kernel.o
