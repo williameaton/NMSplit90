@@ -16,8 +16,13 @@ def test_spline():
         fig, ax = plt.subplots(2,4, sharey=True)
 
         # Read header and load data for the original eigenfunction
-        fname = f"./spline/{N}{mode_type}{L}.txt"
-        f = open(fname, 'r')
+        try:     
+                fname = f"./spline/{N}{mode_type}{L}.txt"
+                f = open(fname, 'r')
+        except: 
+                print('Couldnt return first file...')
+                return False
+
         [n, typ, l] = f.readline().split()
         # Data is in order [radius, U, U', V, V', P, P']
         d = np.loadtxt(fname, skiprows=1)[:icid, :]

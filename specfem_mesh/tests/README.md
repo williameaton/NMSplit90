@@ -20,6 +20,8 @@ A current list of tests in this directory, listed by subdirectory:
 ### `legendre`: 
 -   None
 
+### `mode_normalisation`
+-   `test_mode_norm`: Checks the mode normalisation is consistent with DT98 for a number of modes. 
 
 ### `plm`: 
 -   `test_plm`: tests the `Plm` function for a number of l and m values
@@ -28,6 +30,8 @@ A current list of tests in this directory, listed by subdirectory:
 ### `spline`: 
 -   Tests the spline interpolation of eigenfunction for a Spheroidal mode and compares with scipy.
 
+### `xlm`: 
+-   
 
 ### `ylm`: 
 -   `test_ylm`: tests the `ylm_complex` function for a number of l and m values against scipy values. Note that scipy does not include the (-1)^m. 

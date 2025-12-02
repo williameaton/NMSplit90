@@ -1,6 +1,4 @@
 ! Computes the effect of rotation and ellipticity for mode: 
-
-
 program semi_analytical_W_matrix
     use params, only: rho_spl, Wmat, Tell, Vell, Vcen, mu_spl, kappa_spl, nmodes
     use Integrate, only: integrate_r_traps
@@ -12,6 +10,9 @@ program semi_analytical_W_matrix
     use piecewise_interpolation, only: InterpPiecewise, create_PieceInterp
     use woodhouse_kernels, only: Slm,Rlm, WK_TbarSrho, WK_TcaronSrho, WK_VbarSk, &
     WK_VbarSmu, WK_VbarSrho, WK_VcaronSk, WK_VcaronSmu, WK_VcaronSrho, WK_Vphi, WK_Vphi_dot
+
+    use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst_8, write_cst_complex_to_file
+
     implicit none
     include "constants.h"
 
@@ -31,9 +32,16 @@ program semi_analytical_W_matrix
     type(Mode)            :: mode_1, mode_2    
     type(InterpPiecewise) :: interp
 
+    character(len=1) :: t1
 
-    integer, dimension(nmodes), parameter :: modeNs = (/2, 3, 6, 8, 9, 11, 11, 13, 13, 14, 15, 16, 18, 20, 21, 23, 25, 27/)
-    integer, dimension(nmodes), parameter :: modeLs = (/3, 2, 3, 5, 3, 4, 5, 2, 3, 4, 3, 6, 4, 5, 6, 5, 2, 2/)
+    ! cst
+    complex(kind=SPLINE_REAL), allocatable :: Ellmat(:,:)
+    complex(kind=SPLINE_REAL), allocatable :: cst(:,:)
+    integer :: smin, smax, num_s, ncols
+
+    ! 19 rn
+    integer, dimension(nmodes), parameter :: modeNs = (/16, 2, 3, 6, 8, 9, 11, 11, 13, 13, 14, 15, 16, 18, 20, 21, 23, 25, 27/)
+    integer, dimension(nmodes), parameter :: modeLs = (/ 5, 3, 2, 3, 5, 3, 4, 5, 2, 3, 4, 3, 6, 4, 5, 6, 5, 2, 2/)
     integer :: imode
 
 
@@ -41,7 +49,7 @@ program semi_analytical_W_matrix
     call mineos%process_mineos_model(.false.)
     mineos_ptr => mineos
 
-    ! Values for the inner core
+
     knot_lower = 1
     r_lower    = zero        
     knot_upper = mineos%disc(mineos%ndisc)
@@ -116,19 +124,20 @@ program semi_analytical_W_matrix
 
 
 
-
     do imode = 1, nmodes 
 
+        t1 = 'S'
         ! ONLY FOR SELF COUPLING CURRENTLY
-        mode_1 = get_mode(modeNs(imode), 'S', modeLs(imode) , mineos_ptr)
-        mode_2 = get_mode(modeNs(imode), 'S', modeLs(imode)  , mineos_ptr)
+        mode_1 = get_mode(modeNs(imode), t1, modeLs(imode) , mineos_ptr)
+        mode_2 = get_mode(modeNs(imode), t1, modeLs(imode) , mineos_ptr)
 
 
-        ! Setup W matrix
+        ! Setup matrix
         allocate(Wmat(mode_1%tl1, mode_2%tl1))
         allocate(Vell(mode_1%tl1, mode_2%tl1))
         allocate(Tell(mode_1%tl1, mode_2%tl1))
         allocate(Vcen(mode_1%tl1, mode_2%tl1))
+        allocate(Ellmat(mode_1%tl1, mode_2%tl1))
 
         ! Interpolate mode splines
         call interp%interpolate_mode_eigenfunctions(mode_1)
@@ -386,7 +395,6 @@ program semi_analytical_W_matrix
 
 
         write(out_name, '(a)')'./ellipticity/matrices/Wmat_'//trim(nstr)//mode_1%t//trim(lstr)//'_'//trim(nstr)//mode_1%t//trim(lstr)//'.txt'
-
         call save_W_matrix(mode_1%l, mode_2%l, trim(out_name))
 
         write(out_name, '(a)')'./ellipticity/matrices/Vell_'//trim(nstr)//mode_1%t//trim(lstr)//'_'//trim(nstr)//mode_1%t//trim(lstr)//'.txt'
@@ -402,18 +410,33 @@ program semi_analytical_W_matrix
         ! Total splitting - we are going to store it in Wmat even though it should be
         ! Hmat
         ! 14.84
-        Wmat = Wmat + (Vell + Vcen - wcomnondim*wcomnondim*Tell)/(two*wcomnondim)
+        !Wmat = Wmat + (Vell + Vcen - wcomnondim*wcomnondim*Tell)/(two*wcomnondim)
+        !write(out_name, '(a)')'./ellipticity/matrices/RotEll_'//trim(nstr)//mode_1%t//trim(lstr)//'_'//trim(nstr)//mode_1%t//trim(lstr)//'.txt'
+        !call save_W_matrix(mode_1%l, mode_2%l, trim(out_name))
+        
 
-        ! Dimensionalise it and convert to Hz : 
-        Wmat = Wmat/(SCALE_T*(two*PI))
-        write(out_name, '(a)')'./ellipticity/matrices/RotEll_'//trim(nstr)//mode_1%t//trim(lstr)//'_'//trim(nstr)//mode_1%t//trim(lstr)//'.txt'
-        call save_W_matrix(mode_1%l, mode_2%l, trim(out_name))
+        ! Compute ellipticity contribution cst: 
+        ! Nondimensional
+        Ellmat =  (Vell  - wcomnondim*wcomnondim*Tell)/(two*wcomnondim)
 
+        ! Dimensionalise the Ellmat into micro Hz
+        Ellmat = 1.0e6* Ellmat/(SCALE_T*two*PI)
+
+        ! Compute the cst for this matrix: 
+        ! Write as a CST
+        call get_Ssum_bounds(mode_1%l, mode_1%l, smin, smax, num_s, ncols)
+        allocate(cst(num_s, ncols))
+        call Hcomplex_to_cst_8(Ellmat, mode_1%l, mode_1%l, cst, ncols, num_s, t1, t1, 2)
+        out_name = 'ellipticity/cst/cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(nstr)//t1//trim(lstr)
+        call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
 
         deallocate(Wmat)
         deallocate(Vcen)
         deallocate(Tell)
         deallocate(Vell)
+        deallocate(Ellmat)
+        deallocate(cst)
+
 
 
 

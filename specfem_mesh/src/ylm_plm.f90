@@ -5,6 +5,41 @@ implicit none
 include "constants.h"
 
 contains
+
+
+    function legendre(n, x) result(P)
+        integer, intent(in) :: n
+        real(kind=CUSTOM_REAL), intent(in) :: x
+        real(kind=CUSTOM_REAL) :: P, P0, P1, temp, kf
+        integer :: k
+
+        ! Base cases
+        if (n == 0) then
+            P = one
+            return
+        else if (n == 1) then
+            P = x
+            return
+        end if
+
+        ! Recursion
+        P0 = one
+        P1 = x
+        do k = 2, n
+            kf = real(k, kind=CUSTOM_REAL)
+            temp = ((two*kf - one) * x * P1 - (kf - one)*P0) / kf
+            P0 = P1
+            P1 = temp
+        end do
+
+        P = P1
+    end function legendre
+
+
+
+
+
+
    
     real(kind=CUSTOM_REAL) function Plm(x,l,mm)
     ! Function Plm Calculates the Associate Legendre Polinomial

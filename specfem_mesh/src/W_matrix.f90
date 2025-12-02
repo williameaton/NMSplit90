@@ -212,23 +212,26 @@ subroutine save_W_matrix(l1, l2, fname)
 
     complex(kind=SPLINE_REAL) :: Wmat_i(2*l2 + 1)
 
+    ! Dimensionalise the matrix: 
+    ! has same units as splitting matrix H of angular freq
+
     open(1,file=trim(fname))
     ! Write the real matrix 
     do row =1, 2*l1 + 1
         do col = 1, 2*l2 + 1
             if (col .lt. 2*l2+1)then 
-            write(1,'(E15.6)', advance='no')real(Wmat(row,col))
+            write(1,'(E15.6)', advance='no')real(Wmat(row,col)/SCALE_T)
             else 
-                write(1,'(E15.6)', advance='yes')real(Wmat(row,col))
+                write(1,'(E15.6)', advance='yes')real(Wmat(row,col)/(SCALE_T))
             endif
         enddo 
     enddo 
     do row =1, 2*l1 + 1
         do col = 1, 2*l2 + 1
             if (col .lt. 2*l2+1)then 
-            write(1,'(E15.6)', advance='no')aimag(Wmat(row,col))
+            write(1,'(E15.6)', advance='no')aimag(Wmat(row,col)/(SCALE_T))
             else 
-                write(1,'(E15.6)', advance='yes')aimag(Wmat(row,col))
+                write(1,'(E15.6)', advance='yes')aimag(Wmat(row,col)/(SCALE_T))
             endif
         enddo 
     enddo 

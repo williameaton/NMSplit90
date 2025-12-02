@@ -19,18 +19,24 @@ module rho_st_profiles
         real(kind=CUSTOM_REAL)    :: radius(npts)
 
 
-        if(s.eq.1)then 
+        if(s.eq.0)then 
             ! When s = 1 
             ! It will be quadratic, going through a value of +0.6 at each end and -0.4 at the centre 
-            arr  =  coeff * ((six/ten) + (radius - half)**two )
-        elseif(s.eq.2)then 
+            arr  =  0.0
+        elseif(s.eq.1)then 
             do i = 1, npts
-                arr(i) =  coeff * (sinp(TWO_PI*radius(i)))
+                arr(i) = coeff * ((six/ten) + (radius(i) - half)**two )
             enddo 
+        elseif(s.eq.2)then
+            arr  =  coeff * (sinp(TWO_PI*radius(i))) 
         elseif(s.eq.3)then
-            arr  =  coeff * ((seven/ten) - TWO*radius  )
+            arr = coeff * ((seven/ten) - TWO*radius  )
+        elseif(s.eq.4)then
+            arr = coeff * ((two/five) + THREE*radius  )
+        elseif(s.eq.5)then
+            arr = coeff * ((two/five) + SEVEN*radius/TWO  )
         else
-            write(*,*)'Only supporting s=1,3 but s = ', s
+            write(*,*)'Only supporting s=1,5 but s = ', s
             stop 
         endif
 

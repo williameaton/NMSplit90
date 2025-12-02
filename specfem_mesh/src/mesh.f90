@@ -1,6 +1,7 @@
 module specfem_mesh 
     use piecewise_interpolation, only: InterpPiecewise, create_PieceInterp
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
+    use ylm_plm, only: legendre
     use modes, only: Mode
     implicit none 
     include "constants.h"
@@ -84,6 +85,34 @@ module specfem_mesh
         real(kind=CUSTOM_REAL), allocatable :: gmag_at_r(:)
 
 
+        ! Boundaries: 
+        integer ::  NSPEC2DMAX_XMIN_XMAX_CM
+        integer ::  NSPEC2DMAX_YMIN_YMAX_CM
+        integer ::  NSPEC2DMAX_XMIN_XMAX_OC
+        integer ::  NSPEC2DMAX_YMIN_YMAX_OC
+        integer ::  NSPEC2DMAX_XMIN_XMAX_IC
+        integer ::  NSPEC2DMAX_YMIN_YMAX_IC
+        integer ::  NSPEC2D_BOTTOM_CM
+        integer ::  NSPEC2D_TOP_CM
+        integer ::  NSPEC2D_BOTTOM_OC
+        integer ::  NSPEC2D_TOP_OC
+        integer ::  NSPEC2D_BOTTOM_IC
+        integer ::  NSPEC2D_TOP_IC
+
+        integer ::  NSPEC2D_BOTTOM
+        integer ::  NSPEC2D_TOP
+        integer,          allocatable :: ibelm_bottom(:)
+        integer,          allocatable :: ibelm_top(:)
+        double precision, allocatable :: normal_bottom(:,:,:,:)
+        double precision, allocatable :: normal_top(:,:,:,:) 
+        double precision, allocatable :: jacobian2D_bottom(:,:,:)
+        double precision, allocatable :: jacobian2D_top(:,:,:)
+        double precision, allocatable :: delta_surf_top(:,:,:)
+        double precision, allocatable :: delta_surf_bottom(:,:,:)
+
+
+        logical :: topsurfaceexists, bottomsurfaceexists
+
         contains 
              procedure :: get_unique_radii 
         
@@ -138,6 +167,11 @@ module specfem_mesh
             procedure :: save_elem_rtp
             procedure :: load_elem_rtp
             procedure :: compute_background_g
+            procedure :: load_original_boundaries
+            procedure :: load_boundaries
+            procedure :: compute_surface_jacobian
+            procedure :: compute_elliptical_boundary_perturbation
+            procedure :: compute_eta12_radial
 
             procedure :: cleanup
     end type SetMesh
@@ -287,6 +321,411 @@ module specfem_mesh
             return 
         end subroutine read_proc_coordinates
         
+        
+
+
+        subroutine compute_elliptical_boundary_perturbation(self, ellfile, ndiscs)
+            ! Compute perturbation to boundaries due to ellipticity (D.73)
+            implicit none 
+            class(SetMesh) :: self
+            integer :: ispec2d
+            character(len=*) :: ellfile
+            integer :: ndiscs, ktop, kbottom, i, ispec, j
+            real(kind=CUSTOM_REAL), allocatable :: epsidiscs(:,:), toprad, bottomrad, top_ell, bottom_ell, colat
+
+            ktop    = 5
+            kbottom = 1
+
+            ! Load epsilon radial: 
+            write(*,*)'Reading ellipticity at discontinuities from '//trim(ellfile)
+            allocate(epsidiscs(ndiscs, 3))
+            open(1, file = trim(ellfile), status = 'old', form='formatted')
+            do i = 1, ndiscs
+                read(1,*)epsidiscs(i, 1:3)
+            enddo 
+            close(1)
+
+            if(self%region.eq.1)then ! crustmantle  
+                top_ell    = epsidiscs(ndiscs, 3)   ! Surface
+                toprad     = epsidiscs(ndiscs, 2) 
+                bottom_ell = epsidiscs(3, 3)        ! CMB
+                bottomrad  = epsidiscs(3, 2) 
+            elseif(self%region.eq.2)then 
+                top_ell    = epsidiscs(3, 3)        ! CMB
+                toprad     = epsidiscs(3, 2) 
+                bottom_ell = epsidiscs(2, 3)        ! ICB
+                bottomrad  = epsidiscs(2, 2) 
+            elseif(self%region.eq.3)then 
+                top_ell    = epsidiscs(2, 3)        ! ICB
+                toprad     = epsidiscs(2, 2) 
+                bottom_ell = epsidiscs(1, 3)        ! centre
+                bottomrad  = epsidiscs(1, 2) 
+            else 
+                write(*,*)'Error - region is not 1, 2, 3 for ell'
+                stop 
+            endif 
+
+            if(self%topsurfaceexists)then 
+                allocate(self%delta_surf_top(self%ngllx, self%nglly, self%nspec2D_top))
+                do ispec2d = 1, self%nspec2D_top
+                    ispec = self%ibelm_top(ispec2d)
+                    do i = 1, self%ngllx
+                        do j = 1, self%nglly
+                            ! Get colatitude 
+                            colat = self%thetastore(i,j,ktop,ispec)
+                            self%delta_surf_top(i,j,ispec2d) = -(two/three)*toprad*top_ell*legendre(2, dcos(colat))
+                        enddo 
+                    enddo 
+                enddo 
+            endif 
+
+             if(self%bottomsurfaceexists)then
+                allocate(self%delta_surf_bottom(self%ngllx, self%nglly, self%nspec2D_bottom))
+                do ispec2d = 1, self%nspec2D_bottom
+                    ispec = self%ibelm_bottom(ispec2d)
+                    do i = 1, self%ngllx
+                        do j = 1, self%nglly
+                        ! Get colatitude 
+                        colat = self%thetastore(i,j,kbottom,ispec)
+                        self%delta_surf_bottom(i,j,ispec2d) = -(two/three)*bottomrad*bottom_ell*legendre(2, dcos(colat))
+                        enddo 
+                    enddo 
+                enddo 
+            endif 
+
+
+        end subroutine compute_elliptical_boundary_perturbation
+
+
+
+
+
+        subroutine load_original_boundaries(self)
+            ! Processing of the outputs from original specfem
+            ! when we breakup these in linbreak_mesh we store 
+            ! in a slightly nicer format, which is loaded by 
+            ! load_boundaries
+            use params, only: datadir, verbose, IIN
+            implicit none 
+            class(SetMesh) :: self
+
+            ! Local variables
+            integer :: nspec2D_xmin,nspec2D_xmax,nspec2D_ymin,nspec2D_ymax, ijunk
+
+            integer :: ier, junk, XMAX2D, YMAX2D, nspec2d_bottom_local, nspec2d_top_local
+            character(len=550) :: binname
+            logical :: logjunk
+            
+            ! Dummy arrays: 
+            integer,          allocatable :: ibelm_xmin(:)
+            integer,          allocatable :: ibelm_ymin(:)
+            double precision, allocatable :: normal_xmin(:,:,:,:)
+            double precision, allocatable :: normal_ymin(:,:,:,:) 
+            double precision, allocatable :: jacobian2D_xmin(:,:,:)
+            double precision, allocatable :: jacobian2D_ymin(:,:,:)
+
+            ! A bit of a pain because we need the values of xmin/xmax nspec (the size of the arrays)
+            ! so that we load the correct number of bytes. This information is not readily available
+            ! in the boundaries.bin but is in the mesh_parameters.bin
+            open(unit=IIN,file=trim(datadir)//'mesh_parameters.bin', &
+            status='unknown',form='unformatted',action='read',iostat=ier)
+            if (ier.ne.0)then 
+                write(*,'(a, i0.6)')'Couldnt read mesh_parameters file for proc ', self%iset
+                stop
+            endif 
+
+                ! There is a lot of irrelevant stuff to read here before we get to what we need: 
+                do ijunk = 1, 16
+                    read(IIN) junk 
+                enddo 
+                do ijunk = 1, 9
+                    read(IIN) logjunk 
+                enddo 
+                do ijunk = 1, 2
+                    read(IIN) junk 
+                enddo 
+                do ijunk = 1, 3
+                    read(IIN) logjunk 
+                enddo 
+                do ijunk = 1, 9
+                    read(IIN) junk 
+                enddo 
+
+                read(IIN) self%NSPEC2DMAX_XMIN_XMAX_CM
+                read(IIN) self%NSPEC2DMAX_YMIN_YMAX_CM
+                read(IIN) self%NSPEC2D_BOTTOM_CM
+                read(IIN) self%NSPEC2D_TOP_CM
+
+                read(IIN) self%NSPEC2DMAX_XMIN_XMAX_IC
+                read(IIN) self%NSPEC2DMAX_YMIN_YMAX_IC
+                read(IIN) self%NSPEC2D_BOTTOM_IC
+                read(IIN) self%NSPEC2D_TOP_IC
+
+                read(IIN) self%NSPEC2DMAX_XMIN_XMAX_OC
+                read(IIN) self%NSPEC2DMAX_YMIN_YMAX_OC
+                read(IIN) self%NSPEC2D_BOTTOM_OC
+                read(IIN) self%NSPEC2D_TOP_OC
+
+            close(IIN)
+            
+
+            ! Can now allocate for the arrays we will load: 
+            if(self%region==1)then 
+                XMAX2D         = self%NSPEC2DMAX_XMIN_XMAX_CM
+                YMAX2D         = self%NSPEC2DMAX_YMIN_YMAX_CM
+                self%NSPEC2D_BOTTOM = self%NSPEC2D_BOTTOM_CM
+                self%NSPEC2D_TOP    = self%NSPEC2D_TOP_CM
+            elseif(self%region==2)then
+                XMAX2D         = self%NSPEC2DMAX_XMIN_XMAX_OC
+                YMAX2D         = self%NSPEC2DMAX_YMIN_YMAX_OC
+                self%NSPEC2D_BOTTOM = self%NSPEC2D_BOTTOM_OC
+                self%NSPEC2D_TOP    = self%NSPEC2D_TOP_OC
+            elseif(self%region==3)then
+                ! Note I think nspecbottom for IC doesnt really make sense
+                ! but was a convenience thing defined for looping over regions in spfm? 
+                XMAX2D         = self%NSPEC2DMAX_XMIN_XMAX_IC
+                YMAX2D         = self%NSPEC2DMAX_YMIN_YMAX_IC
+                self%NSPEC2D_BOTTOM = self%NSPEC2D_BOTTOM_IC
+                self%NSPEC2D_TOP    = self%NSPEC2D_TOP_IC
+            else 
+                write(*,*)'Error: trying to use a region code for boundaries that isnt configured.'
+            endif 
+
+            ! These are dummy arrays we dont keep: 
+            allocate(ibelm_xmin(XMAX2D))
+            allocate(ibelm_ymin(YMAX2D))
+
+            ! We keep these ones: 
+            allocate(self%ibelm_bottom(self%NSPEC2D_BOTTOM))
+            allocate(self%ibelm_top(self%NSPEC2D_TOP))
+
+            ! Allocate normals for dummy edges and the top/bottom we keep
+            ! allocate(normal_xmin(3,self%NGLLY, self%NGLLZ, XMAX2D),                  &
+            !          normal_ymin(3,self%NGLLX, self%NGLLZ, YMAX2D),                   &
+            !          self%normal_top(3,self%NGLLX,self%NGLLY,self%NSPEC2D_TOP),      &
+            !          self%normal_bottom(3,self%NGLLX,self%NGLLY,self%NSPEC2D_BOTTOM) & 
+            !         )   
+
+            ! Allocate jacobians for dummy and saved edges
+            ! allocate(jacobian2D_xmin(self%NGLLY,self%NGLLZ,XMAX2D), &
+            !          jacobian2D_ymin(self%NGLLX,self%NGLLZ,YMAX2D), &
+            !          self%jacobian2D_bottom(self%NGLLX, self%NGLLY, self%NSPEC2D_BOTTOM), &
+            !          self%jacobian2D_top(self%NGLLX, self%NGLLY, self%NSPEC2D_TOP) & 
+            !         )
+
+
+            ! File name prefix: 
+            write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',self%iset,'_'//'reg',self%region,'_'
+
+            if(verbose.gt.1)then
+                write(*,'(/,a,/)')'• Reading boundary file from '//trim(datadir)
+                write(*,'(a,i1)')'  -- region      : ', self%region
+                write(*,'(a,i0.6,/)')'  -- processor id: ', self%iset
+            endif
+        
+            ! Read processor
+            open(unit=IIN,file=trim(binname)//'boundary.bin', &
+            status='unknown',form='unformatted',action='read',iostat=ier)
+            if (ier.ne.0)then 
+                write(*,'(a, i0.6)')'Couldnt read boundary file for proc ', self%iset
+                stop
+            endif 
+
+            ! NSPEC on the 6 sides of the mesh
+            ! We dont use absorbing boundaries so only need top/bottom
+            read(IIN) junk !nspec2D_xmin
+            read(IIN) junk !nspec2D_xmax
+            read(IIN) junk !nspec2D_ymin
+            read(IIN) junk !nspec2D_ymax
+            read(IIN) NSPEC2D_BOTTOM_local
+            read(IIN) NSPEC2D_TOP_local
+
+            ! Check that what we are reading is consistent
+            if(self%NSPEC2D_BOTTOM.ne.NSPEC2D_BOTTOM_local)then 
+                write(*,*)'Error. Inconsistent NSPEC2D_BOTTOM read from mesh_params.bin and boundaries.bin'
+            endif 
+            if(self%NSPEC2D_TOP.ne.NSPEC2D_TOP_local)then 
+                write(*,*)'Error. Inconsistent NSPEC2D_TOP read from mesh_params.bin and boundaries.bin'
+            endif 
+
+            ! Ibool on the six sides
+            read(IIN) ibelm_xmin ! ibelm_xmin
+            read(IIN) ibelm_xmin ! ibelm_xmax
+            read(IIN) ibelm_ymin ! ibelm_ymin
+            read(IIN) ibelm_ymin ! ibelm_ymax
+            read(IIN) self%ibelm_bottom
+            read(IIN) self%ibelm_top
+            close(IIN)
+
+            self%bottomsurfaceexists = .false.
+            if(self%nspec2D_bottom.gt.0)self%bottomsurfaceexists = .true.
+
+            self%topsurfaceexists = .false.
+            if(self%nspec2D_top.gt.0)self%topsurfaceexists = .true.
+
+        end subroutine load_original_boundaries
+                
+
+        subroutine load_boundaries(self)
+            ! Used to load boundaries that have been separated 
+            ! based on linbreakmesh 
+            use params, only: datadir, verbose, IIN
+            implicit none 
+            include "precision.h"
+            class(SetMesh) :: self
+            character(len=250) :: binname
+            integer :: ier
+
+            ! File name prefix: 
+            write(binname,'(a,i0.6,a,i1,a)')trim(datadir)//'/proc',self%iset,'_'//'reg',self%region,'_'
+
+            if(verbose.gt.1)then
+                write(*,'(/,a,/)')'• Reading boundaries from '//trim(datadir)
+                write(*,'(a,i1)')'  -- region      : ', self%region
+                write(*,'(a,i0.6,/)')'  -- processor id: ', self%iset
+            endif
+        
+            ! Load top boundary
+            open(unit=IIN,file=trim(binname)//'ibool_top.bin', &
+            status='unknown',form='unformatted',action='read',iostat=ier)
+            if (ier.ne.0)then 
+                write(*,'(a, i0.6)')'Couldnt read ibool_top file for proc ', self%iset
+                stop
+            endif 
+            read(IIN)self%NSPEC2D_TOP
+            write(*,*)'nspec top = ', self%NSPEC2D_TOP
+            if(self%NSPEC2D_TOP.gt.0)then 
+                allocate(self%ibelm_top(self%NSPEC2D_TOP))
+                read(IIN)self%ibelm_top
+            endif
+            close(IIN)
+
+            ! Load bottom boundary
+            open(unit=IIN,file=trim(binname)//'ibool_bottom.bin', &
+            status='unknown',form='unformatted',action='read',iostat=ier)
+            if (ier.ne.0)then 
+                write(*,'(a, i0.6)')'Couldnt read ibool_bottom file for proc ', self%iset
+                stop
+            endif 
+            read(IIN)self%NSPEC2D_BOTTOM
+            write(*,*)'nspec bottom = ', self%NSPEC2D_BOTTOM
+            if(self%NSPEC2D_BOTTOM.gt.0)then
+                allocate(self%ibelm_bottom(self%NSPEC2D_BOTTOM))
+                read(IIN)self%ibelm_bottom
+            endif 
+            close(IIN)
+
+        end subroutine load_boundaries
+
+
+
+        subroutine compute_surface_jacobian(self)
+            ! Compute 2D jacobian for surfaces
+            implicit none 
+            class(SetMesh) :: self
+            integer :: ispec2d, ib, ispec, i, j, ktop, kbottom, igll
+
+            real(kind=CUSTOM_REAL) :: dx_dxi_top(3), dx_deta_top(3), nhat_top(3), jac2dtop, & 
+                                      xl_top(self%ngllx, self%nglly), & 
+                                      yl_top(self%ngllx, self%nglly), &
+                                      zl_top(self%ngllx, self%nglly)
+            real(kind=CUSTOM_REAL) :: dx_dxi_bottom(3), dx_deta_bottom(3), nhat_bottom(3), jac2dbottom, & 
+                                      xl_bottom(self%ngllx, self%nglly), & 
+                                      yl_bottom(self%ngllx, self%nglly), &
+                                      zl_bottom(self%ngllx, self%nglly)
+
+            ! Allocate the jacobian arrays for top surface
+            allocate(self%jacobian2D_top(self%ngllx, self%nglly, self%nspec2D_top))
+            allocate(self%normal_top(3, self%ngllx, self%nglly, self%nspec2D_top))
+            ! bottom surface
+            allocate(self%jacobian2D_bottom(self%ngllx, self%nglly, self%nspec2D_bottom))
+            allocate(self%normal_bottom(3, self%ngllx, self%nglly, self%nspec2D_bottom))
+
+            ktop = 5
+            kbottom = 1
+
+            ! Loop through each of the elements on the surface 
+            do ispec2d = 1, self%nspec2D_top
+                ispec = self%ibelm_top(ispec2d)
+                do i = 1, self%ngllx
+                    do j = 1, self%nglly
+
+                        ! Get coordinates at this point: 
+                        xl_top = self%xstore(:, :, ktop, ispec)
+                        yl_top = self%ystore(:, :, ktop, ispec)
+                        zl_top = self%zstore(:, :, ktop, ispec)
+
+                        dx_dxi_top  = zero
+                        dx_deta_top = zero
+
+                        do igll = 1, self%ngllx
+                            dx_dxi_top(1) = dx_dxi_top(1) + xl_top(igll, j) * self%dgll(igll, i)
+                            dx_dxi_top(2) = dx_dxi_top(2) + yl_top(igll, j) * self%dgll(igll, i)
+                            dx_dxi_top(3) = dx_dxi_top(3) + zl_top(igll, j) * self%dgll(igll, i)
+                        enddo 
+
+                        do igll = 1, self%nglly
+                            dx_deta_top(1) = dx_deta_top(1) + xl_top(i, igll) * self%dgll(igll, j)
+                            dx_deta_top(2) = dx_deta_top(2) + yl_top(i, igll) * self%dgll(igll, j)
+                            dx_deta_top(3) = dx_deta_top(3) + zl_top(i, igll) * self%dgll(igll, j)
+                        enddo 
+
+                        ! Compute the cross product:
+                        ! unnormalised normal  
+                        nhat_top(1) = dx_dxi_top(2)*dx_deta_top(3) - dx_dxi_top(3)*dx_deta_top(2)
+                        nhat_top(2) = dx_dxi_top(3)*dx_deta_top(1) - dx_dxi_top(1)*dx_deta_top(3)
+                        nhat_top(3) = dx_dxi_top(1)*dx_deta_top(2) - dx_dxi_top(2)*dx_deta_top(1)
+
+                        ! Compute jacobian as norm of the vector 
+                        jac2dtop = (nhat_top(1)**two + nhat_top(2)**two + nhat_top(3)**two)**half
+                        self%jacobian2D_top(i, j, ispec2d) = jac2dtop
+                        self%normal_top(:, i, j, ispec2d) = nhat_top/jac2dtop
+                    enddo !iglly
+                enddo !igllx
+            enddo ! ispec2d
+
+
+            ! Loop through each of the elements on the surface 
+            do ispec2d = 1, self%nspec2D_bottom
+                ispec = self%ibelm_bottom(ispec2d)
+                do i = 1, self%ngllx
+                    do j = 1, self%nglly
+
+                        ! Get coordinates at this point: 
+                        xl_bottom = self%xstore(:, :, kbottom, ispec)
+                        yl_bottom = self%ystore(:, :, kbottom, ispec)
+                        zl_bottom = self%zstore(:, :, kbottom, ispec)
+
+                        dx_dxi_bottom  = zero
+                        dx_deta_bottom = zero
+
+                        do igll = 1, self%ngllx
+                            dx_dxi_bottom(1) = dx_dxi_bottom(1) + xl_bottom(igll, j) * self%dgll(igll, i)
+                            dx_dxi_bottom(2) = dx_dxi_bottom(2) + yl_bottom(igll, j) * self%dgll(igll, i)
+                            dx_dxi_bottom(3) = dx_dxi_bottom(3) + zl_bottom(igll, j) * self%dgll(igll, i)
+                        enddo 
+
+                        do igll = 1, self%nglly
+                            dx_deta_bottom(1) = dx_deta_bottom(1) + xl_bottom(i, igll) * self%dgll(igll, j)
+                            dx_deta_bottom(2) = dx_deta_bottom(2) + yl_bottom(i, igll) * self%dgll(igll, j)
+                            dx_deta_bottom(3) = dx_deta_bottom(3) + zl_bottom(i, igll) * self%dgll(igll, j)
+                        enddo 
+
+                        ! Compute the cross product:
+                        ! unnormalised normal  
+                        nhat_bottom(1) = dx_dxi_bottom(2)*dx_deta_bottom(3) - dx_dxi_bottom(3)*dx_deta_bottom(2)
+                        nhat_bottom(2) = dx_dxi_bottom(3)*dx_deta_bottom(1) - dx_dxi_bottom(1)*dx_deta_bottom(3)
+                        nhat_bottom(3) = dx_dxi_bottom(1)*dx_deta_bottom(2) - dx_dxi_bottom(2)*dx_deta_bottom(1)
+
+                        ! Compute jacobian as norm of the vector 
+                        jac2dbottom = (nhat_bottom(1)**two + nhat_bottom(2)**two + nhat_bottom(3)**two)**half
+                        self%jacobian2D_bottom(i, j, ispec2d) = jac2dbottom
+                        self%normal_bottom(:, i, j, ispec2d) = nhat_bottom/jac2dbottom
+                    enddo !iglly
+                enddo !igllx
+            enddo ! ispec2d
+
+        end subroutine compute_surface_jacobian
         
         
         subroutine read_integer_proc_variable(self, variable, varname)
@@ -2526,6 +2965,39 @@ module specfem_mesh
 
 
 
+        subroutine compute_eta12_radial(self)
+            ! computes the eta1, eta2 values that point each GLL point in the
+            ! radial direction
+            use params, only: glob_eta1, glob_eta2
+            implicit none 
+            class(SetMesh) :: self 
+
+            integer :: i, j, k, ispec, ib
+
+            ! Loop through each point
+            do ispec = 1, self%nspec
+                do i = 1, self%ngllx 
+                    do j = 1, self%nglly
+                        do k = 1, self%ngllz
+
+                            ib = self%ibool(i,j,k,ispec)
+
+                            ! eta 1 - Longitude
+                            glob_eta1(ib) = self%phistore(i,j,k,ispec)
+
+                            ! eta 2 - Colatitude: 
+                            glob_eta2(ib) = self%thetastore(i,j,k,ispec)
+
+                        enddo ! k
+                    enddo ! j
+                enddo ! i
+            enddo ! nspec
+
+            
+
+        end subroutine 
+
+
         subroutine setup_mesh_sem_details(self, load_from_bin, save_to_bin)
             implicit none 
             class(SetMesh) :: self 
@@ -2582,6 +3054,10 @@ module specfem_mesh
 
             call deallocate_if_allocated(self%unique_r)
             call deallocate_if_allocated(self%rad_id)
+
+            call deallocate_if_allocated(self%ibelm_bottom)
+            call deallocate_if_allocated(self%ibelm_top)
+
 
             call self%interp%cleanup()
 

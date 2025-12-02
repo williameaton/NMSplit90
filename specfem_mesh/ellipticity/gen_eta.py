@@ -77,6 +77,25 @@ epsilon[0] = epsilon[1]
 ax[2].plot(r, epsilon)
 ax[2].set_ylabel('Epsilon')
 
+# Save the mineos epsilon values: 
+mineos_ep = np.zeros((len(r), 2))
+mineos_ep[:,0] = r
+mineos_ep[:,1] = epsilon
+np.savetxt(X=mineos_ep, fname='mineos_epsilon.txt')
+
+
+disc_epsi = np.zeros((len(disc),3))
+discctr = 0
+for idisc in disc:
+    if idisc==0: 
+        idisc=1
+
+    disc_epsi[discctr,0] =  idisc
+    disc_epsi[discctr,1] =  r[idisc-1]
+    disc_epsi[discctr,2] =   epsilon[idisc-1]
+    discctr += 1
+np.savetxt(fname=f"epsi_discontinuities.txt", X=disc_epsi)
+
 
 #ax[1].set_ylim([0, 0.6])
 ax[2].set_ylim([0.0022, 0.0034])
@@ -109,12 +128,12 @@ for isec in range(nsecs):
 
 
 
-ax[1].plot(rf90, etainterp, 'x')
-ax[2].plot(rf90, epsinterp, 'x')
+# ax[1].plot(rf90, etainterp, 'x')
+# ax[2].plot(rf90, epsinterp, 'x')
 
 fig.savefig('eta.pdf', format='pdf')
 
 np.savetxt(X=etainterp, fname='eta_interpolated.txt')
 np.savetxt(X=epsinterp, fname='epsilon_interpolated.txt')
 
-plt.show()
+

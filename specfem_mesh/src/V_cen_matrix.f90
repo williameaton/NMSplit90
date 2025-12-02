@@ -155,23 +155,26 @@ subroutine save_Vcen_matrix(l1, l2, fname)
     integer :: l1, l2
     integer :: col, row
 
+    !Dimensionalisation: 
+    ! To contribute to H it is 1/2w0 * Vcen 
+    ! Hence the dimensionalised units of Vcen should be ang freq ^2 
     open(1,file=trim(fname))
     ! Write the real matrix 
     do row =1, 2*l1 + 1
         do col = 1, 2*l2 + 1
             if (col .lt. 2*l2+1)then 
-            write(1,'(E15.6)', advance='no')real(Vcen(row,col))
+            write(1,'(E15.6)', advance='no')real(Vcen(row,col)/(SCALE_T*SCALE_T))
             else 
-                write(1,'(E15.6)', advance='yes')real(Vcen(row,col))
+                write(1,'(E15.6)', advance='yes')real(Vcen(row,col)/(SCALE_T*SCALE_T))
             endif
         enddo 
     enddo 
     do row =1, 2*l1 + 1
         do col = 1, 2*l2 + 1
             if (col .lt. 2*l2+1)then 
-            write(1,'(E15.6)', advance='no')aimag(Vcen(row,col))
+            write(1,'(E15.6)', advance='no')aimag(Vcen(row,col)/(SCALE_T*SCALE_T))
             else 
-                write(1,'(E15.6)', advance='yes')aimag(Vcen(row,col))
+                write(1,'(E15.6)', advance='yes')aimag(Vcen(row,col)/(SCALE_T*SCALE_T))
             endif
         enddo 
     enddo 
@@ -188,23 +191,27 @@ subroutine save_Vell_matrix(l1, l2, fname)
     integer :: l1, l2
     integer :: col, row
 
+
+    !Dimensionalisation: 
+    ! To contribute to H it is 1/2w0 * Vell 
+    ! Hence the dimensionalised units of Vell should be ang freq ^2 
     open(1,file=trim(fname))
     ! Write the real matrix 
     do row =1, 2*l1 + 1
         do col = 1, 2*l2 + 1
             if (col .lt. 2*l2+1)then 
-            write(1,'(E15.6)', advance='no')real(Vell(row,col))
+            write(1,'(E15.6)', advance='no')real(Vell(row,col)/(SCALE_T*SCALE_T))
             else 
-                write(1,'(E15.6)', advance='yes')real(Vell(row,col))
+                write(1,'(E15.6)', advance='yes')real(Vell(row,col)/(SCALE_T*SCALE_T))
             endif
         enddo 
     enddo 
     do row =1, 2*l1 + 1
         do col = 1, 2*l2 + 1
             if (col .lt. 2*l2+1)then 
-            write(1,'(E15.6)', advance='no')aimag(Vell(row,col))
+            write(1,'(E15.6)', advance='no')aimag(Vell(row,col)/(SCALE_T*SCALE_T))
             else 
-                write(1,'(E15.6)', advance='yes')aimag(Vell(row,col))
+                write(1,'(E15.6)', advance='yes')aimag(Vell(row,col)/(SCALE_T*SCALE_T))
             endif
         enddo 
     enddo 
@@ -222,6 +229,9 @@ subroutine save_Tell_matrix(l1, l2, fname)
     integer :: l1, l2
     integer :: col, row
 
+    !Dimensionalisation: 
+    ! To contribute to H it is w0/2 * Vell 
+    ! Hence the dimensionalised units of Vell should be unitless
     open(1,file=trim(fname))
     ! Write the real matrix 
     do row =1, 2*l1 + 1

@@ -27,6 +27,7 @@ module mineos_model
         real(kind=CUSTOM_REAL), allocatable :: vs_mineos(:)
         real(kind=CUSTOM_REAL), allocatable :: mu_mineos(:)
         real(kind=CUSTOM_REAL), allocatable :: kappa_mineos(:)
+        real(kind=CUSTOM_REAL), allocatable :: ell_mineos(:)
 
         contains 
             procedure :: process_mineos_model
@@ -35,6 +36,7 @@ module mineos_model
             procedure :: find_disc
             procedure :: save_mineos_model
             procedure :: allocate_radii
+            procedure :: load_ellipticity_from_file
     end type MineosModel
 
     ! Globally available
@@ -164,7 +166,7 @@ module mineos_model
 
         radius_last = -1.0
         jdisc = 0
-        iomod = 11
+        iomod = 78
     
         do i = 1, self%NR
         if (abs(self%radius(i)-radius_last) .lt. 1.0d-6) then
@@ -222,10 +224,11 @@ module mineos_model
 
 
 
-    subroutine load_mineos_radial_info_MPI(self)
+    subroutine load_mineos_radial_info_MPI(self, communicator)
         use params, only: myrank, datadir, MPI_CUSTOM_REAL
         implicit none 
         class(MineosModel) :: self 
+        integer :: communicator
 
     #ifdef WITH_MPI
         include 'mpif.h'
@@ -236,14 +239,14 @@ module mineos_model
             call self%load_mineos_radial_info()
         endif 
     
-        call MPI_Bcast(self%NR,     1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-        call MPI_Bcast(self%IC_ID,  1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-        call MPI_Bcast(self%CMB_ID, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+        call MPI_Bcast(self%NR,     1, MPI_INTEGER, 0, communicator, ierr)
+        call MPI_Bcast(self%IC_ID,  1, MPI_INTEGER, 0, communicator, ierr)
+        call MPI_Bcast(self%CMB_ID, 1, MPI_INTEGER, 0, communicator, ierr)
     
         if(myrank.ne.0) allocate(self%radius(self%NR), self%rad_mineos(self%NR))
     
-        call MPI_Bcast(self%radius, self%NR, MPI_CUSTOM_REAL, 0, MPI_COMM_WORLD, ierr)
-        call MPI_Bcast(self%rad_mineos, self%NR, MPI_CUSTOM_REAL, 0, MPI_COMM_WORLD, ierr)
+        call MPI_Bcast(self%radius, self%NR, MPI_CUSTOM_REAL, 0, communicator, ierr)
+        call MPI_Bcast(self%rad_mineos, self%NR, MPI_CUSTOM_REAL, 0, communicator, ierr)
     #endif 
     end subroutine load_mineos_radial_info_MPI
     
@@ -323,7 +326,22 @@ module mineos_model
 
     end subroutine save_mineos_model
 
+    subroutine load_ellipticity_from_file(self, fname)
+        implicit none 
+        character(len=*)::fname 
+        class(MineosModel) :: self
+        integer :: i
+        real(kind=CUSTOM_REAL) :: rad
+
+        write(*,*)'Reading mineos ellipticity from '//trim(fname)
+        allocate(self%ell_mineos(self%NR))
+
+        open(1, file = trim(fname), status = 'old', form='formatted')
+        do i = 1, self%NR
+            read(1,*)rad, self%ell_mineos(i)
+        enddo 
     
+    end subroutine
 
 
 

@@ -70,6 +70,34 @@ end subroutine buffer_int
 
 
 
+subroutine buffer_int4(str, myint)
+    implicit none 
+
+    character(len=*):: str
+    integer(4) :: myint
+
+    if (myint.ge.0 .and. myint.lt.10)then
+        write(str,'(i1)')myint
+    elseif(myint.ge.10 .and. myint.lt.100)then 
+        write(str,'(i2)')myint
+    elseif(myint.ge.100 .and. myint.lt.1000)then 
+        write(str,'(i3)')myint    
+    elseif(myint.ge.1000 .and. myint.lt.10000)then 
+        write(str,'(i4)')myint  
+    elseif(myint.ge.10000 .and. myint.lt.100000)then 
+        write(str,'(i5)')myint  
+
+    elseif (myint.gt.-10 .and. myint.lt.0)then
+            write(str,'(i2)')myint
+    elseif (myint.gt.-100 .and. myint.lt.10)then
+        write(str,'(i3)')myint
+    elseif (myint.gt.-1000 .and. myint.lt.100)then
+        write(str,'(i4)')myint
+    endif
+
+end subroutine buffer_int4
+
+
 subroutine create_mode_binary_fname(n, t, l, m, iproc, fname)
     ! Creates string used in reading/writing mode displacement binaries
     ! format e.g. 0S4_3_proc5.bin 

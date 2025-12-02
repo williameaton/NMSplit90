@@ -4,6 +4,9 @@ VPATH = ../src
 AM_FCFLAGS = -cpp -Wall -O2 -llapack -lblas  -I../src -I$(CORETRAN_MODDIR) -L$(CORETRAN_LIBDIR)
 
 
+LDADD = -lcoretran
+
+
 # List ALL test programs: 
 bin_PROGRAMS = test_plm_function    \
                test_plm_values      \
@@ -30,7 +33,9 @@ bin_PROGRAMS = test_plm_function    \
                test_gmag            \
                vcen_semi            \
                test_amp             \
-               reproduce_tromp93
+               reproduce_tromp93    \
+               test_surf_int        \
+               ell_gll
 
 
 d_cst  = cst
@@ -49,6 +54,7 @@ d_grav = gravity
 d_vcen = Vcen
 d_amp  = amplitude
 d_t93  = reproduce_Tromp93
+d_ell  = ellipticity
 
 # Define basic sources groups 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90  \
@@ -74,6 +80,7 @@ GRAV_SRCS = $(MED_SRCS)
 VCEN_SRCS = $(MED_SRCS) V_cen_matrix.f90
 AMP_SRCS  = $(MED_SRCS) 
 T93_SRCS  = $(MED_SRCS) voronoi.f90 cuda_proxies.f90 V_ani_matrix.f90 cst.f90
+ELL_SRCS  = $(MED_SRCS) T_matrix.f90 V_cen_matrix.f90
 
 test_plm_function_SOURCES     = $(SETUP_SRCS) $(d_plm)/test_plm.f90
 test_plm_values_SOURCES       = $(SETUP_SRCS) $(d_plm)/test_plm_values.f90
@@ -81,6 +88,7 @@ test_vani_fast_SOURCES        = $(VANI_SRCS)  $(d_vani)/test_fast_Vani.f90
 test_vani_diag_SOURCES        = $(VANI_SRCS)  $(d_vani)/test_Vani.f90
 test_tromp1995_SOURCES        = $(VANI_SRCS)  $(d_vani)/tromp_1995.f90
 test_1_integration_SOURCES    = $(INT_SRCS)   $(d_int)/test_1_integration.f90
+test_surf_int_SOURCES         = $(INT_SRCS)   $(d_int)/test_surface_integration.f90
 test_ylm_integration_SOURCES  = $(INT_SRCS)   $(d_int)/test_ylm_integration.f90
 test_mode_norm_SOURCES        = $(MED_SRCS)   $(d_norm)/test_mode_normalisation.f90
 test_wrot_SOURCES             = $(WMAT_SRCS)  $(d_wrm)/test_rotation_matrix.f90
@@ -101,16 +109,17 @@ test_gmag_SOURCES             = $(GRAV_SRCS)  $(d_grav)/test_gmag.f90
 vcen_semi_SOURCES             = $(VCEN_SRCS)  $(d_vcen)/vcen_woodhouse.f90
 test_amp_SOURCES              = $(AMP_SRCS)   $(d_amp)/rotation_amplitude.f90
 reproduce_tromp93_SOURCES     = $(T93_SRCS)   $(d_t93)/reproduce_vani.f90
+ell_gll_SOURCES               = $(ELL_SRCS)   $(d_ell)/ell_gll.f90
 
 
-reproduce_tromp93_LDADD = -lcoretran 
-test_tromp1995_LDADD    = -lcoretran 
+#reproduce_tromp93_LDADD = -lcoretran 
+#test_tromp1995_LDADD    = -lcoretran 
 
 # Test groups: 
 plm_tests:  test_ylm_function test_ylm_values
 ylm_tests:  test_ylm_function test_plm_values
 vani_tests: test_vani_fast test_vani_diag test_tromp1995
-integration_tests: test_1_integration test_ylm_integration
+integration_tests: test_1_integration test_ylm_integration test_surf_int
 wmat_tests: test_wstored rotation_semi test_wrot
 cst_tests: test_cst_to_mat
 viso_tests: test_viso viso_semi

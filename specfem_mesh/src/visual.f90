@@ -321,16 +321,22 @@ subroutine write_real_scalar_to_ensight(sm, realscal, suffix, part)
     character(len=250)  :: fname
 
 
+
+
+
     ! Variable file 
     fname = trim(en_fname)//'.'//trim(suffix)
     open(unit=REALSCALOUT, file=trim(en_dir)//trim(fname), & 
          status='unknown',form='formatted', action='write')
 
+
+
     ! Case file: 
     open(unit=CASEUNIT,file=trim(en_dir)//trim(en_fname)//'.case', & 
-          status='old', form='formatted', action='write', position='append')
+    status='old', form='formatted', action='write', position='append')
     write(CASEUNIT,'(a/)')'scalar per node: '//suffix//'  '//trim(fname)
     close(CASEUNIT)
+
 
     ! Write the bits we need 
     buffer = 'Scalar for '//trim(suffix)
@@ -350,6 +356,7 @@ subroutine write_real_scalar_to_ensight(sm, realscal, suffix, part)
     enddo 
 
     close(REALSCALOUT)
+
 
 end subroutine write_real_scalar_to_ensight
 

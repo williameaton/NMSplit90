@@ -11,38 +11,38 @@ integer, parameter :: verbose       = 0
 logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
 
-integer, parameter :: nprocs        = 4 
-integer, parameter :: nmodes        = 2 !27
+integer, parameter :: nprocs        = 4
+integer, parameter :: nmodes        = 3
  
 ! Optimisation stuff: 
 integer, parameter :: compute_cst_smax  = 6
-integer, parameter :: max_tl1           = 17 
+integer, parameter :: max_tl1           = 7
 integer, parameter :: MaxBrettModelPts  = 100 
 
 character(len=3)   :: timingNEX = '160'
 
 
 ! Specfem mesh files: 
-character(len=250) :: datadir   = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX160/sliced/linear/sets4/'
-!character(len=250)  :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
-!character(len=250)  :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
-!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/whole_earth/'
-!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
+character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX160/sliced/linear/sets4/'
+!character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX64/sliced/'
+!character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
+!character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
+!character(len=250) :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/whole_earth/'
+!character(len=250) :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
 
 ! Mineos model parameters: 
 ! PREM mineos model 
-character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'
+character(len=250), parameter  :: ddir = '/scratch/gpfs/TROMP/we3822/NMSplit90/databases/prem_ani_att_database/'
 character(len=60),  parameter  :: model_fname = 'model'
 character(len=60),  parameter  :: bin_prefix = 'prem_ani_att'
 
 ! 1066a mineos model
-! character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/1066a/'
+! character(len=250), parameter  :: ddir = '/scratch/gpfs/TROMP/we3822/NMSplit90/databases/1066a/'
 ! character(len=60),  parameter  :: model_fname = '1066a_mineos_model'
 ! character(len=60),  parameter  :: bin_prefix = '1066a_noatt'
 
 ! Assumptions: 
 logical, parameter :: Z_AXIS_EARTH_ROTATION = .true.
-
 
 ! Local mesh variables:
 real(kind=CUSTOM_REAL),    allocatable :: rho(:,:,:,:)
@@ -54,8 +54,8 @@ complex(kind=SPLINE_REAL), allocatable :: disp1(:,:,:,:,:), disp2(:,:,:,:,:)
 ! Matrices: 
 complex(kind=SPLINE_REAL), allocatable :: Wmat(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vani(:,:)
-complex(kind=4), allocatable :: VaniAllModes_4(:,:,:)
-complex(kind=8), allocatable :: VaniAllModes_8(:,:,:)
+complex(kind=4),           allocatable :: VaniAllModes_4(:,:,:)
+complex(kind=8),           allocatable :: VaniAllModes_8(:,:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vcen(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Vell(:,:)
 complex(kind=SPLINE_REAL), allocatable :: Tell(:,:)
@@ -79,14 +79,17 @@ real(kind=SPLINE_REAL), allocatable :: rho_spl(:),  &
                                        vp_spl(:),   & 
                                        A0(:),       &
                                        mu_spl(:),   & 
-                                       kappa_spl(:)
+                                       kappa_spl(:),&
+                                       vs_spl(:)   
+
+
 
 
 
 ! Visual: 
 character(len=250),parameter :: en_dir='./ensight/'      ! Ensight prefix file name
 character(len=250) :: en_fname                     ! Ensight prefix file name
-integer, parameter :: CASEUNIT         = 11
+integer, parameter :: CASEUNIT         = 21
 integer, parameter :: GEOUNIT          = 12
 integer, parameter :: TENSORSYMOUT_I   = 14
 integer, parameter :: TENSORSYMOUT_R   = 15
@@ -99,8 +102,7 @@ character(len=7), parameter  :: realfmt = "(e12.5)"
 
 
 ! Voronoi model: 
-character(len=250) :: fname_voronoi = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model.txt'
-
+character(len=250) :: fname_voronoi = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model.txt'
 
 
 ! MPI 

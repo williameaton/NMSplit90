@@ -73,7 +73,7 @@ module modes
 
         logical                    :: save_mode
         character(len=*), optional :: out_dir
-    
+        character(len=4) :: n1str, l1str
         character(len=200) :: catalogue, bin_file, eigstring, freqstring
         integer            :: ntype,nvec,i,j
         character(len=1)   :: type1,type2,char
@@ -178,17 +178,22 @@ module modes
         enddo 
         close(iobin)
     
+
+
+        if(savefreq)then
+
+            call buffer_int4(n1str, n4)
+            call buffer_int4(l1str, l4)
+
+            freqstring = 'output/freqs/'//trim(n1str)//type1//trim(l1str)//'.txt'
+            open(57,file=trim(freqstring), iostat=ios)
+            write(57,*)'Frequency in Hz'
+            write(57,*)wwmhz/1000.d0
+            close(57)
+        endif
+
         
         if(verbose.ge.3)then
-
-            if(savefreq)then
-                write(freqstring,'(a,i0,a,i0,a)')'output/freqs/', n4,type1,l4,'.txt'
-                open(57,file=trim(freqstring), iostat=ios)
-                write(57,*)'Frequency in Hz'
-                write(57,*)wwmhz/1000.d0
-                close(57)
-            endif
-
             write(*,*)
             write(*,*)'Angular Freq in rad :', self%wcom
             write(*,*)'Frequency in mHz    :', wwmhz

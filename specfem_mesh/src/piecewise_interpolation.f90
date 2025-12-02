@@ -334,8 +334,7 @@ module piecewise_interpolation
             type(Mode)             :: Mmode  
             integer                :: i 
 
-            if(Mmode%t.eq.'T' .or. Mmode%t.eq.'C')then
-                write(*,*)'Toroidal mode'  
+            if(Mmode%t.eq.'T' .or. Mmode%t.eq.'C')then 
                 ! toroidal
                 allocate(Mmode%w_spl(self%n_radial))
                 allocate(Mmode%dw_spl(self%n_radial))

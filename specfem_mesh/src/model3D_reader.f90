@@ -375,7 +375,7 @@ module model3d
 
 
 
-    subroutine project_to_gll(self, sm, globvar, id)
+    subroutine project_to_gll(self, sm, globvar, id, scaling)
         implicit none
         include "constants.h"
         class(M3D) :: self
@@ -385,6 +385,19 @@ module model3d
         real(kind=CUSTOM_REAL) :: globvar(sm%nglob)
         integer :: id , point, i, cluster_size, ierr
         
+        real(kind=CUSTOM_REAL), optional :: scaling
+
+
+        real(kind=CUSTOM_REAL) :: scale_value
+
+
+        ! Set default value for scaling
+        if (present(scaling)) then
+            scale_value = scaling
+        else
+            scale_value = one
+        end if
+
         globvar = zero
         
         do i = 1, sm%nglob
@@ -396,7 +409,9 @@ module model3d
                                  
             ! Index of the closest voronoi point 
             point =  da%i%values(1)
-            globvar(i) = self%valspats(point,id)
+            globvar(i) = self%valspats(point,id)*scale_value
+
+            !write(*,*)'Scale value: ', scale_value, one/(SCALE_V*SCALE_V*RHOAV)
 
             if(verbose.ge.3)then 
                 if (MOD(i,(sm%nglob/20)).eq.0)then 

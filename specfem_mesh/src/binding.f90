@@ -5,6 +5,11 @@ use iso_c_binding
 interface
 
 
+    integer function fh_cuda_preinit() bind(C, name="fh_cuda_preinit")
+    use iso_c_binding
+      implicit none
+    end function 
+
     integer function get_cpp_precision() bind(C, name="get_cpp_precision")
     use iso_c_binding
       implicit none

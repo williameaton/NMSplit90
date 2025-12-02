@@ -1,7 +1,6 @@
-module load nvhpc/24.5
-export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.5/comm_libs/openmpi/openmpi-3.1.5/bin:$PATH
-
-export LD_LIBRARY_PATH=/scratch/gpfs/we3822/coretran/lib:$LD_LIBRARY_PATH
+module load nvhpc/24.11
+export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.11/comm_libs/openmpi4/bin:$PATH
+export LD_LIBRARY_PATH=/scratch/gpfs/TROMP/we3822/coretran/lib:$LD_LIBRARY_PATH
 
 aclocal
 autoconf

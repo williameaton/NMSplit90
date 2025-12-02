@@ -16,11 +16,11 @@ integer, parameter :: nmodes       = @n_modes@
 
 
 ! Specfem mesh files: 
-character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets@n_sets@/'
-!character(len=250) :: datadir = '/scratch/gpfs/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
+character(len=250) :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets@n_sets@/'
+!character(len=250) :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
 
 ! Mineos model parameters: 
-character(len=250), parameter  :: ddir = '/scratch/gpfs/we3822/NMSplit90/databases/prem_ani_att_database/'
+character(len=250), parameter  :: ddir = '/scratch/gpfs/TROMP/we3822/NMSplit90/databases/prem_ani_att_database/'
 character(len=60),  parameter  :: model_fname = 'model'
 integer                        :: NR
 integer                        :: NL

@@ -85,7 +85,7 @@ program test_semi_whole
         write(*,*)'Ws will be 0'
 
     elseif(mode_1%t.eq.'S' .and. mode_2%t.eq.'S')then 
-        W_s = mode_1%v_spl * mode_1%v_spl & 
+        W_s = mode_1%v_spl * mode_2%v_spl & 
             + mode_1%u_spl * mode_2%v_spl & 
             + mode_2%u_spl * mode_1%v_spl 
         

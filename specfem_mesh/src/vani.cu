@@ -5,6 +5,10 @@
 #include "driver_types.h"
 #include "precisioncpp.h"
 
+// Debugging: 
+__device__ int d_errorFlag = 0;
+
+
 
 cudaGraph_t Vanigraph;
 cudaGraphExec_t VanigraphExec;
@@ -61,6 +65,20 @@ __constant__ int Lvals[27] = {8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 
 
 
 
+extern "C" 
+int fh_cuda_preinit()
+{
+    int cnt = 0;
+    if (cudaGetDeviceCount(&cnt) != cudaSuccess || cnt <= 0) return -1;
+    // Use device 0 under CUDA_VISIBLE_DEVICES; mpirun/Slurm can remap per rank.
+    cudaSetDevice(0);
+    // Force context creation so UCX finds a valid context during MPI_Init
+    cudaFree(0);
+    return 0;
+}
+
+
+
 extern "C" {
 int get_cpp_precision(){
   return sizeof(CPPCUSTOM_REAL);
@@ -99,13 +117,18 @@ int allocate_M3D_array(int size){
 
 
 
+
+
 extern "C" {
 int copy_M3D_array(CPPCUSTOM_REAL *hloc, int size){
   // Allocates the eta arrays
   int ierr = cudaMemcpy(d_m3d, hloc, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
+
   return ierr;
+  }
 }
-}
+
+
 
 
 
@@ -184,15 +207,25 @@ int assign_proc_to_device(int nprocs, int myrank){
       return -1;
     }
 
-    devcount = 1;
+    //devcount = 1;
 
-    if(myrank == 0){
+    if(myrank == 1){
       printf("Number of GPU devices:  %i\n", devcount);
     }
 
     nsets_per_gpu = (nprocs + devcount - 1) / devcount;  
 
     mydev = myrank / nsets_per_gpu;  // This mimics FLOOR(myrank / nsets_per_gpu)
+
+    // ensure we don't go out of bounds
+    if(mydev >= devcount){
+      printf("Error mydev is >= devcount: mydev: %i,   devcount: %i\n", mydev, devcount);
+      return -1; 
+    } 
+    if(mydev < 0) {
+      printf("Error mydev is < 0: %i\n", mydev);
+      return -1;
+    }
 
     err = cudaSetDevice(mydev);
     if (err != cudaSuccess) {
@@ -506,7 +539,7 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
   cudaEventSynchronize(stopEvent);
 
   cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
-  if(myrank==0)printf(" Kernel time         : %f ms\n", elapsedTime);
+  // if(myrank==0)printf(" Kernel time         : %f ms\n", elapsedTime);
   cudaEventDestroy(startEvent);
   cudaEventDestroy(stopEvent);
 
@@ -549,7 +582,7 @@ int copythisarraytodevice(CPPCUSTOM_REAL *hloc, int size, int varid){
 
 
 
-// WHEN WE LAUNCH THIS IT SHOULD BE: 
+// WHEN WE LAUNCH THIS IT SHOULD BE:  
 // <<<dim3(nspec, 1, 1), dim3(32, ngll**3 // 32, 1)>>>
 // Ie a warp does 32 gll points so need ~ ngll**3 // 32 = 4 warps for the element
 __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
@@ -569,7 +602,7 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
 
     // internal variables
     int  mypt, ispec, myigll, myindex;
-    CPPCUSTOM_REAL  myx, myy, myz, dist, last_dist, vp, vs, rho, rad2;
+    CPPCUSTOM_REAL  myx, myy, myz, dist, last_dist, vp, vs, rho, rad2; 
     CPPCUSTOM_REAL  myA, myC, myL, myN, myF;
     CPPCUSTOM_REAL  n1, n2, c1, c2, s1, s2, r11, r12, r13, r21, r22, r23, r31, r32, r33;
 
@@ -579,52 +612,150 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     myigll = (threadIdx.y)*32 + (threadIdx.x);
     ispec  = blockIdx.x ;
 
-    if(myigll >= 125) return;
+    if(myigll >= 125)return; 
 
-    // These arrays are flattened as follows - i then j, then k, then ispec
-    // hence there are 125 values in a row for each ispec
+
+    // // These arrays are flattened as follows - i then j, then k, then ispec
+    // // hence there are 125 values in a row for each ispec
     myx = d_xcoord[myigll*nspec + ispec];
     myy = d_ycoord[myigll*nspec + ispec];
     myz = d_zcoord[myigll*nspec + ispec];
 
-    // For each possible point let us evaluate the distance
-    last_dist = 1000.0;
+    if (!isfinite(myx)) {
+          printf("ERROR: Invalid myx calculation at point %d: dist_squared=%f\n", 
+                  myigll, (double)myx);
+    }
+        if (!isfinite(myy)) {
+          printf("ERROR: Invalid myy calculation at point %d: dist_squared=%f\n", 
+                  myigll, (double)myy);
+    }
+    if (!isfinite(myz)) {
+          printf("ERROR: Invalid myz calculation at point %d: dist_squared=%f\n", 
+                  myigll, (double)myz);
+    }
+    
+    last_dist = 100000.0;
+
+    // Test 6: Check for potential integer overflow in model data access
     for (int ipt = 0; ipt < npoints; ++ipt){
-        dist = std::pow((std::pow(d_m3d[ipt*5    ] - myx, 2.0) + 
-                         std::pow(d_m3d[ipt*5 + 1] - myy, 2.0) + 
-                         std::pow(d_m3d[ipt*5 + 2] - myz, 2.0)), 
-                         0.5);
-        // If distance is smaller than last then save this index 
+        
+        int model_index = ipt*5;
+        if (model_index + 4 >= npoints * 5) {
+            printf("ERROR: Model index %d out of bounds\n", model_index + 4);
+            continue;
+        }
+
+        // Test 7: Check model data validity before distance calculation
+        CPPCUSTOM_REAL model_x = d_m3d[model_index];
+        CPPCUSTOM_REAL model_y = d_m3d[model_index + 1];
+        CPPCUSTOM_REAL model_z = d_m3d[model_index + 2];
+
+        // Calculate distance with overflow protection
+        CPPCUSTOM_REAL dx = model_x - myx;
+        CPPCUSTOM_REAL dy = model_y - myy;
+        CPPCUSTOM_REAL dz = model_z - myz;
+        
+        if (!isfinite(model_x)) {
+            printf("ERROR: Invalid model_x calculation at point %d: dist_squared=%f\n", 
+                   ipt, (double)model_x);
+            continue;
+        }
+        if (!isfinite(myx)) {
+            printf("ERROR: Invalid dy calculation at point %d: dist_squared=%f\n", 
+                   ipt, (double)dy);
+            continue;
+        }
+ 
+
+
+
+        // Test 8: Check for potential overflow in distance calculation
+        CPPCUSTOM_REAL dist_squared = dx*dx + dy*dy + dz*dz;
+        if (!isfinite(dist_squared) || dist_squared < 0) {
+            printf("ERROR: Invalid distance calculation at point %d: dist_squared=%f\n", 
+                   ipt, (double)dist_squared);
+            continue;
+        }
+
+        dist = sqrt(dist_squared);
+        
+        if (!isfinite(dist)) {
+            printf("ERROR: Invalid distance at point %d: dist=%f\n", ipt, (double)dist);
+            continue;
+        }
+
         if (dist < last_dist) {
             last_dist = dist;
-            mypt      = ipt ;
-        };
-    };
+            mypt = ipt;
+        }
+    }
+    
 
-
+    if (mypt < 0 || mypt >= npoints ){
+      if(myigll==1){
+        printf("ERROR: in mypoint");
+      }
+      atomicExch(&d_errorFlag, 1);
+    }
+   
     // // Ultimately we set this points eta 1 and eta 2 to the final mypt 
     // // that survived: 
     n1 = d_m3d[mypt*5  + 3];
     n2 = d_m3d[mypt*5  + 4];
+
+    if (!isfinite(n1)) {
+        printf("ERROR: Invalid n1 calculation at point %d: n1=%f\n", 
+                mypt, (double)n1);
+    }
+    if (!isfinite(n2)) {
+        printf("ERROR: Invalid n2 calculation at point %d: n2=%f\n", 
+                mypt, (double)n2);
+    }
+
+    if (n1 < -3.14159265359 || n1 > 3.14159265359 ){
+      printf("ERROR: Invalid n1 at %d  eta1 = %f:\n",  mypt, (double)n1);
+    }
+    if (n2 < 0 || n2 > 3.14159265359/2.0 ){
+      printf("ERROR: Invalid n2 at %d  eta1 = %f:\n",  mypt, (double)n2);
+    }
     
 
+
+
     // // Get the PREM related values for ACLNF at this point: 
-    // r^2 normalised
-    rad2 = std::pow(myx, 2.0) + std::pow(myy, 2.0) + std::pow(myz, 2.0);
+    // // r^2 normalised
+    rad2 = myx*myx + myy*myy + myz*myz;
+
+    if (!isfinite(rad2)) {
+        printf("ERROR: Invalid rad2=%f\n", 
+               (double)rad2);
+    }
+
+    if (rad2 < 0 || rad2>1221.5/6371.0){
+      printf("ERROR: Invalid rad2 rad2=%f\n", 
+        (double)rad2);
+    }
+
+    // // printf("%f %f %f %f \n", rad2, rho, vp, vs);
+    // printf("%f %f %f %f\n", 
+    //    (double)myx, 
+    //    (double)myy, 
+    //    (double)myz, 
+    //    (double)rad2);
 
     // // Originally g/cm^3 --> kg/m^3 -> nondimensionalised
     rho = (13.088500000 - 8.838100000*rad2)*0.1813466804490;   // 1000.d0/RHOAV
     // Originally km/s --> m/s  
     vp  = (11.262200000 - 6.364000000*rad2)*0.1459938230354;   // 1000.d0/SCALE_V
-    vs  = (3.667800000 - 4.447500000*rad2)*0.1459938230354;    // 1000.d0/SCALE_V
+    vs  = (3.667800000  - 4.447500000*rad2)*0.1459938230354;    // 1000.d0/SCALE_V
 
     myA = rho * vp * vp * modelA;
     myC = rho * vp * vp * modelC;
     myL = rho * vs * vs * modelL;
     myN = rho * vs * vs * modelN;
-    // eta  = 1 for PREM core and F = eta * (A - 2L)
-    myF = ((rho * vp * vp) - 2.0*(rho * vs * vs)) * modelF;
 
+    // // eta  = 1 for PREM core and F = eta * (A - 2L)
+    myF = ((rho * vp * vp) - 2.0*(rho * vs * vs)) * modelF;
 
     // Create natural Stiffness matrix:
     for (int i = 0; i < 6; ++i) {
@@ -648,7 +779,6 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     Cnat[2][0] = myF;
     Cnat[1][2] = myF;
     Cnat[2][1] = myF;
-
 
     //Create bond matrix: 
     c1 = cos(n1);
@@ -751,7 +881,7 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     // nspec, ngll, col, row 
     for (int i = 0; i < 6; ++i){
       for (int l = 0; l < 6; ++l){
-            myindex = (i * (nspec*(ngll*ngll*ngll))*6)  +  (l*nspec*ngll*ngll*ngll) + (myigll*nspec) + blockIdx.x;
+        myindex = (i * (nspec*(ngll*ngll*ngll))*6)  +  (l*nspec*ngll*ngll*ngll) + (myigll*nspec) + blockIdx.x;
         d_Cxyz[myindex] = Crot[i][l];
       }
     }
@@ -786,12 +916,21 @@ extern "C" {
                        A, C, L, N, F,
                        d_Cxyz);
 
+  cudaDeviceSynchronize();
 
+  int h_errorFlag;
+  cudaMemcpyFromSymbol(&h_errorFlag, d_errorFlag, sizeof(int), 0, cudaMemcpyDeviceToHost);
+  if (h_errorFlag==1) {
+      printf("Error: invalid index detected in kernel.\n");
+      cudaDeviceReset();
+
+      exit(1);
+  } 
 
   cudaDeviceSynchronize();
   ierr = cudaGetLastError();
     if (ierr != cudaSuccess) {
-        printf("CUDA project GLL launch error: %s\n", cudaGetErrorString(ierr));
+        printf("Error running project_eta_to_gll: %s\n", cudaGetErrorString(ierr));
     }
 
   return 0;

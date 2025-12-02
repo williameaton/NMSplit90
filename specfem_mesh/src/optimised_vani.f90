@@ -203,7 +203,7 @@ program optimised_vani
 
 
     ! Setup mineos: 
-    call mineos%load_mineos_radial_info_MPI()
+    call mineos%load_mineos_radial_info_MPI(MPI_COMM_WORLD)
     mineos_ptr => mineos
 
 
@@ -596,7 +596,7 @@ program optimised_vani
           
             call system_clock(count_rate=count_rate)
             call system_clock(start_clock)    
-            Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c"//trim(chainstr)//"_m"//trim(iterstr)//".txt"
+            Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c"//trim(chainstr)//"_m"//trim(iterstr)//".txt"
             call Model3D%read_model_from_file()
 
             ! Flatten 

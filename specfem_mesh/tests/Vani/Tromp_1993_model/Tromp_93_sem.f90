@@ -83,8 +83,6 @@ program Tromp93_SEM
 
 
 
-
-
         call compute_Cxyz_at_gll_radialACLNF(zero, zero, rad_id)
 
         call compute_Vani_matrix(type_1, l1, n1, type_1, l1, n1, .false., iproc)
@@ -93,6 +91,6 @@ program Tromp93_SEM
     enddo 
 
     write(out_name, '(a,i1,a,i1,a)')'./matrices/sem_', n1, type_1, l1, '.txt'
-    call save_Vani_matrix(l1, out_name)
+    call save_Vani_matrix(l1, l1, out_name)
 
 end program Tromp93_SEM

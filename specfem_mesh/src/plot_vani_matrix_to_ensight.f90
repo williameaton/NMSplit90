@@ -23,7 +23,7 @@ program plot_vani_to_ensight
     complex(kind=SPLINE_REAL), allocatable :: cst_imag(:,:)
     real(kind=CUSTOM_REAL), allocatable :: sigma(:), ylm_global(:)
     type(SetMesh) :: sm
-    logical, parameter :: vti_model = .false.
+    logical, parameter :: vti_model = .true.
     logical, parameter :: output_to_ensight = .false.
     logical, parameter :: output_to_evengrid = .false.
 
@@ -39,17 +39,27 @@ program plot_vani_to_ensight
     !integer, dimension(27), parameter :: modeNs = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21/)
     !integer, dimension(27), parameter :: modeLs = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8/)
 
-    !integer, dimension(1), parameter :: modeN1s = (/16/)
-    !integer, dimension(1), parameter :: modeL1s = (/5/)
-    integer, dimension(1), parameter :: modeN2s = (/17/)
-    integer, dimension(1), parameter :: modeL2s = (/4/)
+    !integer, dimension(nmodes), parameter :: modeN1s = (/21, 27, 9, 7, 22, 27, 5, 2, 13, 8, 9, 18, 16, 13, 3, 11, 18, 23, 13, 6, 21, 23, 11, 3, 8, 5, 3,  16, 17, 14/)
+    !integer, dimension(nmodes), parameter :: modeL1s = (/7,   1, 2, 5,  1,  2, 2, 3,  1, 5, 3,  4,  5,  3, 8,  4,  3,  4,  2, 3,  6,  5,  5, 1, 1, 3, 2,  7 , 1 , 4/)
+    !integer, dimension(nmodes), parameter :: modeN1s = (/21, 27, 9, 7, 22, 27, 5, 2, 13, 8, 9, 18, 16, 13, 3, 11, 18, 23, 13, 6, 21, 23, 11, 3, 8, 5, 3,  16, 17, 14/)
+    !integer, dimension(nmodes), parameter :: modeL1s = (/7,   1, 2, 5,  1,  2, 2, 3,  1, 5, 3,  4,  5,  3, 8,  4,  3,  4,  2, 3,  6,  5,  5, 1, 1, 3, 2,  7 , 1 , 4/)
+
+
+    integer, dimension(1), parameter :: modeN1s = (/3/)
+    integer, dimension(1), parameter :: modeL1s = (/2/)
+    integer, dimension(1), parameter :: modeN2s = (/3/)
+    integer, dimension(1), parameter :: modeL2s = (/2/)
+
+    character(len=250) :: subdir    =  ''
+    character(len=250) :: matsuffix =  ''
+    character(len=250) :: cstsuffix =  ''
 
 
     ! integer, dimension(33), parameter :: modeN1s = (/7, 27, 9, 5, 17, 16, 3, 23, 3, 8, 11, 18, 21, 3, 16, 13, 6, 13, 21, 2,  8,  7, 23, 11, 13, 18, 21,5, 27, 9, 22, 15, 14/)
     ! integer, dimension(33), parameter :: modeL1s = (/4, 1,  3, 3, 1,  7,  2, 4,  8, 5, 5,   3, 7,  1,  5,  3, 3,  2,  6,  3, 1,  5,  5,  4,  1,  4,  8,2,  2, 2,  1,  3,  4/)
 
-    integer, dimension(nmodes), parameter :: modeN1s = (/2, 3, 3, 6, 8, 8, 9, 11, 11, 13, 13, 13, 16, 16, 17, 18, 18, 21, 21, 23, 23/)
-    integer, dimension(nmodes), parameter :: modeL1s = (/3, 1, 2, 3, 1, 5, 3, 4,  5,  1,  2,  3,  5,  7,  1,  3,  4,  6,  7,  4,  5/)
+    !integer, dimension(nmodes), parameter :: modeN1s = (/2, 3, 3, 6, 8, 8, 9, 11, 11, 13, 13, 13, 16, 16, 17, 18, 18, 21, 21, 23, 23/)
+    !integer, dimension(nmodes), parameter :: modeL1s = (/3, 1, 2, 3, 1, 5, 3, 4,  5,  1,  2,  3,  5,  7,  1,  3,  4,  6,  7,  4,  5/)
 
 
 
@@ -86,9 +96,10 @@ do i_mode = 1,  nmodes
     endif 
     
     if(cross_coupled)then 
-        modefile = './output/vani'//trim(n1str)//trim(t1)//trim(l1str)//'_'//trim(n2str)//trim(t2)//trim(l2str)//trim(model_ti)//'.txt'
+        modefile = './output/'//trim(subdir)//'vani'//trim(n1str)//trim(t1)//trim(l1str)//'_'//trim(n2str)//trim(t2)//trim(l2str)//trim(model_ti)//'.txt'
     else
-        modefile = './output/sem_fast_'//trim(n1str)//trim(t1)//trim(l1str)//trim(model_ti)//'.txt'
+        !modefile = './output/'//trim(subdir)//'/sem_fast_'//trim(n1str)//trim(t1)//trim(l1str)//trim(model_ti)//trim(matsuffix)//'.txt'
+        modefile = './tests/v_ani_matrix/radial_3S2.txt'
     endif 
     call load_vani_from_file(l1, l2, modefile)
     
@@ -108,9 +119,9 @@ do i_mode = 1,  nmodes
     call Hcomplex_to_cst_8(Vani, l1, l2, cst_imag, ncols, num_s, t1, t2, 1)
 
     if(cross_coupled)then 
-        out_name =   'output/cst_'//trim(n1str)//trim(t1)//trim(l1str)//'_'//trim(n2str)//trim(t2)//trim(l2str)//trim(model_ti)//'.txt'
+        out_name =   'output/cc_cst_'//trim(n1str)//trim(t1)//trim(l1str)//'_'//trim(n2str)//trim(t2)//trim(l2str)//trim(model_ti)//'.txt'
     else
-        out_name = 'output/cst_'//trim(n1str)//trim(t1)//trim(l1str)//trim(model_ti)//'.txt'
+        out_name = 'output/'//trim(subdir)//'/WEcst_'//trim(n1str)//trim(t1)//trim(l1str)//trim(cstsuffix)//'.txt'
     endif 
 
     call write_cst_complex_to_file(out_name, cst_imag, ncols, num_s, smin, 2)

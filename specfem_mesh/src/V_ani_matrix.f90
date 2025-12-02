@@ -115,12 +115,12 @@ contains
         ! -------------- Manual bond matrix:  --------------
         ! Eqn 8 of Brett 2024
         r11 = c1 * c2 ;
-        r12 = -s1;
-        r13 = s2*c1; 
+        r12 = -s1     ;
+        r13 = s2*c1   ; 
 
-        r21 = s1*c2 ;
-        r22 = c1 ;
-        r23 = s1*s2 ;
+        r21 = s1*c2   ;
+        r22 = c1      ;
+        r23 = s1*s2   ;
 
         r31 = -s2;
         r32 = zero;
@@ -347,6 +347,58 @@ contains
             enddo   
         enddo
     end subroutine compute_Cxyz_at_gll_constantACLNF
+
+
+
+
+    subroutine compute_Cxyz_at_gll(sm, A, C, L, N, F, n1, n2, perturbation_on_PREM)
+        
+        use params, only: Cxyz, verbose
+        use allocation_module, only: deallocate_if_allocated
+        use PREMModel, only: get_PREM_ACLNF_at_radius
+        implicit none 
+        include "constants.h"
+
+        type(SetMesh) :: sm 
+        real(kind=CUSTOM_REAL) :: n1(sm%nglob), n2(sm%nglob)
+        real(kind=CUSTOM_REAL) :: A(sm%nglob), C(sm%nglob), L(sm%nglob), N(sm%nglob), F(sm%nglob)
+        real(kind=CUSTOM_REAL) :: M(6,6), Cnat(6,6)
+        integer :: i, j, k, ispec, ib
+        logical :: perturbation_on_PREM
+
+        ! Local: 
+        real(kind=CUSTOM_REAL) :: r, Aprem, Cprem, Lprem, Nprem, Fprem
+
+        if(verbose.ge.2)write(*,'(/,a)')'• Computing elastic tensor for spatially variable ACLNF'
+
+
+        call deallocate_if_allocated(Cxyz)
+        allocate(Cxyz(sm%ngllx,  sm%nglly,  sm%ngllz,  sm%nspec, 6, 6))
+
+        ! Compute rotation matrix per GLL in xyz
+        do ispec = 1, sm%nspec 
+            do i = 1, sm%ngllx
+                do j = 1, sm%nglly 
+                    do k = 1, sm%ngllz 
+
+                        ib =  sm%ibool(i,j,k,ispec)
+
+                        if(perturbation_on_PREM)then
+                            call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)                            
+                            call setup_Cnatural(Cnat, A(ib)*Aprem, C(ib)*Cprem, L(ib)*Lprem, N(ib)*Nprem, F(ib)*Fprem)
+                        else
+                            call setup_Cnatural(Cnat, A(ib), C(ib), L(ib), N(ib), F(ib))
+                        endif 
+
+                        call compute_bond_matrix_explicit(n1(ib), n2(ib), M)
+
+                        Cxyz(i,j,k,ispec,:,:) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
+
+                    enddo
+                enddo
+            enddo   
+        enddo
+    end subroutine compute_Cxyz_at_gll
 
 
 
@@ -997,25 +1049,25 @@ contains
         integer :: row, col
 
 
-       write(*,*)'Writing to ', trim(fname)
-
+        write(*,*)'Writing to ', trim(fname)
+        ! Dimensionalised 
         open(1,file=trim(fname))
         ! Write the real matrix 
         do row =1, 2*l1 + 1
             do col = 1, 2*l2 + 1
                 if (col .lt. 2*l2+1)then 
-                write(1,'(E15.6)', advance='no')real(Vani(row,col))
+                write(1,'(E15.6)', advance='no')real(Vani(row,col)/(SCALE_T*SCALE_T))
                 else 
-                    write(1,'(E15.6)', advance='yes')real(Vani(row,col))
+                    write(1,'(E15.6)', advance='yes')real(Vani(row,col)/(SCALE_T*SCALE_T))
                 endif
             enddo 
         enddo 
         do row =1, 2*l1 + 1
             do col = 1, 2*l2 + 1
                 if (col .lt. 2*l2+1)then 
-                write(1,'(E15.6)', advance='no')aimag(Vani(row,col))
+                write(1,'(E15.6)', advance='no')aimag(Vani(row,col)/(SCALE_T*SCALE_T))
                 else 
-                    write(1,'(E15.6)', advance='yes')aimag(Vani(row,col))
+                    write(1,'(E15.6)', advance='yes')aimag(Vani(row,col)/(SCALE_T*SCALE_T))
                 endif
             enddo 
         enddo 

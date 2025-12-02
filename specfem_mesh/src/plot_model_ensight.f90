@@ -47,9 +47,9 @@ program plot_vani_to_ensight
 
 
         ! Read 3D model and build K-d tree: 
-        Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
-        !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/DR_benchmark_model.txt"
-        !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c1_m5000.txt"
+        !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+        Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/benchmark_isotropic_perturb_prem.txt"
+        !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c1_m5000.txt"
         call Model3D%read_model_from_file()
         call Model3D%create_KDtree()
 
@@ -59,6 +59,7 @@ program plot_vani_to_ensight
             call sm%read_proc_coordinates()
             call sm%load_ibool()
             call sm%setup_gll()
+            !call sm%load_original_boundaries()
 
             ! needed for ensight geo file
             call sm%setup_global_coordinate_arrays(.false.)
@@ -68,146 +69,58 @@ program plot_vani_to_ensight
             call sm%compute_wglljac(.false.)
             call sm%get_unique_radii(.false.)
 
-            
+            !call sm%compute_elliptical_boundary_perturbation('./ellipticity/epsi_discontinuities.txt', mineos%ndisc)
 
-            allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
-            call Model3D%project_to_gll(sm, glob_eta1, id=1)
-            call Model3D%project_to_gll(sm, glob_eta2, id=2) ! colatitude
+            allocate(glob_eta1(sm%nglob))
 
-            allocate(xvec(sm%nglob), yvec(sm%nglob), zvec(sm%nglob))
-            xvec = sin(glob_eta2) * cos(glob_eta1)
-            yvec = sin(glob_eta2) * sin(glob_eta1)
-            zvec = cos(glob_eta2)
-
-            call create_ensight_file_prefix(iproc, 3)
+            call create_ensight_file_prefix(iproc, sm%region)
             call create_proc_case_file()
-
             call create_proc_geo_file(sm, 1)
 
+            !Test boundaries first: 
+            !glob_eta1(:) = zero
+            !do ispec = 1, sm%nspec2D_bottom
+            !     do i = 1, sm%ngllx
+            !         do j = 1, sm%nglly
+            !             glob_eta1(sm%ibool(i,j,1, sm%ibelm_bottom(ispec))) = sm%delta_surf_bottom(i,j,ispec)
+            !         enddo 
+            !     enddo 
+            ! enddo 
+            ! do ispec = 1, sm%nspec2D_top
+            !     do i = 1, sm%ngllx
+            !         do j = 1, sm%nglly
+            !             !write(*,*)sm%ibelm_top(ispec)
+            !             glob_eta1(sm%ibool(i,j,5, sm%ibelm_top(ispec))) = sm%delta_surf_top(i,j,ispec)
+            !         enddo 
+            !     enddo 
+            ! enddo 
 
-            call write_real_scalar_to_ensight(sm, 180.d0*glob_eta2/PI, 'colatitude', 1)
-
-            call write_real_vector_to_ensight(sm, xvec, yvec, zvec, 'TTI', 1)
-
-
-            ! coordinate longitude; 
-            do ispec = 1, sm%nspec
-                do i = 1, sm%ngllx
-                    do j = 1, sm%nglly
-                        do k = 1, sm%ngllz
-                            xvec(sm%ibool(i,j,k,ispec)) = sm%phistore(i,j,k,ispec)*180.d0/PI 
-                            if( xvec(sm%ibool(i,j,k,ispec)).gt.180.d0)then 
-                                xvec(sm%ibool(i,j,k,ispec)) = xvec(sm%ibool(i,j,k,ispec)) - 360.d0
-                            endif 
-                        enddo 
-                    enddo 
-                enddo 
-            enddo 
-            call write_real_scalar_to_ensight(sm, xvec, 'coordlong', 1)
-
-
-                        ! coordinate longitude; 
-            xvec = zero 
-            do ispec = 1, sm%nspec
-                do i = 1, sm%ngllx
-                    do j = 1, sm%nglly
-                        do k = 1, sm%ngllz
-                            if(ispec.eq.2201)then
-                                xvec(sm%ibool(i,j,k,ispec)) = 99.0d0
-                            endif 
-                            if(ispec.eq.2202)then
-                                xvec(sm%ibool(i,j,k,ispec)) = 99.0d0
-                            endif 
-                            if(ispec.eq.2221)then
-                                xvec(sm%ibool(i,j,k,ispec)) = 99.0d0
-                            endif 
-                            if(ispec.eq.2222)then
-                                xvec(sm%ibool(i,j,k,ispec)) = 99.0d0
-                            endif 
-                        enddo 
-                    enddo 
-                enddo 
-            enddo 
-            call write_real_scalar_to_ensight(sm, xvec, 'spec', 1)
+            !write(*,*)minval(glob_eta1), maxval(glob_eta1)
+            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'ellipticity', 1)
 
 
 
+            call Model3D%project_to_gll(sm, glob_eta1, id=1)
+            call write_real_scalar_to_ensight(sm, glob_eta1, 'love_A', 1)
 
-            ! For an example mode, compute the contraction of Eps C Eps 
-            n1      =  27
-            t1      = 'S'
-            l1      =  6
-            m1      =  4
+            ! call Model3D%project_to_gll(sm, glob_eta1, id=2)
+            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'love_C', 2)
 
-            vor_A = Model3D%valconsts(1)/100.0d0
-            vor_C = Model3D%valconsts(2)/100.0d0
-            vor_L = Model3D%valconsts(3)/100.0d0
-            vor_N = Model3D%valconsts(4)/100.0d0
-            vor_F = Model3D%valconsts(5)/100.0d0
+            ! call Model3D%project_to_gll(sm, glob_eta1, id=3)
+            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'love_L', 3)
 
+            ! call Model3D%project_to_gll(sm, glob_eta1, id=4)
+            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'love_N', 4)
 
-            mode_1  = get_mode(n1, t1, l1, mineos_ptr)
-
-            call sm%compute_rotation_matrix()
-            call compute_Cxyz_at_gll_constantACLNF(sm, vor_A, vor_C, vor_L, & 
-                                                    vor_N, vor_F, glob_eta1, glob_eta2, &
-                                                    perturbation_on_prem=.true.)
-            call sm%interp%interpolate_mode_eigenfunctions(mode_1)
-            call deallocate_if_allocated(sm%strain1)
-            allocate(sm%strain1(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, 6))
-
-            call sm%compute_mode_strain(m1, mode_1, sm%strain1)
-
-            call sm%rotate_complex_sym_matrix_rtp_to_xyz(sm%strain1)
-
-            xvec = zero 
-            do ispec = 1, sm%nspec 
-                do i = 1, sm%ngllx
-                    do j = 1, sm%nglly
-                        do k = 1, sm%ngllz
-                            cont = SPLINE_iZERO
-                            do p = 1, 9
-                                do q = 1, 9
-                                    cont = cont + ( conjg(sm%strain1(i,j,k,ispec,Vcont(p))) * & 
-                                                    Cxyz(i,j,k,ispec,Vcont(p),Vcont(q))     * & 
-                                                    sm%strain1(i,j,k,ispec,Vcont(q)) ) 
-                                enddo
-                            enddo 
-                            xvec(sm%ibool(i,j,k,ispec)) = cont 
-                        enddo 
-                    enddo
-                enddo
-            enddo
-            call write_real_scalar_to_ensight(sm, xvec, 'contraction', 1)
-
-            deallocate(sm%strain1)
-
-
-            ! allocate(glob_eta1(sm%nglob))
-            ! call Model3D%project_to_gll(sm, glob_eta1, id=1) ! A 
-            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'A', 1)
-            
-            ! call Model3D%project_to_gll(sm, glob_eta1, id=2) ! C
-            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'C', 1)
-
-            ! call Model3D%project_to_gll(sm, glob_eta1, id=3) ! L
-            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'L', 1)
-
-            ! call Model3D%project_to_gll(sm, glob_eta1, id=4) ! N
-            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'N', 1)
-
-            ! call Model3D%project_to_gll(sm, glob_eta1, id=5) ! N
-            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'F', 1)
-
+            ! call Model3D%project_to_gll(sm, glob_eta1, id=5)
+            ! call write_real_scalar_to_ensight(sm, glob_eta1, 'love_F', 5)
 
 
             call sm%cleanup()
 
 
             deallocate(glob_eta1)
-            deallocate(glob_eta2)
-            deallocate(xvec, yvec, zvec)
-    
+
 
 
             write(*,*)'Finished processor ', iproc

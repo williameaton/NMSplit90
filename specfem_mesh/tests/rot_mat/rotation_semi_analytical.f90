@@ -86,7 +86,7 @@ program semi_analytical_W_matrix
         write(*,*)'Ws will be 0'
 
     elseif(mode_1%t.eq.'S' .and. mode_2%t.eq.'S')then 
-        W_s = mode_1%v_spl * mode_1%v_spl & 
+        W_s = mode_1%v_spl * mode_2%v_spl & 
             + mode_1%u_spl * mode_2%v_spl & 
             + mode_2%u_spl * mode_1%v_spl 
         
@@ -147,7 +147,7 @@ program semi_analytical_W_matrix
                 Wmat(m1+mode_1%l+1, m2+mode_2%l+1) = Wmat(m1+mode_1%l+1, m2+mode_2%l+1) - & 
                                                      (SPLINE_iONE * OMEGA * int_Wa *  & 
                                                      (delta_spline(mode_1%l, mode_2%l+1)*Sl1m +  & 
-                                                     delta_spline(mode_1%l, mode_2%l-1)*Sl2m))
+                                                      delta_spline(mode_1%l, mode_2%l-1)*Sl2m))
             endif 
         enddo 
     enddo 

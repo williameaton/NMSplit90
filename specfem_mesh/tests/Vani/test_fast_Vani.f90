@@ -59,7 +59,7 @@ program test_constant_Vani_matrix
         eta1 = zero 
         eta2 = zero 
 
-        call compute_Cxyz_at_gll_constantACLNF(sm, A, C, L, N, F, eta1, eta2)
+        call compute_Cxyz_at_gll_constantACLNF(sm, A, C, L, N, F, eta1, eta2, perturbation_on_prem=.false.)
         call compute_Vani_matrix_stored(sm, t1, l1, n1, t2, l2, n2)
 
         call sm%cleanup()
@@ -67,7 +67,7 @@ program test_constant_Vani_matrix
     enddo 
 
     write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/stored_sem_', n1, t1, l1, '.txt'
-    call save_Vani_matrix(l1, out_name)
+    call save_Vani_matrix(l1,l1, out_name)
 
 
     

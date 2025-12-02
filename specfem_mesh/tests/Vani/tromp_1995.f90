@@ -39,8 +39,8 @@ program tromp_1995
     mineos_ptr => mineos
 
     ! Choose a mode: 
-    nl = 21
-    ll = 6
+    nl = 3
+    ll = 2
 
     mode_1 = get_mode(nl, 'S', ll, mineos_ptr)
 

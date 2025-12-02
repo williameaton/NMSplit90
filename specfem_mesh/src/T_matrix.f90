@@ -1,4 +1,4 @@
-subroutine compute_T_matrix(SM, interp, delta_rho, n1, t1, l1, n2, t2, l2, store)
+subroutine compute_T_matrix(SM, interp, delta_rho, n1, t1, l1, n2, t2, l2, compute_elliptical_contribution, store)
     use params, only: Tmat, datadir, rho_spl
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use modes, only: Mode, get_mode
@@ -13,14 +13,14 @@ subroutine compute_T_matrix(SM, interp, delta_rho, n1, t1, l1, n2, t2, l2, store
     integer               :: n1, n2, l1, l2
     type(SetMesh)         :: sm
     type(InterpPiecewise) :: interp
-    logical               :: store
-    real(kind=CUSTOM_REAL):: delta_rho(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec)
+    logical               :: compute_elliptical_contribution, store
+    real(kind=SPLINE_REAL):: delta_rho(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec)
 
 
     ! Local: 
-    integer               :: i, j, k, ispec, m1, m2, l_loop
+    integer               :: i, j, k, ispec, m1, m2, l_loop, ispec2d, ktop, kbottom
     logical               :: self_coupling
-    complex(SPLINE_REAL)  :: sum
+    complex(SPLINE_REAL)  :: sum, topsurfacesum, bottomsurfacesum
     type(Mode)            :: mode_1, mode_2
 
     
@@ -31,23 +31,25 @@ subroutine compute_T_matrix(SM, interp, delta_rho, n1, t1, l1, n2, t2, l2, store
         self_coupling = .false.
     endif 
 
+    write(*,*)n1, t1, l1, n2, t2, l2, self_coupling
+
 
     ! Load modes and interpolates eigenfunctions:  
     mode_1 =  get_mode(n1, t1, l1, mineos_ptr)
     call interp%interpolate_mode_eigenfunctions(mode_1)
 
-    !if(self_coupling)then 
-    !    mode_2 = mode_1
-    !else 
-    mode_2 =  get_mode(n2, t2, l2, mineos_ptr)
-    call interp%interpolate_mode_eigenfunctions(mode_2)    
-    !endif
+    if(self_coupling)then 
+        mode_2 = mode_1
+    else 
+        mode_2 =  get_mode(n2, t2, l2, mineos_ptr)
+        call interp%interpolate_mode_eigenfunctions(mode_2)    
+    endif
 
     allocate(sm%disp1(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec) )
     allocate(sm%disp2(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec) )
 
 
-    do m1 = -l1,  l1
+    do m1 = -l1, 0!  l1
             write(*,*)m1
             ! Get 1st displacement 
             call sm%compute_mode_displacement(m1, mode_1, sm%disp1)
@@ -56,7 +58,8 @@ subroutine compute_T_matrix(SM, interp, delta_rho, n1, t1, l1, n2, t2, l2, store
                 call sm%save_mode_disp_binary(n1, t1, l1, m1, 1)
             endif
 
-            do m2 = -l2,  l2
+            m2 = m1
+            !do m2 = -l2,  l2
                 write(*,*)'   ', m2
                 call sm%compute_mode_displacement(m2, mode_2, sm%disp2)
                 call sm%rotate_complex_vector_rtp_to_xyz(sm%disp2)
@@ -82,8 +85,63 @@ subroutine compute_T_matrix(SM, interp, delta_rho, n1, t1, l1, n2, t2, l2, store
                     enddo
                 enddo
 
-                Tmat(m1+l1+1, m2+l2+1) = Tmat(m1+l1+1, m2+l2+1) + sum
-            enddo ! m2
+                write(*,*)'Finished the volume integral'
+
+                topsurfacesum    = SPLINE_iZERO
+                bottomsurfacesum = SPLINE_iZERO
+
+                if(compute_elliptical_contribution)then 
+                    if(sm%topsurfaceexists.and.sm%region.ne.1)then 
+
+                        ! Avoiding free surface 
+                        ktop = 5
+                        do ispec2d = 1, sm%nspec2D_top
+                            ! Global ispec value for surface element
+                            ispec = sm%ibelm_top(ispec2d)
+                            do i = 1, sm%ngllx
+                                do j = 1, sm%nglly
+                                    topsurfacesum = topsurfacesum + &
+                                                    (delta_rho(i,j,ktop,ispec) * & 
+                                                    (conjg(sm%disp1(1,i,j,ktop,ispec))*sm%disp2(1,i,j,ktop,ispec) +  & 
+                                                     conjg(sm%disp1(2,i,j,ktop,ispec))*sm%disp2(2,i,j,ktop,ispec) +  & 
+                                                     conjg(sm%disp1(3,i,j,ktop,ispec))*sm%disp2(3,i,j,ktop,ispec))   &
+                                                     * sm%delta_surf_top(i,j,ispec2d)                                &
+                                                     * sm%jacobian2D_top(i,j,ispec2d)                                &
+                                                     * sm%wgll(i)*sm%wgll(j) )
+                                enddo !j
+                            enddo! i
+                        enddo !ispec2d
+                    endif ! if top surface
+
+                    
+                    if(sm%bottomsurfaceexists.and.sm%region.ne.3)then 
+                        ! Avoiding ficticious surface in IC
+                        do ispec2d = 1, sm%nspec2D_bottom
+                            kbottom = 1
+                            ! Global ispec value for surface element
+                            ispec = sm%ibelm_bottom(ispec2d)
+                            do i = 1, sm%ngllx
+                                do j = 1, sm%nglly
+                                    ! Negative because on top surface (underside)
+                                    bottomsurfacesum = bottomsurfacesum + &
+                                                    (delta_rho(i,j,kbottom,ispec) * & 
+                                                    (conjg(sm%disp1(1,i,j,kbottom,ispec))*sm%disp2(1,i,j,kbottom,ispec) +  & 
+                                                     conjg(sm%disp1(2,i,j,kbottom,ispec))*sm%disp2(2,i,j,kbottom,ispec) +  & 
+                                                     conjg(sm%disp1(3,i,j,kbottom,ispec))*sm%disp2(3,i,j,kbottom,ispec))   &
+                                                     * sm%delta_surf_bottom(i,j,ispec2d)                                   &
+                                                     * sm%jacobian2D_bottom(i,j,ispec2d)                                   &
+                                                     * sm%wgll(i)*sm%wgll(j) )
+                                enddo !j
+                            enddo!i
+                        enddo !ispec2d
+                    endif ! if bottom surface
+
+                endif ! if accounting for surfaces
+                
+
+                write(*,*)sum, bottomsurfacesum, topsurfacesum
+                Tmat(m1+l1+1, m2+l2+1) = Tmat(m1+l1+1, m2+l2+1) + sum - (bottomsurfacesum-topsurfacesum)
+            !enddo ! m2
     enddo ! m1
 
 end subroutine compute_T_matrix

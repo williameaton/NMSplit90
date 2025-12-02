@@ -56,15 +56,17 @@ use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst_8, write_cst_comp
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin  = .false.
-    logical, parameter :: save_to_bin    = .true.
-    logical, parameter :: force_VTI      = .false.
-    logical, parameter :: tromp93_model  = .false.
+    logical, parameter :: load_from_bin    = .false.
+    logical, parameter :: save_to_bin      = .true.
+    logical, parameter :: force_VTI        = .true.
+    logical, parameter :: tromp93_model    = .false.
     logical, parameter :: benchmark_deuss  = .true.
 
 
     ! Added: 
-    integer, dimension(1), parameter :: modeN1s = (/16/)
+
+
+    integer, dimension(1), parameter :: modeN1s = (/16 /)
     integer, dimension(1), parameter :: modeL1s = (/5/)
 
     integer, dimension(1), parameter :: modeN2s = (/17/)
@@ -126,7 +128,7 @@ region = 3
 
 
 #ifdef WITH_MPI
-    call mineos%load_mineos_radial_info_MPI()
+    call mineos%load_mineos_radial_info_MPI(MPI_COMM_WORLD)
 #else
     ! Read mineos model 
     call mineos%process_mineos_model(.true.) 
@@ -137,22 +139,25 @@ mineos_ptr => mineos
 
 if(tromp93_model)then 
     ! Read TROMP ACLNF model with 33 points (mineos for IC)
-    call load_ACLNF_from_files('/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/tromp93/ACLNF', 33)
+    call load_ACLNF_from_files('/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/tromp93/ACLNF', 33)
 else
 
     
 
     ! Cross couple benchmark
     if(benchmark_deuss)then 
-        Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/DR_benchmark_model_alt.txt"
+        Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/DR_benchmark_maintain_iso.txt"
     else 
         ! Read Hen's model and build K-d tree: 
-        Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
+        write(*,*)'Reading Hens model'
+        Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
     endif 
 
     call Model3D%read_model_from_file()
     call Model3D%create_KDtree()
 endif
+
+
 
 ! Benchmark value
 !vor_A =  0.4d0
@@ -199,11 +204,12 @@ if(ONLY_ONE_TASK_PER_SET)then
         allocate(Nspl(sm%nglob))
         allocate(Fspl(sm%nglob))
 
-        call Model3D%project_to_gll(sm, Aspl, id=1) ! A 
-        call Model3D%project_to_gll(sm, Cspl, id=2) ! C
-        call Model3D%project_to_gll(sm, Lspl, id=3) ! L
-        call Model3D%project_to_gll(sm, Nspl, id=4) ! N
-        call Model3D%project_to_gll(sm, Fspl, id=5) ! N
+        call Model3D%project_to_gll(sm, Aspl, id=1, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! A 
+        call Model3D%project_to_gll(sm, Cspl, id=2, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! C
+        call Model3D%project_to_gll(sm, Lspl, id=3, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! L
+        call Model3D%project_to_gll(sm, Nspl, id=4, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! N
+        call Model3D%project_to_gll(sm, Fspl, id=5, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! N
+
     endif 
 
 
@@ -228,7 +234,7 @@ endif
 
 
 
-do i_mode = 1, nmodes
+do i_mode = 1, 2!nmodes
     n1      =  modeN1s(i_mode)
     t1      = 'S'
     l1      =  modeL1s(i_mode)
@@ -271,11 +277,11 @@ do i_mode = 1, nmodes
                 allocate(Nspl(sm%nglob))
                 allocate(Fspl(sm%nglob))
 
-                call Model3D%project_to_gll(sm, Aspl, id=1) ! A 
-                call Model3D%project_to_gll(sm, Cspl, id=2) ! C
-                call Model3D%project_to_gll(sm, Lspl, id=3) ! L
-                call Model3D%project_to_gll(sm, Nspl, id=4) ! N
-                call Model3D%project_to_gll(sm, Fspl, id=5) ! F
+                call Model3D%project_to_gll(sm, Aspl, id=1, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! A 
+                call Model3D%project_to_gll(sm, Cspl, id=2, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! C
+                call Model3D%project_to_gll(sm, Lspl, id=3, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! L
+                call Model3D%project_to_gll(sm, Nspl, id=4, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! N
+                call Model3D%project_to_gll(sm, Fspl, id=5, scaling=one/(RHOAV*SCALE_V*SCALE_V)) ! F
             endif 
 
             call sm%compute_rotation_matrix()
@@ -394,10 +400,12 @@ do i_mode = 1, nmodes
     
     call save_Vani_matrix(l1,l2, out_name)
 
+    ! Dimensionalise the Vani when it is computing the csts:
+
     ! Write as a CST
     call get_Ssum_bounds(l1, l2, smin, smax, num_s, ncols)
     allocate(cst(num_s, ncols))
-    call Hcomplex_to_cst_8(Vani, l1, l2, cst, ncols, num_s, t1, t2, 2)
+    call Hcomplex_to_cst_8(Vani/(SCALE_T*SCALE_T), l1, l2, cst, ncols, num_s, t1, t2, 2)
     out_name = 'output/cst_'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)
     call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
     deallocate(cst)
