@@ -224,18 +224,18 @@ module mineos_model
 
 
 
-    subroutine load_mineos_radial_info_MPI(self, communicator)
-        use params, only: myrank, datadir, MPI_CUSTOM_REAL
+    subroutine load_mineos_radial_info_MPI(self, mympirank, communicator)
+        use params, only: datadir, MPI_CUSTOM_REAL
         implicit none 
         class(MineosModel) :: self 
-        integer :: communicator
+        integer :: communicator, mympirank
 
     #ifdef WITH_MPI
         include 'mpif.h'
         
         integer :: ierr
     
-        if(myrank.eq.0)then 
+        if(mympirank.eq.0)then 
             call self%load_mineos_radial_info()
         endif 
     
@@ -243,7 +243,7 @@ module mineos_model
         call MPI_Bcast(self%IC_ID,  1, MPI_INTEGER, 0, communicator, ierr)
         call MPI_Bcast(self%CMB_ID, 1, MPI_INTEGER, 0, communicator, ierr)
     
-        if(myrank.ne.0) allocate(self%radius(self%NR), self%rad_mineos(self%NR))
+        if(mympirank.ne.0) allocate(self%radius(self%NR), self%rad_mineos(self%NR))
     
         call MPI_Bcast(self%radius, self%NR, MPI_CUSTOM_REAL, 0, communicator, ierr)
         call MPI_Bcast(self%rad_mineos, self%NR, MPI_CUSTOM_REAL, 0, communicator, ierr)

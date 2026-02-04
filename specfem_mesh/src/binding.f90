@@ -77,6 +77,12 @@ interface
     end function 
 
 
+       integer function force_proc_to_device(nprocs, myrank) bind(C, name="force_proc_to_device")
+      use iso_c_binding
+      implicit none
+      integer(c_int),value :: nprocs, myrank
+    end function 
+
 
 
     integer function copy_wgll_array(hloc, size) bind(C, name="copy_wgll_array")

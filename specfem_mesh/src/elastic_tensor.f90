@@ -1,13 +1,13 @@
 
 
 
-subroutine load_ACLNF_from_files(directory, nlen, suffix)
-    use params, only: Arad, Crad, Lrad, Nrad, Frad, cluster_size, myrank
+subroutine load_ACLNF_from_files(directory, nlen, suffix, myrank)
+    use params, only: Arad, Crad, Lrad, Nrad, Frad, cluster_size
     use allocation_module, only: deallocate_if_allocated
     implicit none 
     ! IO variables
     character(len=*) :: directory
-    integer ::  nlen
+    integer ::  nlen, myrank
 
     character(len=5) :: suffix
     ! Local variables

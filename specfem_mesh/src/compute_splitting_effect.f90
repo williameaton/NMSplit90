@@ -84,7 +84,7 @@ program compute_splitting_effect
             call sm%compute_rotation_matrix()
 
             !allocate(gpsi(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
-            !call compute_grad_centrifugal(sm, gpsi, ggpsi)
+            !call compute_grad_centrifugal(sm, gpsi, ggpsi, myrank)
 
             !call compute_Vcen_matrix(sm, sm%interp, gpsi, n1, t1, l1, n2, t2, l2)
             call create_ensight_file_prefix(iset, region)

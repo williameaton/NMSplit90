@@ -108,7 +108,7 @@ character(len=250) :: fname_voronoi = '/scratch/gpfs/TROMP/we3822/NMSplit90/spec
 
 
 ! MPI 
-integer :: myrank, cluster_size
+integer :: cluster_size, myGlobalrank
 integer :: MPI_CUSTOM_REAL 
 integer :: MPI_SPLINE_REAL
 integer :: MPI_SPLINE_COMPLEX

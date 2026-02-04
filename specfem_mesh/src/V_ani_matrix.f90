@@ -629,7 +629,7 @@ contains
 
     subroutine cuda_Vani_matrix_stored_selfcoupling(sm, n1, t1, l1)
         !use omp_lib
-        use params, only: strains1, Cxyz, Vani, myrank
+        use params, only: strains1, Cxyz, Vani
         use allocation_module, only: deallocate_if_allocated
         use specfem_mesh, only: SetMesh
 #ifdef WITH_CUDA

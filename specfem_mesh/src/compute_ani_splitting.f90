@@ -1,6 +1,6 @@
 
 program compute_vani_splitting
-    use params, only: Vani, verbose, myrank, MPI_SPLINE_COMPLEX, & 
+    use params, only: Vani, verbose, MPI_SPLINE_COMPLEX, & 
                       MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT, glob_eta1,   &
                       glob_eta2,  nmodes, nprocs, cluster_size, Arad, Crad, Lrad, Nrad, Frad
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
@@ -33,7 +33,7 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
 
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
                tl1, tl2, h, b, sets_per_process, & 
-               myset_start, myset_end, i_mode, maxknot, ib
+               myset_start, myset_end, i_mode, maxknot, ib, myrank
     character ::  t1
     character(len=2) nstr, lstr
     character(len=12) nprocstr, nmodestr, timing_fmt_vals
@@ -202,7 +202,7 @@ endif
 
 if(tromp93_model)then 
     ! Read TROMP ACLNF model with 33 points (mineos for IC)
-    call load_ACLNF_from_files('/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/tromp93/ACLNF', 33, '')
+    call load_ACLNF_from_files('/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/tromp93/ACLNF', 33, '', myrank)
 elseif(constant_ACLNF)then 
     Model3D%nconst = 5  
     allocate(Model3D%valconsts(Model3D%nconst))

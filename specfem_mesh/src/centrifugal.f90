@@ -1,12 +1,12 @@
 
-subroutine compute_grad_centrifugal(SM, gpsi, ggpsi)
+subroutine compute_grad_centrifugal(SM, gpsi, ggpsi, myrank)
     ! We only need the gradient of the centrifugal potential (2.115)
     ! ∇Ψ = Ω x (Ω x r) where r is the position vector 
     ! Since the rotation axis is aligned with the vertical this should
     ! be pretty straight-forward: 
     ! Should be - w^2 (x xhat + y yhat )
     use specfem_mesh, only: SetMesh
-    use params, only: verbose, myrank, Z_AXIS_EARTH_ROTATION
+    use params, only: verbose, Z_AXIS_EARTH_ROTATION
 
     implicit none 
     include "constants.h"
@@ -17,7 +17,7 @@ subroutine compute_grad_centrifugal(SM, gpsi, ggpsi)
 
     ! Local: 
     real(kind=CUSTOM_REAL) :: omvec(3), tmp1vec(3), resvec(3), posvec(3), tmpgrad(3), minom2
-    integer :: i,j,k,ispec, m , pp, qq
+    integer :: i,j,k,ispec, m , pp, qq, myrank
 
 
     if(verbose.ge.0.and.myrank.eq.0)then 

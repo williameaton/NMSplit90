@@ -212,10 +212,21 @@ int assign_proc_to_device(int nprocs, int myrank){
     if(myrank == 1){
       printf("Number of GPU devices:  %i\n", devcount);
     }
-
+   if(myrank == 1){
+      printf("Number of procs and my rank:  %i  %i\n", nprocs, myrank);
+    }
     nsets_per_gpu = (nprocs + devcount - 1) / devcount;  
 
+   if(myrank == 1){
+      printf("Number of nsets_per_gpu:  %i\n", nsets_per_gpu);
+    }
+
     mydev = myrank / nsets_per_gpu;  // This mimics FLOOR(myrank / nsets_per_gpu)
+
+    if(myrank == 1){
+      printf("myrank and dev:  %i %i\n", myrank, mydev);
+    }
+    
 
     // ensure we don't go out of bounds
     if(mydev >= devcount){
@@ -239,6 +250,54 @@ int assign_proc_to_device(int nprocs, int myrank){
       return -1;
     }
 
+    printf("myrank = %i -- on device %i\n", myrank, mydevice);
+    return 0;
+}
+}
+
+
+
+
+extern "C"{
+int force_proc_to_device(int nprocs, int myrank){
+    int err, devcount, mydevice, mydev, nsets_per_gpu;
+
+    // A less cutesy setup when we know which procs we want where
+    err = cudaGetDeviceCount(&devcount);
+    if (err != cudaSuccess) {
+      printf("Error: Unable to get device count!\n");
+      return -1;
+    }
+
+    if(nprocs != devcount){
+      printf("Error nprocs != device count: procs %i devices %i", nprocs, devcount );
+      return -1; 
+    } 
+
+    mydev = myrank;
+
+    // ensure we don't go out of bounds
+    if(mydev >= devcount){
+      printf("Error mydev is >= devcount: mydev: %i,   devcount: %i\n", mydev, devcount);
+      return -1; 
+    } 
+    if(mydev < 0) {
+      printf("Error mydev is < 0: %i\n", mydev);
+      return -1;
+    }
+
+    err = cudaSetDevice(mydev);
+    if (err != cudaSuccess) {
+      printf("Error: Unable to set device!\n");
+      return -1 ;
+    }
+
+    err = cudaGetDevice(&mydevice);
+    if (err != cudaSuccess) {
+      printf("Error: Unable to get current device!\n");
+      return -1;
+    }
+  
     printf("myrank = %i -- on device %i\n", myrank, mydevice);
     return 0;
 }

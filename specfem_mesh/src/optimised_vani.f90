@@ -1,6 +1,6 @@
 
 program optimised_vani
-    use params, only: VaniAllModes_4, VaniAllModes_8, verbose, myrank, MPI_SPLINE_COMPLEX, & 
+    use params, only: VaniAllModes_4, VaniAllModes_8, verbose, MPI_SPLINE_COMPLEX, & 
                         MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT,   &
                          nmodes, nprocs, all_warnings, datadir, max_tl1, & 
                         Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax, timingNEX
@@ -40,7 +40,7 @@ program optimised_vani
                 myset_start, myset_end, i_mode, smin, smax, num_s, & 
                 ncols, this_tl1, imode, im, imodel_iter, igll, iproc, & 
                 success, idx, thisrow, thiscol, is, it, ncstsvals, icst,& 
-                thissmax,allscalars,cxyzsize,LUTsize,m3dsize
+                thissmax,allscalars,cxyzsize,LUTsize,m3dsize, myrank
     character(len=2) nstr, lstr
     character(len=5) iterstr
     character(len=3) chainstr

@@ -1,5 +1,5 @@
 module model3d
-    use params, only: verbose, myrank
+    use params, only: verbose
     use m_KdTree, only: KdTree, KdTreeSearch
     use dArgDynamicArray_Class, only: dArgDynamicArray
     use specfem_mesh, only: SetMesh
@@ -18,6 +18,8 @@ module model3d
         integer, allocatable :: idconsts(:)                 !   --> IDs for variable type
         real(kind=SPLINE_REAL), allocatable :: valconsts(:) !   --> the constant value 
 
+
+        integer :: myrank                                  
         logical :: exists_spat
         logical :: exists_const
 
@@ -80,7 +82,7 @@ module model3d
 
 
         if (verbose.ge.2)then
-            if(myrank.eq.0)write(*,*)' - Re-reading 3D model'
+            if(self%myrank.eq.0)write(*,*)' - Re-reading 3D model'
         endif 
 
         ! Open the model file: 
@@ -146,7 +148,7 @@ module model3d
 
 
         if (verbose.gt.2)then
-            if(myrank.eq.0)then
+            if(self%myrank.eq.0)then
                 write(*,*)
                 write(*,*)'3D Model parameters: '
                 write(*,*)' -- Number of points  ', self%npts
@@ -228,7 +230,7 @@ module model3d
 
 
         if (verbose.ge.2)then
-            if(myrank.eq.0)write(*,*)' - Loading 3D model'
+            if(self%myrank.eq.0)write(*,*)' - Loading 3D model'
         endif 
 
 
@@ -255,7 +257,7 @@ module model3d
         if (self%nspat.gt.0) then 
             allocate(self%idspats(self%nspat), stat=ierr)
             if(ierr.ne.0)then 
-                write(*,*)'ERROR allocating self%idspats on ', myrank
+                write(*,*)'ERROR allocating self%idspats on ', self%myrank
             endif 
             do i = 1, self%nspat
                 read(1,*)self%idspats(i)
@@ -264,7 +266,7 @@ module model3d
 
             allocate(self%valspats(self%npts, self%nspat), stat=ierr)
             if(ierr.ne.0)then 
-                write(*,*)'ERROR allocating self%valspats on ', myrank
+                write(*,*)'ERROR allocating self%valspats on ', self%myrank
             endif 
         elseif(self%nspat.eq.0) then 
             ! No spatially-varying variables: 
@@ -280,12 +282,12 @@ module model3d
         if(self%nconst.gt.0)then 
             allocate(self%idconsts(self%nconst), stat=ierr)
             if(ierr.ne.0)then 
-                write(*,*)'ERROR allocating self%idconsts on ', myrank
+                write(*,*)'ERROR allocating self%idconsts on ', self%myrank
             endif 
             
             allocate(self%valconsts(self%nconst), stat=ierr)
             if(ierr.ne.0)then 
-                write(*,*)'ERROR allocating self%valconsts on ', myrank
+                write(*,*)'ERROR allocating self%valconsts on ', self%myrank
             endif 
 
             do i = 1, self%nconst
@@ -300,7 +302,7 @@ module model3d
 
 
         if (verbose.gt.2)then
-            if(myrank.eq.0)then
+            if(self%myrank.eq.0)then
                 write(*,*)
                 write(*,*)'3D Model parameters: '
                 write(*,*)' -- Number of points  ', self%npts
@@ -324,15 +326,15 @@ module model3d
         ! Allocate memory for the x, y, z and spatially varying materials: 
         allocate(self%xcoord(self%npts), stat=ierr)
         if(ierr.ne.0)then 
-            write(*,*)'ERROR allocating self%xcoord on ', myrank
+            write(*,*)'ERROR allocating self%xcoord on ', self%myrank
         endif 
         allocate(self%ycoord(self%npts), stat=ierr)
         if(ierr.ne.0)then 
-            write(*,*)'ERROR allocating self%ycoord on ', myrank
+            write(*,*)'ERROR allocating self%ycoord on ', self%myrank
         endif 
         allocate(self%zcoord(self%npts), stat=ierr)
         if(ierr.ne.0)then 
-            write(*,*)'ERROR allocating self%zcoord on ', myrank
+            write(*,*)'ERROR allocating self%zcoord on ', self%myrank
         endif 
 
         ! Read in each of the coordinates and it associated values:
