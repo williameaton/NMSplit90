@@ -11,7 +11,6 @@ module model3d
 
     type :: M3D
 
-
         integer :: npts                                     ! Global points in model
         integer :: nspat                                    ! Number of spatially-varying params
         integer, allocatable :: idspats(:)                  !   --> IDs for variable type

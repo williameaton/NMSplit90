@@ -7,16 +7,16 @@ include "precision.h"
 ! 1  == minimal updates for fast run
 ! 2  == while coding
 ! 3  == while debugging
-integer, parameter :: verbose       = 0
+integer, parameter :: verbose       = 1
 logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
-
+  
 integer, parameter :: nprocs        = 4
-integer, parameter :: nmodes        = 3
+integer, parameter :: nmodes        = 32
  
 ! Optimisation stuff: 
 integer, parameter :: compute_cst_smax  = 6
-integer, parameter :: max_tl1           = 7
+integer, parameter :: max_tl1           = 17
 integer, parameter :: MaxBrettModelPts  = 100 
 
 character(len=3)   :: timingNEX = '160'
@@ -25,8 +25,9 @@ character(len=3)   :: timingNEX = '160'
 ! Specfem mesh files: 
 character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX160/sliced/linear/sets4/'
 !character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX64/sliced/'
-!character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/'
+!character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets4/'
 !character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
+!character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX240/sliced/linear/sets8/'
 !character(len=250) :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/whole_earth/'
 !character(len=250) :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
 
@@ -88,7 +89,7 @@ real(kind=SPLINE_REAL), allocatable :: rho_spl(:),  &
 
 ! Visual: 
 character(len=250),parameter :: en_dir='./ensight/'      ! Ensight prefix file name
-character(len=250) :: en_fname                     ! Ensight prefix file name
+character(len=250) :: en_fname                           ! Ensight prefix file name
 integer, parameter :: CASEUNIT         = 21
 integer, parameter :: GEOUNIT          = 12
 integer, parameter :: TENSORSYMOUT_I   = 14
@@ -102,6 +103,7 @@ character(len=7), parameter  :: realfmt = "(e12.5)"
 
 
 ! Voronoi model: 
+! doesnt get used anymore 
 character(len=250) :: fname_voronoi = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model.txt'
 
 

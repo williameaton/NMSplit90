@@ -431,6 +431,33 @@ module splitting_function
     end subroutine write_cst_complex_to_file
 
 
+    subroutine write_cst_to_FH_format(fname, cst, ncols, nrows, smin, smax, weight, variance, jump)
+        ! Writes CSTS in the format that is read in by Julia fairhead 
+        ! The format is as follows: 
+        ! Line 1:   Number of observations for each s (irrelevant here)
+        ! Line 2:   Weighting for these measurements (weight)
+        ! Line 3 -  maximum s (since not always observed)
+        ! s  t  Cst_real  Cst_imag  Variance
+        implicit none 
+        character(len=*)         :: fname
+        complex(kind=SPLINE_REAL):: cst(nrows, ncols)
+        integer                  :: nrows, ncols, smin, smax, jump, is ,it
+        real(kind=SPLINE_REAL)   :: weight, variance
+
+        open(1,file=trim(fname), form='formatted')
+
+        write(1,*)1         ! Line 1
+        write(1,*)weight    ! Line 2
+        write(1,*)smax      ! Line 3
+
+        ! We ignore s = 0 
+        do is = 3, smax+1, jump
+            do it = 1, (smin + is-1)+1
+                write(1,'(i3, i3, E15.7, E15.7, E15.7)')smin+is-1, it - (smin+is-1) - 1, real(cst(is,it)), aimag(cst(is,it)), variance
+            enddo 
+        enddo 
+    end subroutine write_cst_to_FH_format
+
 
 
 

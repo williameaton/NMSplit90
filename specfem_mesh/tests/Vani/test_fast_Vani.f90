@@ -22,19 +22,19 @@ program test_constant_Vani_matrix
     mineos_ptr => mineos
 
     ! Choose modes: 
-    n1      = 6
+    n1      = 2
     t1      = 'S'
-    l1      = 10
+    l1      = 3
 
-    n2      = 6
+    n2      = 2
     t2      = 'S'
-    l2      = 10
+    l2      = 3
 
-    A =  0.4d0
-    C = -0.2d0
-    L =  0.3d0
-    N = -0.5d0
-    F =  0.1d0
+    A =  0.04d0
+    C = -0.02d0
+    L =  0.03d0
+    N = -0.05d0
+    F =  0.01d0
 
     region = 3
 
@@ -59,7 +59,7 @@ program test_constant_Vani_matrix
         eta1 = zero 
         eta2 = zero 
 
-        call compute_Cxyz_at_gll_constantACLNF(sm, A, C, L, N, F, eta1, eta2, perturbation_on_prem=.false.)
+        call compute_Cxyz_at_gll_constantACLNF(sm, A, C, L, N, F, eta1, eta2, perturbation_on_prem=.true.)
         call compute_Vani_matrix_stored(sm, t1, l1, n1, t2, l2, n2)
 
         call sm%cleanup()

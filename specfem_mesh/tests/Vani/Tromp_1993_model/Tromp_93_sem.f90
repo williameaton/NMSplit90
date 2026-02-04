@@ -20,8 +20,8 @@ program Tromp93_SEM
     character(len=250) :: out_name, aclnf_dir
     real(kind=SPLINE_REAL) :: min_r, min_i, thirty, twone
 
-    aclnf_dir = '/Users/eaton/Documents/Software/NMSplit90/& 
-                specfem_mesh/tests/v_ani_matrix/Tromp_1993_model/ACLNF'
+    aclnf_dir = '/Users/eaton/Documents/Software/NMSplit90/specfem_mesh/&
+                 tests/v_ani_matrix/Tromp_1993_model/ACLNF'
 
 
     ! Read mineos model 
@@ -33,7 +33,7 @@ program Tromp93_SEM
     l1      = 3
 
     region = 3
-    nproc  = 6
+    nproc  = 4
 
     ! Setup Vani matrix
     tl1 = 2*l1 + 1

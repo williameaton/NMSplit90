@@ -404,4 +404,121 @@ contains
 
     end subroutine ylm_deriv
 
+
+
+    ! Generalised spherical harmonic tools: 
+
+
+    real(kind=CUSTOM_REAL) function XNlm(theta, N, l, m)
+        ! X^N_{lm} the generalised Legendre function for
+        ! at point theta (its assuming the argument is cos(theta))
+        use params 
+        implicit none 
+
+        ! IO variables
+        integer, intent(in)                :: l, m, N
+        real(kind=CUSTOM_REAL), intent(in) :: theta
+
+        ! Local variables
+        real(kind=CUSTOM_REAL):: mf, thismf, lf, Nf, cos_theta, sin_theta, P_mp1, P_m, P_minus1, term_m, term_mp1, term_mm1
+        integer :: thism
+
+
+        if (abs(N).gt.l)then 
+            XNlm = zero 
+        elseif(abs(m).gt.l)then 
+            XNlm = zero 
+
+        else 
+
+            cos_theta = dcos(theta)
+            sin_theta = dsin(theta)
+
+            mf = real(m, kind=CUSTOM_REAL)
+            lf = real(l, kind=CUSTOM_REAL)
+            Nf = real(N, kind=CUSTOM_REAL)
+
+
+            if (m.gt.0)then 
+                ! DOWNWARD RECURSION 
+
+                ! If we are doing a downward recursion, we need to start with 
+                ! m+1 = l and m = l-1 
+                ! C.123
+                P_mp1 = ((-one)**(lf + Nf) * &
+                        sqrt(gamma(two*lf + one) /(gamma(lf + Nf + one) * gamma(lf - Nf + one)) ) & 
+                        * ((dsin(theta / two))**(lf - Nf))  & 
+                        * ((dcos(theta / two))**(lf + Nf)))
+
+                ! C.124
+                P_m = (sqrt(two*lf)/sin_theta) * (Nf/lf - cos_theta) * P_mp1
+
+                ! Determine output for m 
+                if (m.eq.l)then 
+                    XNlm =  P_mp1
+                elseif(m.eq.l-1)then 
+                    XNlm =  P_m
+                else
+                    ! Recursive 
+                    do thism = l-1, m+1, -1
+                        
+                        thismf = real(thism, kind=CUSTOM_REAL)
+
+                        term_m = Nf/sin_theta -  thismf*cos_theta/sin_theta
+                        term_mp1 = half * sqrt((lf-thismf)*(lf+thismf+one))
+                        term_mm1 = half * sqrt((lf+thismf)*((lf-thismf+one)))
+
+                        P_minus1 = (term_m*P_m - term_mp1*P_mp1)/term_mm1
+
+                        P_mp1 = P_m
+
+                        P_m = P_minus1
+                    enddo 
+                    XNlm = P_m
+                endif 
+            
+            else 
+                ! UPWARD RECURSION 
+
+                ! C.125
+                P_minus1 = sqrt(gamma(two*lf + one) /(gamma(lf + Nf + one) * gamma(lf - Nf + one)) ) & 
+                            * ((dsin(theta / two))**(lf + Nf))  & 
+                            * ((dcos(theta / two))**(lf - Nf))
+
+                ! C.126
+                P_m = (sqrt(two*lf)/sin_theta) * (Nf/lf + cos_theta) * P_minus1
+
+
+                if (m.eq.-l)then 
+                    XNlm = P_minus1
+                elseif(m.eq.-l+1)then 
+                    XNlm = P_m
+                else 
+                    do thism = -l+1, m-1
+                        !write(*,*)thism
+                        thismf = real(thism, kind=CUSTOM_REAL)
+
+                        term_m   = Nf/sin_theta -  thismf*cos_theta/sin_theta
+                        term_mp1 = half * sqrt((lf-thismf)*(lf+thismf+one))
+                        term_mm1 = half * sqrt((lf+thismf)*((lf-thismf+one)))
+
+                        P_mp1 = (term_m*P_m - term_mm1*P_minus1)/term_mp1
+
+                        P_minus1 = P_m
+                        P_m = P_mp1
+                    enddo 
+                    XNlm = P_m
+                endif 
+
+            endif 
+
+            ! Xlm vs Plm scaling
+            XNlm = XNlm * (((two*lf + one) / (four*PI) )**half)
+
+        endif 
+
+
+    end function XNlm
+
+
 end module ylm_plm

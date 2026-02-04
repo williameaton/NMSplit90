@@ -48,7 +48,7 @@ program plot_vani_to_ensight
 
         ! Read 3D model and build K-d tree: 
         !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
-        Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/benchmark_isotropic_perturb_prem.txt"
+        Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/benchmarks/hemisphere_model.txt"
         !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c1_m5000.txt"
         call Model3D%read_model_from_file()
         call Model3D%create_KDtree()

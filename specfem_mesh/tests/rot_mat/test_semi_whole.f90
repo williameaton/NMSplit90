@@ -31,7 +31,7 @@ program test_semi_whole
     ! Setup W matrix
     allocate(Wmat(mode_1%tl1, mode_2%tl1))
 
-    ! Values for the inner core
+    ! Values for whole Earth
     knot_lower = 1
     r_lower    = zero        
     knot_upper = mineos%NR
@@ -43,7 +43,7 @@ program test_semi_whole
     interp = create_PieceInterp(npoints)
     interp%radial = [((r_lower +  (real(j-1)/real(npoints-1))*(r_upper-r_lower)), j = 1, npoints)] 
 
-    write(*,*)interp%radial
+    !write(*,*)interp%radial
 
     call interp%setup()
     call interp%create_interpolation_radial_map()
@@ -151,7 +151,7 @@ program test_semi_whole
         enddo 
     enddo 
 
-    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'./rot_mat/Whole_semi_', mode_1%n, mode_1%t, mode_1%l, '_', mode_2%n, mode_2%t, mode_2%l, '.txt'
+    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'./rot_mat/WholeEarthW/SemiAnalyicalMatrices/Whole_semi_', mode_1%n, mode_1%t, mode_1%l, '_', mode_2%n, mode_2%t, mode_2%l, '.txt'
     write(*,*)'Saved as '//trim(out_name)
     call save_W_matrix(mode_1%l, mode_2%l, trim(out_name))
 

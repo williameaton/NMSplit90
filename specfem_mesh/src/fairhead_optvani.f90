@@ -5,7 +5,7 @@ program fairhead_optimised_vani
     use params, only: VaniAllModes_4, VaniAllModes_8, verbose, myrank, MPI_SPLINE_COMPLEX, & 
                         MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT,   &
                          nmodes, nprocs, all_warnings, datadir, max_tl1, & 
-                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax, timingNEX
+                        Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax, timingNEX, Vani
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                         compute_Vani_matrix, compute_vani_matrix_stored, & 
@@ -85,11 +85,9 @@ program fairhead_optimised_vani
 
     ! Modes: 
     ! REAL 27: 
-    integer, dimension(nmodes), parameter :: modeNs = (/ 2,3,3 /)
-    integer, dimension(nmodes), parameter :: modeLs = (/ 3,1,2 /)
-    
-
-    integer, dimension(nmodes), parameter :: dataSmax = (/ 6,2,4 /)
+    integer, dimension(nmodes), parameter :: modeNs = (/ 2,3,3,3,5,5,6,7,8,8,9,9,11,11,13,13,13,14,15,16,16,17,18,18,20,21,21,22,23,23,27,27 /)
+    integer, dimension(nmodes), parameter :: modeLs = (/ 3,1,2,8,2,3,3,5,1,5,2,3,4,5,1,2,3,4,3,5,7,1,3,4,1,6,7,1,4,5,1,2 /)
+    integer, dimension(nmodes), parameter :: dataSmax = (/ 6,2,4,6,4,6,6,6,2,6,4,6,6,6,2,4,6,6,6,6,6,2,6,6,2,6,6,2,6,6,2,4 /)
 
     INTEGER :: request1, request2
     INTEGER, dimension(2) :: requests  ! Array of requests
@@ -137,7 +135,7 @@ program fairhead_optimised_vani
 
 
     ierr = fh_cuda_preinit()
-    write(*,*)'PREINIT ', ierr
+    write(*,*)'Pre-initialising CUDA ', ierr
 
     ! Setup original MPI. This includes ALL nodes and therefore 
     ! the communication with the Julia code
@@ -200,6 +198,7 @@ program fairhead_optimised_vani
         MPI_CUSTOM_REAL = MPI_DOUBLE_PRECISION 
    endif 
 
+
     ! For some reason Myrank = 6 seems to not print...is this an issue? 
     ierr =  assign_proc_to_device(nprocs, myf90rank)
 
@@ -211,7 +210,6 @@ program fairhead_optimised_vani
 
 
     ! Check equal load balance across the processes:
-
     if( mod(nprocs, f90cluster_size).ne.0)then 
         write(*,*)'Error: you are using '
         write(*,*)'     -- nprocs ', nprocs 
@@ -230,6 +228,10 @@ program fairhead_optimised_vani
     ! Setup mineos only on f90 nodes
     call mineos%load_mineos_radial_info_MPI(MPI_COMM_F90)
     mineos_ptr => mineos
+
+
+
+
 
     ! Load mesh data for this proc (1 set per proc)
     ! True false indicates load from disc and dont save to disc
@@ -267,7 +269,6 @@ program fairhead_optimised_vani
     ! Allocate Vani matrices
     allocate(VaniAllModes_4(max_tl1, max_tl1, nmodes), stat=ierr)
     VaniAllModes_4 = SPLINE_iZERO
-
     if(ierr.ne.0)then 
         write(*,*)'Error allocating VaniAllModes for proc ', myf90rank
         stop 
@@ -277,7 +278,6 @@ program fairhead_optimised_vani
     ! Loading strains and determining estimate of the memory cost: 
     ! Dimension of strains would be: ngllx, nglly, ngllz, nspec, 2*l1+1, 6, nmodes
     ! In double precision (8 bytes) for complex numbers (x2): 
-
     ! Strain for each mode is about 14 Mb for NEX 176 1 of sets 16
     if(myf90rank.eq.0)then
         write(*,*)
@@ -311,8 +311,6 @@ program fairhead_optimised_vani
         write(*,*)'Error allocating allstrains for proc ', myf90rank
         stop 
     endif 
-
-
 
     ! Copy over the xcoord, ycoord, zcoord, rstore arrays: 
     allocate(flatarray_4(size_of_array), stat=ierr)
@@ -408,6 +406,8 @@ program fairhead_optimised_vani
         stop
     endif 
 
+
+    ! ONLY ALLOCATED ON THE LEAD NODE OF ONE OF THE 4 PROCS in F90 
     if(myf90rank.eq.0)then 
         allocate(allcsts_r_RED_4(ncstsvals), stat=ierr)
         if(ierr.ne.0)then 
@@ -453,10 +453,10 @@ program fairhead_optimised_vani
         enddo 
     enddo  
 
+
     ! I think we want to keep this without the subtraction since it 
     ! is used for the spacing of the arrays etc 
     max_nn1 = max_tl1*(max_tl1+1)/2
-
     LUT_ptr = c_loc(modeLUT)
     ierr = copy_LUT_array(LUT_ptr, total_nn1*4)
     if(ierr.ne.0)then 
@@ -527,6 +527,7 @@ program fairhead_optimised_vani
         stop 
     endif 
     
+
     ! Local F90 versions on host cpu 
     allocate(Vani_real_4(nmodes*max_nn1), stat=ierr)
     Vani_real_ptr = c_loc(Vani_real_4)
@@ -564,6 +565,11 @@ program fairhead_optimised_vani
         stop 
     endif 
 
+
+
+
+
+    ! -------- BROADCASTING MODEL/MCMC PARAMS FROM JULIA BEGINS --------
    
     ! Now we need to receive the initial model send by Fairhead: 
     ! Get the number of voronoi cells in initial model 
@@ -582,22 +588,22 @@ program fairhead_optimised_vani
     ! Get number of model iterations: 
     call MPI_Bcast(niterations, 1, MPI_INT64_T, juliarank, MPI_COMM_WORLD, ierr)
 
-    ! if(myf90rank.eq.1)then 
-    !     write(*,*)
-    !     write(*,*)'NMSPLIT90 has: '
-    !     write(*,*)' Fairhead number of iterations    : ', niterations
-    !     write(*,*)' Fairhead initial model points    : ', FHnvoronoi
-    !     write(*,*)' Fairhead initial model ACLNF     : ', aclnf_8
-    !     write(*,*)' Fairhead initial model           : ', FHinitmodel
-    !     write(*,*)
-    ! endif 
+    if(myf90rank.eq.1)then 
+        write(*,*)
+        write(*,*)'NMSPLIT90 has: '
+        write(*,*)' Fairhead number of iterations    : ', niterations
+        write(*,*)' Fairhead initial model points    : ', FHnvoronoi
+        write(*,*)' Fairhead initial model ACLNF     : ', aclnf_8
+        write(*,*)' Fairhead initial model           : ', FHinitmodel
+        write(*,*)
+    endif 
+
 
     ! Copy over the original model to GPU:
     flat3Dmodel_4(:) = zero 
     flat3Dmodel_4(1:int(FHnvoronoi)*5) = real(FHinitmodel, kind=4)
     ierr = copy_M3D_array(ptr_m3D, MaxBrettModelPts*5)
     write(*,*)'F90: Copied initial model to GPU'
-
 
     ! Ensure that there is a pointer to the updates array: 
     ptr_FHupdates = c_loc(FHupdates)
@@ -607,6 +613,8 @@ program fairhead_optimised_vani
     ! should be identical but Julia will check this 
     allocate(dummyrecbuffer(gcluster_size))
     call MPI_Gather(ncstsvals, 1, MPI_INTEGER, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+
+    write(*,*)'Number of CSTS: ', ncstsvals
 
 
     ! For now we will ignore any mode calcluations for the first iteration since its never going to
@@ -667,41 +675,89 @@ program fairhead_optimised_vani
             ! Cast into a matrix
             do iii = 1, thisnn1
                 ival = iii 
+
+
                 call find_row_col(ival, thisrow, thiscol, l1)
                                 
-                if(thisrow.eq.l1+1 .and. thiscol.gt.l1+1)then 
-                    VaniAllModes_4(thisrow, thiscol, imode) = VaniAllModes_4(this_tl1 - thiscol  + 1, thisrow, imode) *  ((-one)**real( thiscol - l1 - 1, kind=8 ))
+                !if(myf90rank.eq.0) write(*,*) "ival/row/col", ival, thisrow, thiscol
+
+                if(thisrow.eq.l1+1 .and. thiscol.gt.l1+1)then
+                    ! do nothing for now 
                 else 
                     ! Normal index
                     VaniAllModes_4(thisrow, thiscol, imode) = Vani_real_4((imode-1)*max_nn1 + iii) + & 
                                                                 SPLINE_iONE*Vani_imag_4((imode-1)*max_nn1 + iii)
                     
+            
+                    !if(myf90rank.eq.0)write(*,*)"  op1", thisrow, thiscol, " from ", (imode-1)*max_nn1 + iii, "x ", SPLINE_iONE*Vani_imag_4((imode-1)*max_nn1 + iii)
+                    !if(myf90rank.eq.0)write(*,*)
+
                     ! Maps the lower right triangular to the top left triangular
                     if(thisrow > l1+1 )then 
                         VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
+                        
+                        !if(myf90rank.eq.0)write(*,*)"  op2", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, " from ", thisrow, thiscol, "x ", (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
+                        !if(myf90rank.eq.0)write(*,*)
                     endif 
+
+                    ! Option 3
+                    if(thisrow.lt.l1+1 .and. thiscol.eq.l1+1)then 
+                        VaniAllModes_4(thiscol, this_tl1-thisrow+1, imode) = VaniAllModes_4(thisrow, thiscol, imode) *  ((-one)**real( l1 - thisrow +1 , kind=8 ))
+                        !if(myf90rank.eq.0)write(*,*)"  op3", thiscol, this_tl1-thisrow+1, " from ", thisrow, thiscol, " x ",  thiscol - l1 - 1
+                        !if(myf90rank.eq.0)write(*,*)
+                        !if(myf90rank.eq.0)write(*,*)
+                    endif 
+
                 endif
             enddo 
     
+
+            !Write the matrix for debugging: 
+            ! write(out_name,'(a, i1, a)')"Rank",myf90rank, "Vani.txt"
+            ! allocate(Vani(this_tl1, this_tl1))
+            ! Vani = VaniAllModes_4(1:this_tl1, 1:this_tl1, imode)
+            ! call save_Vani_matrix(l1, l1, out_name)
+        
+
 
             ! smax is now the dataSmax
             call get_Ssum_bounds(l1, l1, smin_theoretical, smax_theoretical, num_s, ncols)
             allocate(cst_4(num_s, ncols))
             call Hcomplex_to_cst_4(VaniAllModes_4(1:this_tl1, 1:this_tl1, imode), l1, l1, cst_4, ncols, num_s, t1, t1, 2)
 
+            ! if(myf90rank.eq.0)then
+            ! write(*,*)l1, ncols, num_s, t1, t1, 2
+            ! write(*,*)real(cst_4)
+            ! endif
+
             thissmax = dataSmax(imode)
             
+            ! do is = smin+1, num_s
+            !     do it = 1, (is-1) + 1
+            !         if(myf90rank.eq.0)write(*,*)is-1, it-(is-1) - 1 ,  real(cst_4(is,it)), aimag(cst_4(is,it))
+            !     enddo 
+            ! enddo 
+
+            ! allcsts_r_4(:) = SPLINE_ZERO
+            ! allcsts_i_4(:) = SPLINE_ZERO
+
             ! Starts at smin (s=2)
             do is = smin+1, thissmax+1, 2
-                do it = 1, is
+                do it = 1, (is-1) + 1
                     allcsts_r_4(icst) =  real(cst_4(is,it))
                     allcsts_i_4(icst) = aimag(cst_4(is,it))
                     icst = icst + 1
+
+                    ! if(myf90rank.eq.0)write(*,*)"-- ",  real(cst_4(is,it)), aimag(cst_4(is,it))
+
                 enddo 
             enddo 
             deallocate(cst_4)
         enddo ! imode  
 
+
+        ! allcsts_r_RED_4 = SPLINE_ZERO
+        ! allcsts_i_RED_4 = SPLINE_ZERO
 
         ! Let us now reduce the csts directlry on the Julia node 
         call MPI_Reduce(allcsts_r_4, allcsts_r_RED_4, ncstsvals, MPI_REAL, &

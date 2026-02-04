@@ -2,16 +2,21 @@
 
 set -e  # Exit on error
 
+
+
 # === Ask for model number ===
 read -p "Enter the model number: " model_num
 
+ddir="WeightedReal"
+prefix="Weighted_Obs"
+
 # === Define paths ===
-mode_file="/scratch/gpfs/we3822/fairhead/Models/${model_num}/ModeList.txt"
-mode_dir="/scratch/gpfs/we3822/fairhead/Data/JuliaModes"
-output_dir="/scratch/gpfs/we3822/fairhead/Models/${model_num}"
+mode_file="/scratch/gpfs/TROMP/we3822/fairhead/Models/${model_num}/ModeList.txt"
+mode_dir="/scratch/gpfs/TROMP/we3822/fairhead/Data/JuliaModes/${ddir}/"
+output_dir="/scratch/gpfs/TROMP/we3822/fairhead/Models/${model_num}"
 maxs_file="${output_dir}/mode_max_s"
-params_f90="/scratch/gpfs/we3822/NMSplit90/specfem_mesh/src/params.f90"
-optvani_f90="/scratch/gpfs/we3822/NMSplit90/specfem_mesh/src/fairhead_optvani.f90"
+params_f90="/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/src/params.f90"
+optvani_f90="/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/src/fairhead_optvani.f90"
 
 # === Check inputs ===
 if [[ ! -f "$mode_file" ]]; then
@@ -42,8 +47,8 @@ for mode in "${modes[@]}"; do
     Ns+=("$N")
     Ls+=("$L")
 
-    # Read line 3 from Weighted_Obs file
-    obs_file="${mode_dir}/Weighted_Obs.${mode}"
+    # Read line 3 from file
+    obs_file="${mode_dir}/${prefix}.${mode}"
     if [[ ! -f "$obs_file" ]]; then
         echo "⚠️  Warning: $obs_file not found. Using -1 for smax."
         smax="-1"

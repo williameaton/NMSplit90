@@ -351,14 +351,13 @@ subroutine WK_Vphi(m_1, m_2, s, spline_rad, rho_spl, Vphi)
 
     fs = real(s, kind=CUSTOM_REAL)
 
-
     if(m_1%t.eq.'S') then
         if(m_2%t.eq.'S') then
-            ! S S: Use the first, second, and third lines of the equation
+            ! S S: Use the first, second, and fourth lines of the equation
             Vphi = (fs * (fs + one) * rho_spl * m_1%u_spl * m_2%u_spl * BNpmlsld(0, 1, l1, s, l2)/(spline_rad*spline_rad)) + & 
                    (half * rho_spl * (m_1%u_spl * m_2%dv_spl/m_2%kf - m_1%du_spl * m_2%v_spl/m_2%kf + &
                      (m_1%u_spl * m_2%v_spl/m_2%kf)/spline_rad - two*m_1%aux_f*m_2%v_spl/m_2%kf ) * BNpmlsld(1, 1, l2, l1, s) /(spline_rad)) + & 
-                   (half * rho_spl * (m_2%u_spl * m_1%dv_spl/m_2%kf - m_2%du_spl * m_1%v_spl/m_1%kf + &
+                   (half * rho_spl * (m_2%u_spl * m_1%dv_spl/m_1%kf - m_2%du_spl * m_1%v_spl/m_1%kf + &
                      (m_2%u_spl * m_1%v_spl/m_1%kf)/spline_rad - two*m_2%aux_f*m_1%v_spl/m_1%kf ) * BNpmlsld(1, 1, l1, l2, s) /(spline_rad))    
         else
             ! S T: Use only the third line of the equation
@@ -409,6 +408,7 @@ subroutine WK_Vphi_dot(m_1, m_2, s, spline_rad, rho_spl, Vdotphi)
         endif
     endif 
 
+    
     if(m_1%t.eq.'S') then
         if(m_2%t.eq.'S') then
             ! S S:

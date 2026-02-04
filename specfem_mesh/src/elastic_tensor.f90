@@ -1,14 +1,15 @@
 
 
 
-subroutine load_ACLNF_from_files(directory, nlen)
+subroutine load_ACLNF_from_files(directory, nlen, suffix)
     use params, only: Arad, Crad, Lrad, Nrad, Frad, cluster_size, myrank
     use allocation_module, only: deallocate_if_allocated
     implicit none 
     ! IO variables
     character(len=*) :: directory
-    integer :: iproc, nlen
-    
+    integer ::  nlen
+
+    character(len=5) :: suffix
     ! Local variables
     integer :: ios, i, icl
     character(len=300) :: fname
@@ -35,7 +36,7 @@ subroutine load_ACLNF_from_files(directory, nlen)
         if(myrank.eq.icl)then 
                 
             do i = 1, 5
-                write(fname,'(a)')trim(directory)//'/'//ACLNF(i:i)
+                write(fname,'(a)')trim(directory)//'/'//ACLNF(i:i)//suffix
                 open(i, file=trim(fname), status = 'old', iostat = ios)
                 if(ios.ne.0)then
                     write(*,*)'Error opening ', trim(fname)

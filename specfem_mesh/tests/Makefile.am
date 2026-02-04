@@ -35,7 +35,9 @@ bin_PROGRAMS = test_plm_function    \
                test_amp             \
                reproduce_tromp93    \
                test_surf_int        \
-               ell_gll
+               ell_gll              \
+               radial_perturb       \
+               test_hemisphere
 
 
 d_cst  = cst
@@ -66,11 +68,11 @@ MED_SRCS =  $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90 \
                           output.f90 model3D_reader.f90
 
 
-VANI_SRCS = $(MED_SRCS) cuda_proxies.f90 V_ani_matrix.f90
+VANI_SRCS = $(MED_SRCS) elastic_tensor.f90 cuda_proxies.f90 V_ani_matrix.f90
 VISO_SRCS = $(MED_SRCS) cst.f90 $(d_tmat)/rho_st.f90 V_iso_matrix.f90
 TMAT_SRCS = $(MED_SRCS) cst.f90 $(d_tmat)/rho_st.f90 T_matrix.f90
 INT_SRCS  = $(MED_SRCS)
-WMAT_SRCS = $(MED_SRCS) W_matrix.f90
+WMAT_SRCS = $(MED_SRCS) W_matrix.f90 centrifugal.f90 V_cen_matrix.f90
 SPL_SRCS  = $(MED_SRCS)
 WIG_SRCS  = $(SETUP_SRCS)
 SHRM_SRCS = $(SETUP_SRCS)
@@ -87,6 +89,8 @@ test_plm_values_SOURCES       = $(SETUP_SRCS) $(d_plm)/test_plm_values.f90
 test_vani_fast_SOURCES        = $(VANI_SRCS)  $(d_vani)/test_fast_Vani.f90
 test_vani_diag_SOURCES        = $(VANI_SRCS)  $(d_vani)/test_Vani.f90
 test_tromp1995_SOURCES        = $(VANI_SRCS)  $(d_vani)/tromp_1995.f90
+radial_perturb_SOURCES        = $(VANI_SRCS)  $(d_vani)/radial_perturb.f90
+test_hemisphere_SOURCES        = $(VANI_SRCS) $(d_vani)/hemisphere.f90
 test_1_integration_SOURCES    = $(INT_SRCS)   $(d_int)/test_1_integration.f90
 test_surf_int_SOURCES         = $(INT_SRCS)   $(d_int)/test_surface_integration.f90
 test_ylm_integration_SOURCES  = $(INT_SRCS)   $(d_int)/test_ylm_integration.f90

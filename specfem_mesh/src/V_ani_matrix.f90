@@ -206,6 +206,7 @@ contains
         Mat(3,1) = F
         Mat(2,3) = F
         Mat(3,2) = F
+
     end subroutine setup_Cnatural
 
 
@@ -333,14 +334,16 @@ contains
                     do k = 1, sm%ngllz 
 
                         if(perturbation_on_PREM)then
-                            call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)                            
+                            call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)
                             call setup_Cnatural(Cnat, A*Aprem, C*Cprem, L*Lprem, N*Nprem, F*Fprem)
+
                         endif 
 
                         ib =  sm%ibool(i,j,k,ispec)
                         call compute_bond_matrix_explicit(n1(ib), n2(ib), M)
 
                         Cxyz(i,j,k,ispec,:,:) = real(matmul(matmul(M, Cnat), transpose(M)), kind=SPLINE_REAL)
+
 
                     enddo
                 enddo
@@ -605,6 +608,7 @@ contains
                                         enddo ! q
                                     enddo ! p 
                     
+
                                     sum = sum  +  sm%wglljac(i,j,k,ispec) * cont 
                                 enddo ! k
                             enddo ! j
@@ -612,6 +616,7 @@ contains
                     enddo ! ispec
 
                     ! Add contribution to V_ani matrix
+
                     Vani(m1+l1+1, m2+l2+1) = Vani(m1+l1+1, m2+l2+1) + sum
             enddo !m2
         enddo !m1 
@@ -729,7 +734,7 @@ contains
 
 
 
-        real(kind=CUSTOM_REAL) function gammaD1_coeff(row, s, a, c, l, n, f)
+    real(kind=CUSTOM_REAL) function gammaD1_coeff(row, s, a, c, l, n, f)
         ! Computes value of table D.2 of DT98 
         integer :: row
         integer :: s 
@@ -874,7 +879,6 @@ contains
 
         om0 = OmNL(0,l)
         om2 = OmNL(2,l)
-
 
         om0sq = om0*om0
         om2sq = om2*om2
@@ -1027,13 +1031,319 @@ contains
 
         do h = 1, nlen
             integrand(h) =  real(gammaD1_coeff(coeff_ind, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
-        enddo 
+        enddo
 
         integrand = integrand * gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL)
         integrate_GNIr2 =  integrate_r_traps(rvals, integrand, nlen)
 
         return
     end function integrate_GNIr2
+
+
+
+
+
+     real(kind=SPLINE_REAL) function gamst_hemispheric(abgd, s, t, N, phi1, phi2, Alove, Clove, Llove, Nlove, Flove )
+        ! computes the gamma coefficeints (gen sph harm coefficeints of
+        ! the perturbed elastic tensor, when we take in ACLNF, phi1 and phi2
+        ! it computes the effective elastic tensor for a hemispheric perturbation
+        ! from Irving, Deuss, Woodhouse 2009
+         ! Computes the integral in D.116
+        use integrate, only: integrate_r_traps
+        use w3j, only: thrj
+        implicit none 
+        include 'constants.h'
+        integer                :: sdash , abgd, s, t, N
+        real(kind=CUSTOM_REAL) :: phi1, phi2, sf, tf ,  Alove, Clove, Llove, Nlove, Flove 
+        complex(kind=CUSTOM_REAL) :: sum, phicoeff
+
+        character :: type
+
+        !We compute the new elastic tensor L'^{abgd}_{st} as 
+
+        sf = real(s, kind=CUSTOM_REAL)
+        tf = real(t, kind=CUSTOM_REAL)
+
+
+
+        ! Sum over sdash = 0, 2, 4
+        sum = SPLINE_iZERO
+
+        do sdash = 0, 4, 2
+
+            if (t.eq.0)then 
+                sum = sum +  (phi2-phi1) * gammaD1_coeff(abgd, sdash, Alove, Clove, Llove, Nlove, Flove) * IssNtt(s, sdash, N, 0, 0)
+            else 
+                phicoeff = ( dsin(tf*phi2)-dsin(tf*phi1) + SPLINE_iONE*(dcos(tf*phi2) - dcos(tf*phi1))  ) / tf
+
+                sum = sum +  phicoeff    * gammaD1_coeff(abgd, sdash, Alove, Clove, Llove, Nlove, Flove) * IssNtt(s, sdash, N, 0, t)
+            endif 
+
+        enddo !sdash 
+
+        ! The overall sum in 34 has this term - not to be confused with the one in front
+        ! of the total integral 
+        gamst_hemispheric = ((2 * sf + one)/(four*PI)) *  sum 
+
+    end function gamst_hemispheric
+
+
+
+    complex(kind=CUSTOM_REAL) function IssNtt(s, s1, N, t1, t)
+        ! Eqn 33 of Irving, Deuss, Woodhouse 2009
+        ! conduct a sum over dummy indices t2 and t3 both from -s to s 
+        use ylm_plm, only: XNlm
+
+        implicit none 
+
+        ! Inputs 
+        integer, intent(in) :: s, s1, N, t1, t
+        
+        complex(kind=CUSTOM_REAL) :: frac
+        real(kind=CUSTOM_REAL) :: Nf, tf, t1f, t2f, t3f, theta 
+        integer :: t2, t3
+
+        Nf  = real(N, kind=CUSTOM_REAL)
+        tf  = real(t, kind=CUSTOM_REAL)
+        t1f = real(t1, kind=CUSTOM_REAL)
+    
+        theta = PI/two
+
+
+
+
+        IssNtt = SPLINE_iZERO
+        do t2 = -s, s 
+            t2f = real(t2, kind=CUSTOM_REAL)
+
+            do t3 = -s, s 
+                t3f = real(t3, kind=CUSTOM_REAL)
+
+                if (t2+t3.eq.1)then 
+                    frac = - SPLINE_iONE * PI /two 
+                elseif(t2+t3.eq.-1)then 
+                    frac = + SPLINE_iONE * PI /two 
+                else
+                    frac = (one + dcos(PI*(t2f+t3f)) - SPLINE_iONE*dsin(PI*(t2f+t3f)) ) / (one - (t2f+t3f)**two )
+                endif 
+
+
+                IssNtt = IssNtt + ( SPLINE_iONE**(two*Nf - tf - t1f) & 
+                                      * XNlm(theta, t2, s1, t)           & 
+                                      * XNlm(theta, t2, s1, t1)          & 
+                                      * XNlm(theta, t3, s,  N)           &
+                                      * XNlm(theta, t3, s,  t) )* frac 
+
+            enddo 
+        enddo 
+
+
+    end function IssNtt
+
+
+
+
+    complex(kind=SPLINE_REAL) function integrate_GNIr2_Mochizuki(s, t, l, N, I, u, du, v, dv,& 
+                                                              nlen, rvals, dA, dC, dL, dN, dF, & 
+                                                              type, phi1, phi2)
+        ! Computes the integral in D.116
+        use integrate, only: integrate_r_traps
+        use w3j, only: thrj
+        use woodhouse_kernels, only: BNpmlsld
+        implicit none 
+        include 'constants.h'
+        integer :: N, I, nlen, s, t, l, coeff_ind, w1, w2, w3, h, abgd
+        real(kind=CUSTOM_REAL) :: dA(nlen), dC(nlen), dL(nlen), dN(nlen), dF(nlen)
+        real(kind=CUSTOM_REAL) :: rvals(nlen)
+        real(kind=CUSTOM_REAL) :: phi1, phi2
+        real(kind=SPLINE_REAL) :: u(nlen), v(nlen), du(nlen), dv(nlen), lf, kf, om2, om0, om2sq, om0sq
+        real(kind=SPLINE_REAL) :: gam(nlen), r(nlen), r2(nlen), coeff(nlen), xi(nlen), chi(nlen), phi(nlen), integrand(nlen)
+        character :: type
+
+        ! l and k in floats
+        lf = real(l, kind=SPLINE_REAL)
+        kf = (lf*(lf+SPLINE_ONE))**SPLINE_HALF
+
+        ! Compute r^2
+        r  = real(rvals, kind=SPLINE_REAL)
+        r2 = r*r
+
+        
+        om0 = OmNL(0,l)
+        om2 = OmNL(2,l)
+
+        om0sq = om0*om0
+        om2sq = om2*om2
+
+        if (type.eq.'S')then 
+            chi = dv*r + u - v
+            phi = (SPLINE_TWO*u - kf*kf*v)
+            xi  = SPLINE_ZERO
+        elseif(type.eq.'T')then 
+            chi = SPLINE_ZERO
+            phi = SPLINE_ZERO
+            xi  = du*r - u
+        else
+            write(*,*)'Error: type must be S, or T: ', type
+        endif 
+
+
+        ! Generate integral: 
+        select case(N)
+            case(-4) ! N = -4
+                abgd = 13
+                select case(I)
+                    case(1)
+                        coeff = om0sq * om2sq * v * v * thrj(l, s, l,  2, -4, 2)
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select
+            case(-3) ! N = -3
+                abgd = 12
+                 select case(I)
+                    case(1)
+                        coeff = - om0sq * om2 * (v * chi * thrj(l, s, l,  2, -3, 1) & 
+                                               + v * chi * thrj(l, s, l,  1, -3, 2 ))
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select
+            case(-2) ! N = -2
+                abgd =  8 + I
+                 select case(I)
+                    case(1)
+                        coeff = om0*om2 * (v * du * thrj(l, s, l, 2, -2, 0 ) & 
+                                        +  v * du * thrj(l, s, l, 0, -2, 2) ) * r
+                    case(2)
+                        coeff = om0sq * chi * chi * thrj(l, s, l,  1, -2, 1) 
+                    case(3)
+                        coeff = - om0 * om2 * (v * phi * thrj(l, s, l, 2, -2, 0 ) & 
+                                             + v * phi * thrj(l, s, l,  0, -2,  2 ) ) * r
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select
+            case(-1) ! N = -1
+                abgd = 5 + I
+                 select case(I)
+                    case(1) ! 6
+                        coeff = - om0 * ( chi * du  * thrj(l, s, l, 1, -1, 0) & 
+                                     +    chi * du  * thrj(l, s, l, 0, -1, 1) ) * r
+                    case(2) ! 7
+                        coeff = - om0sq * (om2 * v * chi * thrj(l, s, l,  2, -1, -1) & 
+                                        +  om2 * v * chi * thrj(l, s, l, -1, -1,  2) )
+                    case(3) ! 8
+                        coeff =om0 * (chi * phi * thrj(l, s, l, 1, -1, 0) + & 
+                                      chi * phi * thrj(l, s, l, 0, -1, 1)) * r
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select
+            case(0) ! N = 0
+                abgd = I
+                select case(I)
+                    case(1)
+                        coeff = du*du * BNpmlsld(0, 1, l, s, l) * r2
+                    case(2)
+                        coeff = half * v * v * BNpmlsld(2, 1, l, s, l)  
+                    case(3)
+                        coeff = phi*phi * BNpmlsld(0, 1, l, s, l) * r2
+                    case(4)
+                        coeff = -(two*(phi*du)) * BNpmlsld(0, 1, l, s, l) * r2
+                    case(5)
+                        coeff = -((chi*chi)) * BNpmlsld(1, 1, l, s, l)
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select
+
+            case(1) ! N = 1
+                abgd = 5 + I 
+                select case(I)
+                    case(1)
+                        coeff = - ( om0 * chi * du  * thrj(l, s, l, -1, 1, 0) & 
+                                  + om0 * chi * du  * thrj(l, s, l, 0, 1, -1) ) * r
+                    case(2)
+                        coeff = - om0sq * (om2 * v * chi * thrj(l, s, l, -2, 1,  1) & 
+                                         + om2 * v * chi * thrj(l, s, l,  1, 1, -2) )
+                    case(3)
+                        coeff = (om0 * chi * phi * thrj(l, s, l, -1, 1, 0) + & 
+                                om0 * chi * phi * thrj(l, s, l, 0, 1, -1)) * r
+                    case default
+                            write(*,*)'Error in I value', I
+                            stop
+                end select
+                
+            case(2) ! N = 2
+                abgd = 8 + I
+                select case(I)
+                    case(1)
+                        coeff = om0*om2 * (v * du * thrj(l, s, l, -2, 2, 0 ) & 
+                                        +  v * du * thrj(l, s, l,  0, 2, -2) ) * r
+                    case(2)
+                        coeff = om0sq * chi * chi * thrj(l, s, l,  -1, 2, -1) 
+                                
+                    case(3)
+                        coeff = - om0*om2 * (v * phi * thrj(l, s, l, -2, 2,  0 ) & 
+                                           + v * phi * thrj(l, s, l,  0, 2, -2 ) ) * r
+                    case default
+                            write(*,*)'Error in I value', I
+                            stop
+                end select
+
+            case(3) ! N = 3
+                abgd = 12
+                select case(I)
+                    case(1)
+                        coeff = - om0sq*om2 * (v * chi * thrj(l, s, l,  -2, 3, -1) & 
+                                             + v * chi * thrj(l, s, l,  -1, 3, -2 ))
+                    case default
+                            write(*,*)'Error in I value', I
+                            stop
+                end select
+
+            case(4) ! N = 4
+                abgd = 13
+                  select case(I)
+                    case(1)
+                        coeff = om0sq * om2sq * v * v * thrj(l, s, l,  -2, 4, -2)
+                    case default
+                        write(*,*)'Error in I value', I
+                        stop
+                end select
+
+            ! Check on N value 
+            case default
+                write(*,*)'Error in N value', N
+                stop
+        end select 
+
+
+
+        do h = 1, nlen
+            integrand(h) =  real(gammaD1_coeff(abgd, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
+            !integrand(h) =  gamst_hemispheric(abgd, s, t, N, phi1, phi2, dA(h), dC(h), dL(h), dN(h), dF(h))
+        enddo
+
+        !write(*,*)"min/max integrand: ", minval(integrand), maxval(integrand)
+
+
+        integrand = integrand * coeff 
+
+
+        integrate_GNIr2_Mochizuki =  integrate_r_traps(rvals, integrand, nlen)
+
+
+
+    end function integrate_GNIr2_Mochizuki
+
+
+
+
+
+
+
 
 
 

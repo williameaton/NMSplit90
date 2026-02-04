@@ -27,7 +27,7 @@ SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90 ylm_plm.f90 thrj.
 MED_SRCS   = $(SETUP_SRCS) gll.f90 spline.f90 mineos_model.f90  \
                            mode.f90 prem.f90 piecewise_interpolation.f90 \
                            lagrange_any.f90 integrate.f90 gravity.f90 mesh.f90 \
-                           centrifugal.f90 output.f90 model3D_reader.f90 elastic_tensor.f90
+                           centrifugal.f90 output.f90 model3D_reader.f90 elastic_tensor.f90 woodhouse.f90
 
 
 
@@ -149,7 +149,7 @@ plot_model_SOURCES =     $(MED_SRCS)       \
 comp_split_SOURCES     = $(MED_SRCS)  visual.f90 V_cen_matrix.f90  compute_splitting_effect.f90 
 
 
-rad_knl_SOURCES     = $(MED_SRCS) woodhouse.f90 radial_kernel.f90 
+rad_knl_SOURCES     = $(MED_SRCS) radial_kernel.f90 
 
 
 
@@ -166,6 +166,7 @@ split_mesh_LDADD = -lcoretran
 linbreak_mesh_LDADD = -lcoretran
 rad_knl_LDADD = -lcoretran
 benchmark_trans_pert_LDADD = -lcoretran
+rot_ell_LDADD = -lcoretran
 
  
 

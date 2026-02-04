@@ -140,7 +140,6 @@ module modes
         do while (ios .eq. 0) 
         nrec = nrec + 1
         read(iocat,'(i5,1x,a1,i5,6g16.7)',iostat=ios) nn,char,ll,phsv,wwmhz,ttcom,ggcom,qqmod,raylquo
-    
             ! Checks that the type of mode in the 'catalogue file' is correctly S or T 
             if (nrec == 1 .and. (char /= type1 .and. char /= type2)) then
                 write(*,*)'Incorrect mode catalogue: ', nn, ll, ';', char, ';', type1, ';', type2
@@ -154,7 +153,7 @@ module modes
         close(iocat)
     
         if (ios .gt. 0) stop 'Error reading 1'
-        if (ios .lt. 0) stop 'Mode not found in the catalogue' !when would this ever trigger? 
+        if (ios .lt. 0) stop 'Mode   not found in the catalogue' !when would this ever trigger? 
         
         if(verbose.ge.3) write(*,'(a,1x,i6)')'Found mode at ID', nrec
     
@@ -167,7 +166,7 @@ module modes
     
         do j = 1, nrec
         read(iobin,iostat = ios)n4,l4, self%wcom, self%qmod, cg4,(buf(i),i=1,nvec)
-    
+            !write(*,*)n4, l4
         ! Check if we have gone past the data in our reads
         if (n4old.eq.n4.and.l4old.eq.l4)then
             write(*,*)'Mode not in catalogue. Looped past end of file binary read.'

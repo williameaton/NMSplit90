@@ -119,9 +119,6 @@ program semi_analytical_W_matrix
         W_a = SPLINE_ZERO
     endif 
 
-
-
-
     W_a = W_a * SPLINE_HALF * rho_spl * interp%radial * interp%radial
 
     ! Now we need to integrate for rho Ws r^2 

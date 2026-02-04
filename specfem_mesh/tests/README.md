@@ -26,6 +26,10 @@ A current list of tests in this directory, listed by subdirectory:
 ### `plm`: 
 -   `test_plm`: tests the `Plm` function for a number of l and m values
 
+### `rot_mat`: 
+-   `test_wrot`: computes W matrix using SEM for S-S coupling for comparison with semi-analytical result
+-   `test_wstored`: computes W matrix (SEM) using stored eigenfunctions
+-   `rotation_semi`: computes semi-analytical case
 
 ### `spline`: 
 -   Tests the spline interpolation of eigenfunction for a Spheroidal mode and compares with scipy.

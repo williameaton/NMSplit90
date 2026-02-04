@@ -63,8 +63,7 @@ subroutine compute_W_matrix(SM, interp, n1, t1, l1, n2, t2, l2, store)
         l_loop = l2
     endif
 
-    do m = -l_loop,  l_loop
-
+    do m = -l_loop,  -l_loop+1!l_loop
             ! Get 1st displacement 
             call sm%compute_mode_displacement(m, mode_1, sm%disp1)
             call sm%rotate_complex_vector_rtp_to_xyz(sm%disp1)
@@ -214,7 +213,6 @@ subroutine save_W_matrix(l1, l2, fname)
 
     ! Dimensionalise the matrix: 
     ! has same units as splitting matrix H of angular freq
-
     open(1,file=trim(fname))
     ! Write the real matrix 
     do row =1, 2*l1 + 1

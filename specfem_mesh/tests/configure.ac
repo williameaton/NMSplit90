@@ -3,17 +3,21 @@ AM_INIT_AUTOMAKE([subdir-objects foreign])
 
 # Check for Fortran compiler
 AC_PROG_FC
+
+#FC=nvfortran
 FC=nvfortran
+
+
 
 
 # For the KD tree we want to incorporate the coretran library: 
 AC_ARG_WITH([coretranmod],
     [AS_HELP_STRING([--with-coretranmod], [Path to the directory containing coretran .mod files])],
-    [coretranmod=$withval], [coretranmod=/scratch/gpfs/we3822/coretran/include])
+    [coretranmod=$withval], [coretranmod=/scratch/gpfs/TROMP/we3822/coretran/include])
 
 AC_ARG_WITH([coretranlib],
     [AS_HELP_STRING([--with-coretranlib], [Path to the directory containing .so files])],
-    [coretranlib=$withval], [coretranlib=/scratch/gpfs/we3822/coretran/lib])
+    [coretranlib=$withval], [coretranlib=/scratch/gpfs/TROMP/we3822/coretran/lib])
 
 # Ensure that both directories are valid
 if test ! -d "$coretranmod"; then

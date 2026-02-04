@@ -32,6 +32,8 @@ program semi_analytical_W_matrix
     type(Mode)            :: mode_1, mode_2    
     type(InterpPiecewise) :: interp
 
+    real(kind=CUSTOM_REAL) :: tau_nu_pref
+
     character(len=1) :: t1
 
     ! cst
@@ -40,8 +42,10 @@ program semi_analytical_W_matrix
     integer :: smin, smax, num_s, ncols
 
     ! 19 rn
-    integer, dimension(nmodes), parameter :: modeNs = (/16, 2, 3, 6, 8, 9, 11, 11, 13, 13, 14, 15, 16, 18, 20, 21, 23, 25, 27/)
-    integer, dimension(nmodes), parameter :: modeLs = (/ 5, 3, 2, 3, 5, 3, 4, 5, 2, 3, 4, 3, 6, 4, 5, 6, 5, 2, 2/)
+    !integer, dimension(19), parameter :: modeNs = (/16, 2, 3, 6, 8, 9, 11, 11, 13, 13, 14, 15, 16, 18, 20, 21, 23, 25, 27/)
+    !integer, dimension(19), parameter :: modeLs = (/ 5, 3, 2, 3, 5, 3, 4, 5, 2, 3, 4, 3, 6, 4, 5, 6, 5, 2, 2/)
+    integer, dimension(31), parameter :: modeNs = (/0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 6, 8, 8, 9, 11, 11, 13, 13, 18, 18 /)
+    integer, dimension(31), parameter :: modeLs = (/2, 3, 4, 5, 6, 7, 8, 2, 3, 4, 5, 6, 7, 8, 9, 3, 4, 5, 6, 1, 2, 3, 1, 5, 3,  4,  5,  1,  2,  3,  4 /)
     integer :: imode
 
 
@@ -84,7 +88,7 @@ program semi_analytical_W_matrix
 
 
 
-     ! Load the interpolated eta and epsilon values:
+    ! Load the interpolated eta and epsilon values:
     open(1, file = 'ellipticity/eta_interpolated.txt', status = 'old', form='formatted')
     do i = 1, npoints
         read(1,*)eta(i)
@@ -101,7 +105,10 @@ program semi_analytical_W_matrix
         read(1,*)gravacc(i)
     enddo 
     close(1)
-    gravacc = gravacc/(SCALE_V/SCALE_T)   ! non dimensionalise
+    !gravacc = gravacc/(SCALE_V/SCALE_T)   ! non dimensionalise
+    ! mineos has pi*g = 1 as normalisation, so im assuming that g at surface
+    ! needs to be 1 / pi
+    gravacc = gravacc/(gravacc(npoints) * PI)   ! non dimensionalise
 
 
 
@@ -124,13 +131,13 @@ program semi_analytical_W_matrix
 
 
 
-    do imode = 1, nmodes 
+    do imode = 1, 7
+        write(*,*)'Mode ', modeNs(imode), ' S ', modeLs(imode)
 
         t1 = 'S'
         ! ONLY FOR SELF COUPLING CURRENTLY
         mode_1 = get_mode(modeNs(imode), t1, modeLs(imode) , mineos_ptr)
         mode_2 = get_mode(modeNs(imode), t1, modeLs(imode) , mineos_ptr)
-
 
         ! Setup matrix
         allocate(Wmat(mode_1%tl1, mode_2%tl1))
@@ -155,6 +162,22 @@ program semi_analytical_W_matrix
             write(1,*)rho_spl(i)*RHOAV
         enddo 
         close(1)
+
+
+        open(1,file='ellipticity/eigen_u.txt', form='formatted')
+        do i = 1, npoints
+            write(1,*)mode_1%u_spl(i)
+        enddo 
+        close(1)
+
+        open(1,file='ellipticity/eigen_v.txt', form='formatted')
+        do i = 1, npoints
+            write(1,*)mode_1%v_spl(i)
+        enddo 
+        close(1)
+
+        ksq = mode_1%kf*mode_1%kf
+
 
         ! ------------------- COMPUTE ROTATION TERMS   -------------------
         ! Compute Ws (D.70)
@@ -199,17 +222,16 @@ program semi_analytical_W_matrix
         ! Now we need to integrate for rho Ws r^2 
         int_Wa =  integrate_r_traps(interp%radial, W_a, npoints)
 
+
         ! ------------------- COMPUTE ELLIPTICITY TERMS   -------------------
 
         ! Compute Tell integral (D.80)
-
-
         !call WK_TbarSrho(mode_1, mode_2,   TbarSrho)
         !call WK_TcaronSrho(mode_1, mode_2, TcaronSrho)
 
         if(mode_1%t.eq.'S')then 
             TbarSrho    = -six * mode_1%u_spl * mode_1%v_spl/mode_1%kf
-            TcaronSrho  = mode_1%u_spl*mode_1%u_spl + (mode_1%kf*mode_1%kf - three)*(mode_1%v_spl*mode_1%v_spl)/(mode_1%kf*mode_1%kf)
+            TcaronSrho  = mode_1%u_spl*mode_1%u_spl + (mode_1%kf*mode_1%kf - three)*(mode_1%v_spl*mode_1%v_spl)/(ksq)
         else 
             TbarSrho = zero
             TcaronSrho =  (mode_1%kf*mode_1%kf - three) * (mode_1%w_spl*mode_1%w_spl)/(mode_1%kf*mode_1%kf)
@@ -217,8 +239,7 @@ program semi_analytical_W_matrix
 
 
         Tellintegrand = (two/three) * epsi * rho_spl  * interp%radial  * interp%radial * & 
-                        (TbarSrho - ((eta+three)*TcaronSrho))
-
+                        (TbarSrho - ((eta+three)*TcaronSrho))        
 
 
         ! call WK_VbarSk(mode_1, mode_2, interp%radial, VbarSk)   
@@ -229,11 +250,13 @@ program semi_analytical_W_matrix
         ! call WK_VcaronSmu(mode_1, mode_2, interp%radial, VcaronSmu)
         ! call WK_VcaronSrho(mode_1, mode_2, interp%radial, gravacc, rho_spl, VcaronSrho)
 
-        PiG = one !PI*GRAV
-        ksq = mode_1%kf*mode_1%kf
+        PiG = PI*GRAV
 
         if(mode_1%t.eq.'S')then 
+            ! correct DT98 version
             VbarSk = -two * (mode_1%du_spl + mode_1%aux_f)*(mode_1%du_spl + three*mode_1%v_spl/(mode_1%kf*interp%radial))   ! D.184
+            ! incorrect woodhuse 80 version
+            ! VbarSk = -two * (mode_1%du_spl + mode_1%aux_f)*(mode_1%du_spl + three*mode_1%v_spl/(mode_1%kf*interp%radial))   ! D.184
         else 
             VbarSk = zero
         endif 
@@ -296,8 +319,8 @@ program semi_analytical_W_matrix
 
         Vellintegrand = (two/three) * epsi * interp%radial * interp%radial * &
                         (  kappa_spl * (VbarSk   - (eta+one)*VcaronSk  )    & 
-                        + mu_spl    * (VbarSmu  - (eta+one)*VcaronSmu )    & 
-                        + rho_spl   * (VbarSrho - (eta+three)*VcaronSrho)) 
+                        +  mu_spl    * (VbarSmu  - (eta+one)*VcaronSmu )    & 
+                        +  rho_spl   * (VbarSrho - (eta+three)*VcaronSrho)) 
                         
 
 
@@ -316,10 +339,13 @@ program semi_analytical_W_matrix
         int_Vell =  integrate_r_traps(interp%radial, Vellintegrand, npoints)
         !int_2ell =  integrate_r_traps(interp%radial, VS2integrand,  npoints)
 
+        tau_nu_pref = (ksq )/( (mode_1%lf*two + three )*(two*mode_1%lf  - one) )
 
 
-        tau = int_Tell * (mode_1%lf*(mode_1%lf +one) )/( (mode_1%lf*two + three )*(two*mode_1%lf  - one) )
-        nu  = int_Vell * (mode_1%lf*(mode_1%lf +one) )/( (mode_1%lf*two + three )*(two*mode_1%lf  - one) )
+
+
+        tau = int_Tell * tau_nu_pref
+        nu  = int_Vell * tau_nu_pref
 
 
         ! Only non zero if m1 = m2 
@@ -366,31 +392,36 @@ program semi_analytical_W_matrix
 
         ! Parameters a b c: 
         wcomnondim = (SCALE_T * mode_1%wcom)
+        write(*,*)"Mode wcom dimensional ", mode_1%wcom
+
+ 
 
         if(mode_1%t .eq.'T')then 
-        aparam =  half * (nu/(wcomnondim*wcomnondim) - tau)
+            aparam =  half * (nu/(wcomnondim*wcomnondim) - tau)
         else 
-            aparam =  ((OMEGA/wcomnondim)**two)*(one - mode_1%kf*mode_1%kf*int_Ws)/three & 
-            + half * (nu - wcomnondim*wcomnondim*tau)/(wcomnondim*wcomnondim)
+            aparam =  ((OMEGA/wcomnondim)**two)*(one - mode_1%kf*mode_1%kf*int_Ws)/three &
+                       +  half * (nu - wcomnondim*wcomnondim*tau)/(wcomnondim*wcomnondim)
         endif 
         bparam =  (int_Ws * OMEGA / wcomnondim)  
-        cparam = -three*(nu - wcomnondim*wcomnondim*tau)/(two *wcomnondim*wcomnondim*mode_1%kf*mode_1%kf )
+        cparam = -three*(nu - wcomnondim*wcomnondim*tau)/(two * wcomnondim*wcomnondim * ksq )
 
         ! note these are unitless parameters
-        write(*,*)'A param: ', aparam 
-        write(*,*)'B param: ', bparam 
-        write(*,*)'C param: ', cparam 
+        write(*,*)'A param: ', aparam * 1000.0
+        write(*,*)'B param: ', bparam * 1000.0
+        write(*,*)'C param: ', cparam * 1000.0
+        write(*,*)"nu  is ", tau
+        write(*,*)"tau is ", nu
 
 
         ! Not scaled 
         call buffer_int(nstr, mode_1%n)
         call buffer_int(lstr,  mode_1%l)
 
-        write(out_name, '(a)')'./ellipticity/abcparams/abc'//trim(nstr)//mode_1%t//trim(lstr)//'_'//trim(nstr)//mode_1%t//trim(lstr)//'.txt'
+        write(out_name, '(a)')'./paper_benchmarks/Coriolis/abc/'//trim(nstr)//mode_1%t//trim(lstr)//'_'//trim(nstr)//mode_1%t//trim(lstr)//'.txt'
         open(1,file=trim(out_name), form='formatted')
-        write(1,*)aparam
-        write(1,*)bparam
-        write(1,*)cparam
+        write(1,*)aparam 
+        write(1,*)bparam 
+        write(1,*)cparam 
         close(1)
 
 
@@ -430,6 +461,8 @@ program semi_analytical_W_matrix
         out_name = 'ellipticity/cst/cst_'//trim(nstr)//t1//trim(lstr)//'_'//trim(nstr)//t1//trim(lstr)
         call write_cst_complex_to_file(out_name, cst, ncols, num_s, smin, 2)
 
+
+
         deallocate(Wmat)
         deallocate(Vcen)
         deallocate(Tell)
@@ -439,7 +472,7 @@ program semi_analytical_W_matrix
 
 
 
-
+        write(*,*)
     enddo ! i mode
 
 

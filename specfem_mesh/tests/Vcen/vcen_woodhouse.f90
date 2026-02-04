@@ -66,7 +66,7 @@ knot_lower = 1
 r_lower    = zero        
 knot_upper = mineos%NR
 r_upper    = scale_R
-npoints    = 10*(knot_upper-knot_lower)
+npoints    = 100*(knot_upper-knot_lower)
 
 
 ! Create interpolator with evenly spaced points in IC 
@@ -89,8 +89,6 @@ call interp%interpolate_mineos_variable(real(mineos%rho_mineos, kind=SPLINE_REAL
 allocate(W_s(npoints))
 if (mode_1%t.ne.mode_2%t)then 
     W_s = SPLINE_ZERO
-    write(*,*)'Ws will be 0'
-
 elseif(mode_1%t.eq.'S' .and. mode_2%t.eq.'S')then 
     W_s = mode_1%v_spl/mode_1%kf * mode_2%v_spl/mode_2%kf & 
         + mode_1%u_spl * mode_2%v_spl/mode_2%kf & 
@@ -116,10 +114,9 @@ call WK_Vphi(mode_1, mode_2, 2, interp%radial, rho_spl, Vphi)
 call WK_Vphi_dot(mode_1, mode_2, 2, interp%radial, rho_spl, Vdotphi)
 
 ! Compute integrand: 
-integrand = (Vphi * interp%radial * interp%radial + two* Vdotphi * interp%radial) & 
-             * OMEGA * OMEGA *  interp%radial *interp%radial / three
-intVphis =  integrate_r_traps(interp%radial, integrand, npoints)
+integrand = (Vphi * interp%radial  + two * Vdotphi )* (interp%radial**three) / three
 
+intVphis =  integrate_r_traps(interp%radial, integrand, npoints) * OMEGA * OMEGA 
 
 ! Find the smallest of the two l's: 
 mmin = min(l1, l2) 
@@ -133,12 +130,13 @@ else
     sameone = zero
 endif
 
-write(*,*)'sameone: ', sameone
-write(*,*)'int_Ws: ', int_Ws
-write(*,*)'intVphis: ', intVphis
-write(*,*)'2/3 OMEGA^2: ', TWO/THREE* OMEGA*OMEGA
+!write(*,*)'sameone: ', sameone
+!write(*,*)'int_Ws: ', int_Ws
+!write(*,*)'intVphis: ', intVphis
+!write(*,*)'2/3 OMEGA^2: ', TWO/THREE* OMEGA*OMEGA
 
 half_tl12 = (real(mode_1%tl1)*real(mode_2%tl1))**(half)
+
 
 do im = -mmin, mmin
 
@@ -151,7 +149,6 @@ do im = -mmin, mmin
     sum = sum + ((-one)**(mf)) * thrj(l1, 2, l2, -im, 0, im)  * half_tl12 * intVphis
 
     Vcen(im+l1+1, im+l2+1) = Vcen(im+l1+1, im+l2+1) +  sum 
-
 
 enddo !im 
 

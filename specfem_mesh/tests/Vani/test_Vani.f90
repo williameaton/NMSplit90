@@ -22,19 +22,19 @@ program test_constant_Vani_matrix
     mineos_ptr => mineos
 
     ! Choose modes: 
-    n1      = 6
+    n1      = 3
     t1      = 'S'
-    l1      = 2
+    l1      = 1
 
-    n2      = 6
+    n2      = 3
     t2      = 'S'
-    l2      = 2
+    l2      = 1
 
-    A =  0.4d0
-    C = -0.2d0
-    L =  0.3d0
-    N = -0.5d0
-    F =  0.1d0
+    A =  0.04d0
+    C = -0.02d0
+    L =  0.03d0
+    N = -0.05d0
+    F =  0.01d0
 
     region = 3
 

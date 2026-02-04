@@ -28,6 +28,7 @@ subroutine compute_Vcen_matrix(SM, interp, gpsi, n1, t1, l1, n2, t2, l2)
     ! Check if self_coupling  
     if (t1.eq.t2 .and. l1.eq.l2 .and. n1.eq.n2)then 
         self_coupling = .true.
+        write(*,*)"Self coupling!"
     else
         self_coupling = .false.
     endif 
@@ -67,22 +68,39 @@ subroutine compute_Vcen_matrix(SM, interp, gpsi, n1, t1, l1, n2, t2, l2)
             ! component before rotating
             call sm%compute_mode_displacement(m1, mode_1, sm%disp1)
             call sm%rotate_complex_vector_rtp_to_xyz(sm%disp1)
+            write(*,*)'Computed displacement ', m1
 
             ! Get 1st mode's gradient of displacement 
+
             call sm%compute_mode_gradS(m1, mode_1, sm%gradS_1)
+            write(*,*)'Computed gradS ', m1
+
             call sm%rotate_complex_matrix_rtp_to_xyz(sm%gradS_1)
+            write(*,*)'Rotated ', m1
 
-            do m2 = -l2,  l2
-                ! Displacement: store the radial component before rotating
-                call sm%compute_mode_displacement(m2, mode_2, sm%disp2)
-                call sm%rotate_complex_vector_rtp_to_xyz(sm%disp2)
+            !do m2 = -l2,  l2
+            m2 = m1 
 
-                ! Grad disp and strain deviator
-                call sm%compute_mode_gradS(m2, mode_2, sm%gradS_2)
-                call sm%rotate_complex_matrix_rtp_to_xyz(sm%gradS_2)
+                if (self_coupling)then 
+                    write(*,*)"selfcoupling"
+
+                    sm%disp2(:,:,:,:,:) = sm%disp1(:,:,:,:,:)
+                    sm%gradS_2(:,:,:,:,:,:) = sm%gradS_1(:,:,:,:,:,:)
+                    write(*,*)"copied"
+                else 
+                    ! Displacement: store the radial component before rotating
+                    call sm%compute_mode_displacement(m2, mode_2, sm%disp2)
+                    call sm%rotate_complex_vector_rtp_to_xyz(sm%disp2)
+
+                    ! Grad disp and strain deviator
+                    call sm%compute_mode_gradS(m2, mode_2, sm%gradS_2)
+                    call sm%rotate_complex_matrix_rtp_to_xyz(sm%gradS_2)
+                endif 
 
                 gpsi_l(3) = zero 
 
+                write(*,*)'now here...'
+                
                 sum = SPLINE_iZERO
                 do ispec = 1, sm%nspec 
                     do i = 1, sm%ngllx
@@ -137,7 +155,7 @@ subroutine compute_Vcen_matrix(SM, interp, gpsi, n1, t1, l1, n2, t2, l2)
                 enddo
 
                 Vcen(m1+l1+1, m2+l2+1) = Vcen(m1+l1+1, m2+l2+1) + sum
-            enddo ! m2
+            !enddo ! m2
     enddo ! m1
 
 end subroutine compute_Vcen_matrix
@@ -179,7 +197,7 @@ subroutine save_Vcen_matrix(l1, l2, fname)
         enddo 
     enddo 
     close(1)
-
+    write(*,*)"Saved to "//trim(fname)
 end subroutine save_Vcen_matrix
 
 

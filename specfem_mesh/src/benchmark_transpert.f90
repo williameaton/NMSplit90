@@ -36,11 +36,11 @@ program benchmark_trans_perturb
     integer, dimension(5), parameter :: I_n = (/ 5, 3, 3, 1, 1/)
 
     ! 19 rn
-    integer, dimension(1), parameter :: modeNs = (/6/)
-    integer, dimension(1), parameter :: modeLs = (/2/)
+    integer, dimension(27), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 16/)
+    integer, dimension(27), parameter :: modeLs = (/3, 3, 3, 4, 5,  7, 5, 2, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  7/)
     integer :: imode
     
-    logical, parameter :: benchmark_isotropic_perturb = .true.
+    logical, parameter :: benchmark_isotropic_perturb = .false.
 
     ! Read mineos model 
     call mineos%process_mineos_model(.false.)
@@ -48,25 +48,23 @@ program benchmark_trans_perturb
 
 
     ! READ BENCHMARK PROFILES OF ACLNF and RADIUS: 
-
     if(benchmark_isotropic_perturb)then 
         open(unit=1,file='benchmarks/isotropic_perturb_ACLNF_profiles.txt', &
         status='old', form='formatted', iostat=ier)
         read(1,*)nrad
         allocate(radius(nrad), Aspl(nrad), Cspl(nrad), Lspl(nrad), Nspl(nrad), Fspl(nrad)) 
         do iline = 1, nrad
-            read(1,*) radius(iline), Aspl(iline), Lspl(iline), Fspl(iline)
+            read(1,*) radius(iline), Aspl(iline), Cspl(nrad), Lspl(iline), Nspl(nrad), Fspl(iline)
         enddo 
         close(1)
         ! Non-dimensionalise the ACLNF: 
         Aspl = Aspl/(SCALE_V*SCALE_V*RHOAV)
+        Cspl = Cspl/(SCALE_V*SCALE_V*RHOAV)
         Lspl = Lspl/(SCALE_V*SCALE_V*RHOAV)
+        Nspl = Nspl/(SCALE_V*SCALE_V*RHOAV)
         Fspl = Fspl/(SCALE_V*SCALE_V*RHOAV)
-        ! Set C=A, L=N
-        Cspl = Aspl
-        Nspl = Lspl
     else 
-        open(unit=1,file='benchmarks/radial_perturb_ACLNF_TI_profiles.txt', &
+        open(unit=1,file='benchmarks/isoradial_perturb_ACLNF_profiles.txt', &
         status='old', form='formatted', iostat=ier)
         read(1,*)nrad
         allocate(radius(nrad), Aspl(nrad), Cspl(nrad), Lspl(nrad), Nspl(nrad), Fspl(nrad)) 
@@ -104,7 +102,7 @@ program benchmark_trans_perturb
     allocate(K_F(nrad))
     allocate(integrand(nrad))
 
-    do imode = 1, 1
+    do imode = 1, nmodes
         ! METHOD FROM CHAPTER 9 of DT 98 
         n1 = modeNs(imode)
         l1 = modeLs(imode)
@@ -166,7 +164,7 @@ program benchmark_trans_perturb
             enddo 
 
             ! Next we need to do 1/2omega Vani (non dim)
-            Vani = Vani/(two * mode_1%wcom * SCALE_T)*1.0e6
+            Vani = Vani/(two * mode_1%wcom * SCALE_T) * 1.0e6
 
             ! Compute the Csts
             call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
@@ -180,14 +178,12 @@ program benchmark_trans_perturb
             df_from_c00 = df_from_c00 / (four*PI)**half
             deallocate(cst_imag)
 
-            write(*,'(i2, a, i2, f15.10, f15.10)') n1, ' S ', l1,  dw, df_from_c00
+            write(*,'(i2, a, i3, a, f15.10, f15.10)') n1, ' S ', l1, ' ', dw, df_from_c00
 
         else
             ! CANT USE TROMP 93 for radial TI model so print Ch 9 method only
-            write(*,'(i2, a, i2, f15.10, f15.10)') n1, ' S ', l1,  dw
+            write(*,'(i2, a, i2, f15.10, f15.10, f15.10, f15.10)') n1, ' S ', l1,  dw
         endif 
-
-
 
         deallocate(Vani)
 
