@@ -1,6 +1,6 @@
 
 program reproduce_tromp93
-    use params, only: Vani, verbose, myrank, MPI_SPLINE_COMPLEX, & 
+    use params, only: Vani, verbose,  MPI_SPLINE_COMPLEX, & 
                       MPI_SPLINE_REAL, MPI_CUSTOM_REAL, IIN, IOUT, glob_eta1,   &
                       glob_eta2,  nmodes, nprocs, cluster_size, Arad, Crad, Lrad, Nrad, Frad
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
@@ -30,7 +30,7 @@ program reproduce_tromp93
 
     integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2,  region, ierr, & 
                tl1, tl2, h, b, sets_per_process, & 
-               myset_start, myset_end, i_mode, maxknot, smin, smax, ncols, num_s
+               myset_start, myset_end, i_mode, maxknot, smin, smax, ncols, num_s, myrank
     character ::  t1
     character(len=2) n1str, l1str
     character(len=12) nprocstr, nmodestr, timing_fmt_vals

@@ -125,7 +125,7 @@ program radial_method
     
 
 
-    call load_ACLNF_from_files(aclnf_dir, 0, npoints)
+    call load_ACLNF_from_files(aclnf_dir, 0, npoints, myrank)
 
 
     ! Interpolate the vp and rho to the relevant points 

@@ -34,7 +34,7 @@ program hemisphere
     phi1 = 0.0
     phi2 = two*PI!PI/three
 
-
+ 
     ! Test the values for XNlm: 
 
     !XNlm(theta, N, l, m)
@@ -111,10 +111,6 @@ program hemisphere
                 enddo
             enddo 
 
-            write(*,*)'sum ', sum
-            write(*,*)'Adds', (-SPLINE_ONE)**mf1 * (two*mode_1%lf + one) * thrj(mode_1%l, s, mode_1%l, -m, 0, m) * sum 
-            write(*,*)
-
             ! Computing D.208 but not including the (2s + 1 / 4pi)^1/2 term 
             ! since that is already added in to the Gamma_NI via the gammaD1_coeff 
             ! function 
@@ -147,8 +143,7 @@ program hemisphere
 
             do s = 0, 4, 2 
                 t = 0
-                !do t = -s, s
-                    write(*,*)s, t
+
                     ! Compute sum_N sum_I int \Gamma_{NI} r^2 dr
                     sum = SPLINE_iZERO
                     do N = -4, 4
@@ -160,10 +155,6 @@ program hemisphere
                                                                     Nrad, Frad, mode_1%t, phi1, phi2)                        
                         enddo
                     enddo 
-
-                    write(*,*)'sum ', sum
-                        write(*,*)'Adds', (-SPLINE_ONE)**mf1 * (two*mode_1%lf + one) * thrj(mode_1%l, s, mode_1%l, -m1, t, m2) * sum 
-                        write(*,*)
 
                     ! Computing D.208 but not including the (2s + 1 / 4pi)^1/2 term 
                     ! since that is already added in to the Gamma_NI via the gammaD1_coeff 

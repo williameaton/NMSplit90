@@ -627,7 +627,7 @@ contains
 
 
 
-    subroutine cuda_Vani_matrix_stored_selfcoupling(sm, n1, t1, l1)
+    subroutine cuda_Vani_matrix_stored_selfcoupling(sm, n1, t1, l1, myrank)
         !use omp_lib
         use params, only: strains1, Cxyz, Vani
         use allocation_module, only: deallocate_if_allocated
@@ -642,7 +642,7 @@ contains
 
         ! IO variables
         type(SetMesh)     :: sm
-        integer           :: l1, n1
+        integer           :: l1, n1, myrank
         character         :: t1
         ! Local variables
         integer           :: m1, m2, im
@@ -666,7 +666,7 @@ contains
 
 
 
-        call ORIGINAL_compute_vani_sc_cuda(l1, sm%ngllx, sm%nspec, sm%wglljac)
+        call ORIGINAL_compute_vani_sc_cuda(l1, sm%ngllx, sm%nspec, sm%wglljac, myrank)
 
 
     end subroutine cuda_Vani_matrix_stored_selfcoupling
@@ -1033,6 +1033,13 @@ contains
             integrand(h) =  real(gammaD1_coeff(coeff_ind, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
         enddo
 
+    
+        if (s.eq.2)then 
+            write(*,*)"NIs t val: ", N, I, s , 0,  maxval(integrand),  maxval(gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL))
+        endif 
+
+        
+
         integrand = integrand * gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL)
         integrate_GNIr2 =  integrate_r_traps(rvals, integrand, nlen)
 
@@ -1065,25 +1072,25 @@ contains
         tf = real(t, kind=CUSTOM_REAL)
 
 
-
         ! Sum over sdash = 0, 2, 4
         sum = SPLINE_iZERO
 
-        do sdash = 0, 4, 2
+        do sdash = 0, s, 2
 
             if (t.eq.0)then 
+
                 sum = sum +  (phi2-phi1) * gammaD1_coeff(abgd, sdash, Alove, Clove, Llove, Nlove, Flove) * IssNtt(s, sdash, N, 0, 0)
             else 
                 phicoeff = ( dsin(tf*phi2)-dsin(tf*phi1) + SPLINE_iONE*(dcos(tf*phi2) - dcos(tf*phi1))  ) / tf
-
-                sum = sum +  phicoeff    * gammaD1_coeff(abgd, sdash, Alove, Clove, Llove, Nlove, Flove) * IssNtt(s, sdash, N, 0, t)
+                sum = sum +  phicoeff*gammaD1_coeff(abgd, sdash, Alove, Clove, Llove, Nlove, Flove) * IssNtt(s, sdash, N, 0, t)
             endif 
 
         enddo !sdash 
 
         ! The overall sum in 34 has this term - not to be confused with the one in front
         ! of the total integral 
-        gamst_hemispheric = ((2 * sf + one)/(four*PI)) *  sum 
+        gamst_hemispheric = ((two * sf + one)/(four*PI)) *  sum 
+
 
     end function gamst_hemispheric
 
@@ -1103,13 +1110,11 @@ contains
         real(kind=CUSTOM_REAL) :: Nf, tf, t1f, t2f, t3f, theta 
         integer :: t2, t3
 
-        Nf  = real(N, kind=CUSTOM_REAL)
-        tf  = real(t, kind=CUSTOM_REAL)
+        Nf  = real(N,  kind=CUSTOM_REAL)
+        tf  = real(t,  kind=CUSTOM_REAL)
         t1f = real(t1, kind=CUSTOM_REAL)
     
         theta = PI/two
-
-
 
 
         IssNtt = SPLINE_iZERO
@@ -1120,16 +1125,15 @@ contains
                 t3f = real(t3, kind=CUSTOM_REAL)
 
                 if (t2+t3.eq.1)then 
-                    frac = - SPLINE_iONE * PI /two 
+                    frac = - SPLINE_iONE * PI/two 
                 elseif(t2+t3.eq.-1)then 
-                    frac = + SPLINE_iONE * PI /two 
+                    frac =  SPLINE_iONE * PI/two 
                 else
                     frac = (one + dcos(PI*(t2f+t3f)) - SPLINE_iONE*dsin(PI*(t2f+t3f)) ) / (one - (t2f+t3f)**two )
                 endif 
 
 
-                IssNtt = IssNtt + ( SPLINE_iONE**(two*Nf - tf - t1f) & 
-                                      * XNlm(theta, t2, s1, t)           & 
+                IssNtt = IssNtt + (     XNlm(theta, t2, s1, t)           & 
                                       * XNlm(theta, t2, s1, t1)          & 
                                       * XNlm(theta, t3, s,  N)           &
                                       * XNlm(theta, t3, s,  t) )* frac 
@@ -1137,6 +1141,7 @@ contains
             enddo 
         enddo 
 
+        IssNtt = IssNtt * SPLINE_iONE**(two*Nf - tf - t1f)
 
     end function IssNtt
 
@@ -1218,8 +1223,8 @@ contains
                     case(2)
                         coeff = om0sq * chi * chi * thrj(l, s, l,  1, -2, 1) 
                     case(3)
-                        coeff = - om0 * om2 * (v * phi * thrj(l, s, l, 2, -2, 0 ) & 
-                                             + v * phi * thrj(l, s, l,  0, -2,  2 ) ) * r
+                        coeff = - om0 * om2 * (v * phi * thrj(l, s, l,  2, -2, 0 ) & 
+                                             + v * phi * thrj(l, s, l,  0, -2,  2 ) ) 
                     case default
                         write(*,*)'Error in I value', I
                         stop
@@ -1235,7 +1240,7 @@ contains
                                         +  om2 * v * chi * thrj(l, s, l, -1, -1,  2) )
                     case(3) ! 8
                         coeff =om0 * (chi * phi * thrj(l, s, l, 1, -1, 0) + & 
-                                      chi * phi * thrj(l, s, l, 0, -1, 1)) * r
+                                      chi * phi * thrj(l, s, l, 0, -1, 1)) 
                     case default
                         write(*,*)'Error in I value', I
                         stop
@@ -1248,9 +1253,9 @@ contains
                     case(2)
                         coeff = half * v * v * BNpmlsld(2, 1, l, s, l)  
                     case(3)
-                        coeff = phi*phi * BNpmlsld(0, 1, l, s, l) * r2
+                        coeff = phi*phi * BNpmlsld(0, 1, l, s, l) 
                     case(4)
-                        coeff = -(two*(phi*du)) * BNpmlsld(0, 1, l, s, l) * r2
+                        coeff = -(two*(phi*du)) * BNpmlsld(0, 1, l, s, l) * r
                     case(5)
                         coeff = -((chi*chi)) * BNpmlsld(1, 1, l, s, l)
                     case default
@@ -1269,7 +1274,7 @@ contains
                                          + om2 * v * chi * thrj(l, s, l,  1, 1, -2) )
                     case(3)
                         coeff = (om0 * chi * phi * thrj(l, s, l, -1, 1, 0) + & 
-                                om0 * chi * phi * thrj(l, s, l, 0, 1, -1)) * r
+                                 om0 * chi * phi * thrj(l, s, l, 0, 1, -1)) 
                     case default
                             write(*,*)'Error in I value', I
                             stop
@@ -1286,7 +1291,7 @@ contains
                                 
                     case(3)
                         coeff = - om0*om2 * (v * phi * thrj(l, s, l, -2, 2,  0 ) & 
-                                           + v * phi * thrj(l, s, l,  0, 2, -2 ) ) * r
+                                           + v * phi * thrj(l, s, l,  0, 2, -2 ) ) 
                     case default
                             write(*,*)'Error in I value', I
                             stop
@@ -1322,19 +1327,18 @@ contains
 
 
         do h = 1, nlen
-            integrand(h) =  real(gammaD1_coeff(abgd, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
-            !integrand(h) =  gamst_hemispheric(abgd, s, t, N, phi1, phi2, dA(h), dC(h), dL(h), dN(h), dF(h))
+            !integrand(h) =  real(gammaD1_coeff(abgd, s, dA(h), dC(h), dL(h), dN(h), dF(h)), kind=SPLINE_REAL)
+            integrand(h) =  gamst_hemispheric(abgd, s, t, N, phi1, phi2, dA(h), dC(h), dL(h), dN(h), dF(h))
         enddo
 
-        !write(*,*)"min/max integrand: ", minval(integrand), maxval(integrand)
 
+        if(t.eq.0.and.s.eq.2)then 
+           write(*,*)"NIst, val: ", N, I, s , t,  maxval(integrand), maxval(coeff)
+        endif 
 
         integrand = integrand * coeff 
 
-
         integrate_GNIr2_Mochizuki =  integrate_r_traps(rvals, integrand, nlen)
-
-
 
     end function integrate_GNIr2_Mochizuki
 

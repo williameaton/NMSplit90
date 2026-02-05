@@ -64,18 +64,18 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
     logical, parameter :: load_from_bin         = .true.
     logical, parameter :: save_to_bin           = .false.
 
-    logical, parameter :: force_VTI             = .true.
-    logical, parameter :: constant_angle_vals   = .false. ! constant, custom angles 
+    logical, parameter :: force_VTI             = .false.
+    logical, parameter :: constant_angle_vals   = .true.   ! constant, custom angles 
     logical, parameter :: use_radial_eta12      = .false. ! radial angles
 
     
     logical, parameter :: constant_ACLNF          = .true.  ! constant ACLNF
     logical, parameter :: tromp93_model           = .false.
-    logical, parameter :: perturbation_on_prem    = .false.
+    logical, parameter :: perturbation_on_prem    = .true.
     logical, parameter :: nondimensionalise_ACLNF = .false. ! usually TRUE
 
 
-    logical, parameter :: compute_csts          = .false.
+    logical, parameter :: compute_csts          = .true.
     logical, parameter :: redimensionalise_csts = .false.
 
 
@@ -83,7 +83,7 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
 
 
     real(kind=CUSTOM_REAL), parameter :: constant_eta1 = 0.9d0
-    real(kind=CUSTOM_REAL), parameter :: constant_eta2 = 0.25d0
+    real(kind=CUSTOM_REAL), parameter :: constant_eta2 = 1.25d0
 
     ! Modes: 
     !integer, dimension(27), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 16/)
@@ -181,7 +181,7 @@ region = 3
 
 
 #ifdef WITH_MPI
-    call mineos%load_mineos_radial_info_MPI(MPI_COMM_WORLD)
+    call mineos%load_mineos_radial_info_MPI(myrank, MPI_COMM_WORLD)
 #else
     ! Read mineos model 
     call mineos%process_mineos_model(.true.) 
@@ -480,7 +480,7 @@ do i_mode = 1, nmodes
             if (write_to_FH_format)then 
                 weight = 1.0
 
-                out_name = 'output/csts/FHformat'//'/SyntheticCst.'//trim(nstr)//trim(t1)//trim(lstr)
+                out_name = 'output/csts/FHformat'//'/AlternativeSyntheticCst.'//trim(nstr)//trim(t1)//trim(lstr)
 
                 call write_cst_to_FH_format(trim(out_name), cst_imag, ncols, num_s, smin, dataSmax(i_mode), weight, 0.00001d0, 2)
             endif 

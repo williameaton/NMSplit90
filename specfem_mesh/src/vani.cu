@@ -4,6 +4,7 @@
 #include "device_launch_parameters.h"
 #include "driver_types.h"
 #include "precisioncpp.h"
+#include <nvml.h>
 
 // Debugging: 
 __device__ int d_errorFlag = 0;
@@ -62,6 +63,25 @@ __constant__ int Lvals[27] = {8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 
 //   return ierr;
 // }
 // }
+
+
+
+extern "C" {
+void check_gpu_utilization(int gpu_id) {
+    nvmlDevice_t device;
+    nvmlUtilization_t utilization;
+    
+    nvmlInit();
+    nvmlDeviceGetHandleByIndex(gpu_id, &device);
+    nvmlDeviceGetUtilizationRates(device, &utilization);
+    
+    printf("GPU %d: Compute=%d%%, Memory=%d%%\n", 
+           gpu_id, utilization.gpu, utilization.memory);
+    
+    nvmlShutdown();
+}
+}
+
 
 
 
@@ -163,8 +183,13 @@ int copy_wgll_array(CPPCUSTOM_REAL *hloc, int size){
 }
 
 
+
+
 extern "C" {
 int copy_allstrains(CPPCUSTOM_REAL *hloc_r, CPPCUSTOM_REAL *hloc_i, int64_t size){
+  // Original function to copy all strains from CPU to device 
+  // For PT we use the rank0 version with IPC 
+
   int ierr;
 
   ierr = cudaMalloc(&d_allstrain_r, size*sizeof(CPPCUSTOM_REAL));
@@ -196,9 +221,131 @@ int copy_allstrains(CPPCUSTOM_REAL *hloc_r, CPPCUSTOM_REAL *hloc_i, int64_t size
 
 
 
+
+extern "C" {
+int copy_allstrains_fromrank0(CPPCUSTOM_REAL *hloc_r, CPPCUSTOM_REAL *hloc_i, int64_t size, 
+                              int myf90rank, char* ipc_handle_buffer){
+  int ierr, gpu_id;
+
+  // Safety check the device 
+    ierr = cudaGetDevice(&gpu_id);
+    if (ierr != cudaSuccess) {
+      printf("Error: Unable to get current device!\n");
+      return -1;
+    }
+
+  if (myf90rank != gpu_id){
+      printf("ERROR: myf90rank (%i) != gpu_id (%i) ", myf90rank, gpu_id);
+      return -1;
+  }
+
+  // Allocate real strain memory 
+  ierr = cudaMalloc(&d_allstrain_r, size*sizeof(CPPCUSTOM_REAL));
+  if (ierr !=0 ){
+        printf("Error allocating strain real on GPU %d\n", gpu_id);
+    return -1 ;
+  }
+
+  // Copy over the real strain eigenfunctions
+  ierr = cudaMemcpy(d_allstrain_r, hloc_r, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
+  if (ierr !=0 ){
+        printf("Error allocating strain real on GPU %d\n", gpu_id);
+    return -1 ;
+  }
+
+  // Allocates the imaginary strains 
+  ierr = cudaMalloc(&d_allstrain_i, size*sizeof(CPPCUSTOM_REAL));
+    if (ierr !=0 ){
+      printf("Error allocating strain real on GPU %d\n", gpu_id);
+    return -1 ;
+  }
+  
+  // Copy imaginary strains to the device
+  ierr = cudaMemcpy( d_allstrain_i, hloc_i, size*sizeof(CPPCUSTOM_REAL), cudaMemcpyHostToDevice);
+  if (ierr !=0 ){
+    printf("Error copying strain imag...");
+    return -1 ;
+  }
+
+
+  // Create IPC handles: 
+  cudaIpcMemHandle_t handle_r, handle_i;
+
+  ierr = cudaIpcGetMemHandle(&handle_r, d_allstrain_r);
+  if (ierr != 0){
+      printf("Error getting IPC handle for strain_r on GPU %d\n", gpu_id);
+      return -1;
+  }
+
+  ierr = cudaIpcGetMemHandle(&handle_i, d_allstrain_i);
+  if (ierr != 0) {
+      printf("Error getting IPC handle for strain_r on GPU %d\n", gpu_id);
+      return -1;
+  }
+
+
+  // Pack both handles into output buffer (128 bytes total: 64 + 64)
+  memcpy(ipc_handle_buffer,      &handle_r, sizeof(cudaIpcMemHandle_t));
+  memcpy(ipc_handle_buffer + 64, &handle_i, sizeof(cudaIpcMemHandle_t));
+
+
+  //printf("My GPU: %d just set strains from rank %d \n", gpu_id, myf90rank);
+
+
+  return 0;
+}
+}
+
+
+extern "C" {
+int copy_allstrains_higherranks(int myf90rank, char* ipc_handle_in) {
+    int ierr, gpu_id;
+    // Assigns the correct pointer 
+    
+    // Safety check the device 
+    ierr = cudaGetDevice(&gpu_id);
+    if (ierr != cudaSuccess) {
+      printf("Error: Unable to get current device!\n");
+      return -1;
+    }
+
+    if (myf90rank != gpu_id){
+      printf("ERROR in copy_allstrains_higherranks: myf90rank (%i) != gpu_id (%i) ", myf90rank, gpu_id);
+      return -1;
+    }
+    
+    // Unpack handles from the buffer
+    cudaIpcMemHandle_t handle_r, handle_i;
+    memcpy(&handle_r, ipc_handle_in, sizeof(cudaIpcMemHandle_t));
+    memcpy(&handle_i, ipc_handle_in + 64, sizeof(cudaIpcMemHandle_t));
+    
+
+    // Open shared memory for real strains
+    ierr = cudaIpcOpenMemHandle((void**)&d_allstrain_r, handle_r, 
+                                cudaIpcMemLazyEnablePeerAccess);
+    if (ierr != 0) {
+        printf("Error opening IPC handle for strain_r on GPU %d\n", gpu_id);
+        return -1;
+    }
+    
+    // Open shared memory for imaginary strains
+    ierr = cudaIpcOpenMemHandle((void**)&d_allstrain_i, handle_i, 
+                                cudaIpcMemLazyEnablePeerAccess);
+    if (ierr != 0) {
+        printf("Error opening IPC handle for strain_i on GPU %d\n", gpu_id);
+        return -1;
+    }
+    
+    //printf("My GPU: %d accessed from rank %d \n", gpu_id, myf90rank);
+
+    return 0;
+}
+}
+
+
 extern "C"{
 int assign_proc_to_device(int nprocs, int myrank){
-    int err, devcount, mydevice, mydev, nsets_per_gpu;
+    int err, devcount, mydevice, mydev , nsets_per_gpu;
 
     // Number of devices
     err = cudaGetDeviceCount(&devcount);
@@ -260,7 +407,7 @@ int assign_proc_to_device(int nprocs, int myrank){
 
 extern "C"{
 int force_proc_to_device(int nprocs, int myrank){
-    int err, devcount, mydevice, mydev, nsets_per_gpu;
+    int err, devcount, mydevice, mydev;
 
     // A less cutesy setup when we know which procs we want where
     err = cudaGetDeviceCount(&devcount);
@@ -298,7 +445,7 @@ int force_proc_to_device(int nprocs, int myrank){
       return -1;
     }
   
-    printf("myrank = %i -- on device %i\n", myrank, mydevice);
+    //printf("myrank = %i -- on device %i\n", myrank, mydevice);
     return 0;
 }
 }

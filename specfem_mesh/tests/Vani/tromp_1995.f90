@@ -106,7 +106,7 @@ program tromp_1995
 
                 write(*,*)"Loading ACLNF from files"
                 call load_ACLNF_from_files('/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/tests/Vani/Tromp_1993_model/ACLNF/radial', & 
-                                            npoints, '_0')
+                                            npoints, '_0', myrank)
 
                 ! Interpolate the vp and rho to the relevant points
                 ! since these need to be abs perturbations not % perturbs

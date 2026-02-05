@@ -100,6 +100,37 @@ interface
     end function 
 
 
+  integer function check_gpu_utilization(gpu_id) bind(C, name="check_gpu_utilization")
+      use iso_c_binding
+      implicit none
+      integer(c_int), value :: gpu_id
+    end function 
+
+
+
+    integer function copy_allstrains_fromrank0(hloc_r, hloc_i, size, myf90rank, ipc_handle_buffer) bind(C, name="copy_allstrains_fromrank0")
+      use iso_c_binding
+      implicit none
+      type(C_PTR),        value :: hloc_r, hloc_i
+      integer(c_int64_t), value :: size
+      integer(c_int), value :: myf90rank
+      character(kind=c_char), dimension(128) :: ipc_handle_buffer
+    end function 
+
+
+  integer function copy_allstrains_higherranks(myf90rank, ipc_handle_buffer) bind(C, name="copy_allstrains_higherranks")
+      use iso_c_binding
+      implicit none
+      integer(c_int), value :: myf90rank
+      
+      character(kind=c_char), dimension(128) :: ipc_handle_buffer
+    end function 
+
+
+
+
+
+
     integer function allocate_Cxyz_array(size) bind(C, name="allocate_Cxyz_array")
       use iso_c_binding
       implicit none

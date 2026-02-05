@@ -7,8 +7,8 @@ module cuda_proxies
         end subroutine compute_vani_sc_cuda
 
 
-        subroutine original_compute_vani_sc_cuda(l1, n, p, q)
-                integer :: l1, n, p
+        subroutine original_compute_vani_sc_cuda(l1, n, p, q, myrank)
+                integer :: l1, n, p, myrank
                 real(kind=CUSTOM_REAL)    :: q(n,n,n,p)
         end subroutine original_compute_vani_sc_cuda
 

@@ -428,7 +428,6 @@ contains
             XNlm = zero 
         elseif(abs(m).gt.l)then 
             XNlm = zero 
-
         else 
 
             cos_theta = dcos(theta)
@@ -513,7 +512,7 @@ contains
             endif 
 
             ! Xlm vs Plm scaling
-            XNlm = XNlm * (((two*lf + one) / (four*PI) )**half)
+            !XNlm = XNlm * (((two*lf + one) / (four*PI) )**half)
 
         endif 
 

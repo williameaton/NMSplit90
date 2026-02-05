@@ -155,7 +155,7 @@ rad_knl_SOURCES     = $(MED_SRCS) radial_kernel.f90
 
 
 opt_vani_LDADD = vani_kernel.o vanicpp.o binding.o -lcoretran
-FH_vani_LDADD = vani_kernel.o vanicpp.o binding.o  -lcoretran
+FH_vani_LDADD = vani_kernel.o vanicpp.o binding.o  -lcoretran -lnvidia-ml
 reopt_LDADD = vani_kernel.o -lcoretran
 compute_vani_LDADD = vani_kernel.o -lcoretran
 cross_vani_LDADD = vani_kernel.o -lcoretran

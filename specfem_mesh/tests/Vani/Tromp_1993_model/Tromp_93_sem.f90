@@ -57,7 +57,7 @@ program Tromp93_SEM
         
         call compute_rotation_matrix()
 
-        call load_ACLNF_from_files(aclnf_dir, iproc, n_unique_rad)
+        call load_ACLNF_from_files(aclnf_dir, iproc, n_unique_rad, myrank)
 
 
         ! Interpolate the vp and rho to the relevant points 

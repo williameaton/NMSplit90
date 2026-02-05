@@ -25,11 +25,11 @@ module vani_kernel
     contains 
 
     ! Subroutine on host that drives vknl
-    subroutine compute_vani_sc_cuda(l, ngll, nspec, wglljac)
-        use params, only: strains1, Cxyz, vani, myrank
+    subroutine compute_vani_sc_cuda(l, ngll, nspec, wglljac, myrank)
+        use params, only: strains1, Cxyz, vani
         implicit none 
         ! IO variables
-        integer :: ngll, nspec
+        integer :: ngll, nspec, myrank
         integer :: l, i, j, k, m, p,q, ispec, tl1, igll
         real(kind=CUSTOM_REAL) :: wglljac(ngll, ngll, ngll, nspec)
 
@@ -213,11 +213,11 @@ module vani_kernel
 
 
 
-    subroutine ORIGINAL_compute_vani_sc_cuda(l, ngll, nspec, wglljac)
-        use params, only: strains1, Cxyz, vani, myrank
+    subroutine ORIGINAL_compute_vani_sc_cuda(l, ngll, nspec, wglljac, myrank)
+        use params, only: strains1, Cxyz, vani
         implicit none 
         ! IO variables
-        integer :: ngll, nspec
+        integer :: ngll, nspec, myrank
         integer :: l, i, j, k, ispec, tl1, p, m, igll
         real(kind=CUSTOM_REAL) :: wglljac(ngll, ngll, ngll, nspec)
 
@@ -445,10 +445,10 @@ module vani_kernel
 
 
     subroutine copy_allstrain_to_device(astrain, ModeLs, ngll, nspec)
-        use params, only: max_tl1, nmodes, myrank
+        use params, only: max_tl1, nmodes
         implicit none 
         ! IO variables
-        integer :: ngll, nspec
+        integer :: ngll, nspec, myrank
         complex(kind=SPLINE_REAL) :: astrain(ngll, ngll, ngll, nspec, max_tl1, 6, nmodes)
         integer :: modeLs(nmodes)
 
@@ -496,11 +496,11 @@ module vani_kernel
 
 
 
-    subroutine compute_Vani_onemode_allstrains(imode, l, ngll, nspec)
-        use params, only: vani, myrank, max_tl1
+    subroutine compute_Vani_onemode_allstrains(imode, l, ngll, nspec, myrank)
+        use params, only: vani, max_tl1
         implicit none 
         ! IO variables
-        integer :: ngll, nspec, imode
+        integer :: ngll, nspec, imode, myrank
         integer :: l,  tl1
 
         ! Local host variables
@@ -601,11 +601,10 @@ module vani_kernel
 
 
 
-    subroutine check_cuda_device_allocations(nprocs)
-        use params, only: myrank
+    subroutine check_cuda_device_allocations(nprocs, myrank)
         implicit none 
         integer :: nprocs
-        integer :: err, mydevice, devcount, mydev, nsets_per_gpu
+        integer :: err, mydevice, devcount, mydev, nsets_per_gpu, myrank
 
         ! Number of devices
         err = cudaGetDeviceCount(devcount)
@@ -803,11 +802,11 @@ module vani_kernel
 
 
 
-    subroutine compute_Vani_all_modes_at_once(ngll, nspec, nn1_total, nn1max)
-        use params, only: VaniAllModes_8, myrank, max_tl1, nmodes
+    subroutine compute_Vani_all_modes_at_once(ngll, nspec, nn1_total, nn1max, myrank)
+        use params, only: VaniAllModes_8, max_tl1, nmodes
         implicit none 
         ! IO variables
-        integer :: ngll, nspec, imode, nn1_total, nn1max, ierr, cuda_shared_mem, cuda_shared_mem2
+        integer :: ngll, nspec, imode, nn1_total, nn1max, ierr, cuda_shared_mem, cuda_shared_mem2, myrank
         character(len=300) :: errstring
         ! Local host variables
         real(kind=8) :: Vloc_r(max_tl1, max_tl1, nmodes), Vloc_i(max_tl1, max_tl1, nmodes)
