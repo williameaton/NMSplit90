@@ -56,8 +56,9 @@ program semi_analytical_W_matrix
 
     knot_lower = 1
     r_lower    = zero        
-    knot_upper = mineos%disc(mineos%ndisc)
-    r_upper    = mineos%rdisc(mineos%ndisc)
+    ! only IC and OC 
+    knot_upper = mineos%disc(3)
+    r_upper    = mineos%rdisc(3)
     npoints    = 10*(knot_upper-knot_lower)
 
     ! Create interpolator with evenly spaced points in IC 
@@ -66,6 +67,13 @@ program semi_analytical_W_matrix
     call interp%setup()
     call interp%create_interpolation_radial_map()
 
+
+
+    open(1,file='ellipticity/radialpoints.txt', form='formatted')
+    do i = 1, npoints
+        write(1,*)interp%radial(i)
+    enddo 
+    close(1)
 
     allocate(W_s(npoints))
     allocate(W_a(npoints))
@@ -87,14 +95,14 @@ program semi_analytical_W_matrix
     allocate(VcaronSrho(npoints))
 
 
-
     ! Load the interpolated eta and epsilon values:
-    open(1, file = 'ellipticity/eta_interpolated.txt', status = 'old', form='formatted')
+    open(1, file = 'ellipticity/eta_interpolated_prem.txt', status = 'old', form='formatted')
+    write(*,*)npoints
     do i = 1, npoints
         read(1,*)eta(i)
     enddo 
     close(1)
-    open(1, file = 'ellipticity/epsilon_interpolated.txt', status = 'old', form='formatted')
+    open(1, file = 'ellipticity/epsilon_interpolated_prem.txt', status = 'old', form='formatted')
     do i = 1, npoints
         read(1,*)epsi(i)
     enddo 
@@ -105,11 +113,11 @@ program semi_analytical_W_matrix
         read(1,*)gravacc(i)
     enddo 
     close(1)
+
     !gravacc = gravacc/(SCALE_V/SCALE_T)   ! non dimensionalise
     ! mineos has pi*g = 1 as normalisation, so im assuming that g at surface
     ! needs to be 1 / pi
     gravacc = gravacc/(gravacc(npoints) * PI)   ! non dimensionalise
-
 
 
     ! We also need the density: 
@@ -131,7 +139,7 @@ program semi_analytical_W_matrix
 
 
 
-    do imode = 1, 7
+    do imode = 1, 1
         write(*,*)'Mode ', modeNs(imode), ' S ', modeLs(imode)
 
         t1 = 'S'
@@ -151,18 +159,11 @@ program semi_analytical_W_matrix
         call interp%interpolate_mode_eigenfunctions(mode_2)
 
 
-        open(1,file='ellipticity/radialpoints.txt', form='formatted')
-        do i = 1, npoints
-            write(1,*)interp%radial(i)
-        enddo 
-        close(1)
-
         open(1,file='ellipticity/rhopoints.txt', form='formatted')
         do i = 1, npoints
             write(1,*)rho_spl(i)*RHOAV
         enddo 
         close(1)
-
 
         open(1,file='ellipticity/eigen_u.txt', form='formatted')
         do i = 1, npoints
@@ -196,6 +197,7 @@ program semi_analytical_W_matrix
             write(*,*)'Error in mode type', mode_1%t, mode_2%t
             stop
         endif 
+
 
         W_s = W_s * rho_spl * interp%radial * interp%radial
 
@@ -323,21 +325,20 @@ program semi_analytical_W_matrix
                         +  rho_spl   * (VbarSrho - (eta+three)*VcaronSrho)) 
                         
 
+        allocate(VS2phi(npoints))
+        allocate(VS2dotphi(npoints))
 
-
-        !allocate(VS2phi(npoints))
-        !allocate(VS2dotphi(npoints))
-
-        !call WK_Vphi(mode_1, mode_2, 2, interp%radial, rho_spl,VS2phi)               
-        !call WK_Vphi_dot(mode_1, mode_2, 2, interp%radial, rho_spl, VS2dotphi)
+        call WK_Vphi(mode_1,     mode_2,  2, interp%radial, rho_spl, VS2phi)               
+        call WK_Vphi_dot(mode_1, mode_2, 2, interp%radial, rho_spl, VS2dotphi)
 
         ! Vs=2 integrand
-        !VS2integrand = (interp%radial**three) * (OMEGA**two) * (two*VS2dotphi  + VS2phi*interp%radial )/three 
+        VS2integrand = (interp%radial**three) * (OMEGA**two) * (two*VS2dotphi  + VS2phi*interp%radial )/three 
 
         ! We only compute the contribtions for the self coupling case here 
         int_Tell =  integrate_r_traps(interp%radial, Tellintegrand, npoints)
         int_Vell =  integrate_r_traps(interp%radial, Vellintegrand, npoints)
-        !int_2ell =  integrate_r_traps(interp%radial, VS2integrand,  npoints)
+        
+        int_2ell =  integrate_r_traps(interp%radial, VS2integrand,  npoints)
 
         tau_nu_pref = (ksq )/( (mode_1%lf*two + three )*(two*mode_1%lf  - one) )
 
@@ -383,7 +384,8 @@ program semi_analytical_W_matrix
 
                     
                     Vcen(m1+mode_1%l+1, m2+mode_2%l+1) = Vcen(m1+mode_1%l+1, m2+mode_2%l+1) &
-                                                        + (two/three)*OMEGA*OMEGA * (one - mode_1%kf*mode_1%kf*int_Ws)
+                                                        + (two/three)*OMEGA*OMEGA * (one - mode_1%kf*mode_1%kf*int_Ws) &
+                                                        + ((-one)**mf)*(two*mode_1%lf + one)*thrj(mode_1%l, 2, mode_2%l,  -m1, 0, m1)*int_2ell
                 endif 
             enddo 
         enddo 

@@ -10,7 +10,7 @@ program fairhead_optimised_vani
     use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
                         compute_Vani_matrix, compute_vani_matrix_stored, & 
                         convert_imag_to_real, save_Vani_real_matrix
-    use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst_4, Hcomplex_to_cst_8, write_cst_complex_to_file
+    use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst_4, Hcomplex_to_cst_8, write_cst_complex_to_file, write_cst_complex_to_file_4
     use mesh_utils, only: find_row_col
     use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
     use m_KdTree, only: KdTree, KdTreeSearch
@@ -68,7 +68,7 @@ program fairhead_optimised_vani
     type(SetMesh)          :: sm  
 
     integer :: thisnn1, ival
-    integer :: start_clock, end_clock, count_rate, total_nn1, iii, loop_clock_start
+    integer :: start_clock, end_clock, count_rate, total_nn1, iii, jjj, loop_clock_start
     real(8) :: elapsed_time
 
     ! Fairhead stuff: 
@@ -78,16 +78,20 @@ program fairhead_optimised_vani
     integer         :: status(MPI_STATUS_SIZE)
     integer(kind=8) :: FHnvoronoi, niterations, model_start, STORE_FHnvoronoi, NPTrungs, JL_MaxBrettModelPts, Nmodelbuffersize, PTexchangeevery
     integer         :: juliaJFrank
-    real(kind=8),allocatable  :: FHinitmodel(:), JLModelBuffer(:)
+    real(kind=8),allocatable  ::  JLModelBuffer(:)
     real(kind=8), target      :: FHupdates(6)
     integer, allocatable :: dummyrecbuffer(:)
 
 
     ! Modes: 
-    ! REAL 27: 
-    integer, dimension(nmodes), parameter :: modeNs = (/ 2,3,3,3,5,5,6,7,8,8,9,9,11,11,13,13,13,14,15,16,16,17,18,18,20,21,21,22,23,23,27,27 /)
-    integer, dimension(nmodes), parameter :: modeLs = (/ 3,1,2,8,2,3,3,5,1,5,2,3,4,5,1,2,3,4,3,5,7,1,3,4,1,6,7,1,4,5,1,2 /)
-    integer, dimension(nmodes), parameter :: dataSmax = (/ 6,2,4,6,4,6,6,6,2,6,4,6,6,6,2,4,6,6,6,6,6,2,6,6,2,6,6,2,6,6,2,4 /)
+    ! REAL 27:
+    type(Mode)             :: mode_1 
+
+    integer, dimension(nmodes), parameter :: modeNs=(/ 3,8,13,6,8,21,9,13,13,15,18,18,23,23,2,3,5,3,9,11,11,16 /)
+    integer, dimension(nmodes), parameter :: modeLs=(/ 1,1,1,3,5,6,2,2,3,3,3,4,4,5,3,2,3,8,3,4,5,5 /)
+    integer, dimension(nmodes), parameter :: dataSmax=(/ 2,2,2,6,6,6,4,4,6,4,6,6,6,6,4,4,6,6,6,6,6,6 /)
+
+    
 
     INTEGER :: request1, request2
     INTEGER, dimension(2) :: requests  ! Array of requests
@@ -118,6 +122,8 @@ program fairhead_optimised_vani
     real(4), allocatable :: Vani_real_4_REDUCED(:), Vani_imag_4_REDUCED(:)
 
 
+    real(4), dimension(nmodes) :: two_nondimomega
+
     real(kind=4), allocatable :: allcsts_r_4(:), allcsts_i_4(:), allcsts_r_RED_4(:), allcsts_i_RED_4(:)
     real(kind=8), allocatable :: allcsts_r_8(:), allcsts_i_8(:), allcsts_r_RED_8(:), allcsts_i_RED_8(:)
 
@@ -137,7 +143,7 @@ program fairhead_optimised_vani
 
     
     
-    smin = 2
+    smin = 0
 
     ! Pre initialise CUDA before F90 
     ierr = fh_cuda_preinit()
@@ -255,7 +261,6 @@ program fairhead_optimised_vani
     ! Forces each F90rank to its accompanyting device number 
     ierr =  force_proc_to_device(nprocs, myf90rank)
 
-
     ! ASSUMING 1 mesh per proc for this optimised code
     sets_per_process = nprocs/f90cluster_size
     myset_start      = myf90rank*sets_per_process
@@ -281,19 +286,30 @@ program fairhead_optimised_vani
     mineos_ptr => mineos
 
 
+    ! Get the mode frequencies for Vani division: 
+    do imode = 1, nmodes
+        mode_1  = get_mode(modeNs(imode), 'S', modeLs(imode), mineos_ptr)
+        two_nondimomega(imode) = mode_1%wcom * two * SCALE_T
+    enddo 
+
+
     ! Load mesh data for this proc (1 set per proc)
     ! True false indicates load from disc and dont save to disc
     sm   = create_SetMesh(myset_start, region)
     call sm%setup_mesh_sem_details(.true., .false.)
     call sm%compute_rotation_matrix()
 
+
     ! Until I can think of a better system, lets setup a mode look up table on the gpu
+    ! this is the number of groups launched to deal with different elements of a matrix
     total_nn1 = 0
     do imode  = 1, nmodes
         l1        = modeLs(imode)
-        this_tl1  = 2*l1 +1
-        total_nn1 = total_nn1 +  (l1+1)*(l1) + 1  + (l1+1)*l1/2 !(this_tl1*(this_tl1+1)/2 - l1*(l1+1)/2)
+        !this_tl1  = 2*l1 +1
+        !total_nn1 = total_nn1 +  (l1+1)*(l1) + 1   ! we dont need separate launches for the lower right box because they are computed when some of the upper right ones are 
+        total_nn1 = total_nn1 +  ((l1+1)*(l1+2))/2     ! reduced to only needing the triangular red/blue shading and computing the lower rows in the upper row launches 
     enddo  
+    
     allocate(modeLUT(total_nn1*4), stat=ierr)
     if(ierr.ne.0)then 
         write(*,*)'Error allocating modeLUT on', myGlobalrank
@@ -416,6 +432,7 @@ program fairhead_optimised_vani
     do imode = 1, nmodes
         ! There are (l+1) s values we need (for self coupling) where 
         ! Now dynamic smax based on real data: 
+        ! We now also include s=0 
         thissmax = dataSmax(imode)
         do s = smin, thissmax, 2 
             ncstsvals = ncstsvals + (s+1)
@@ -457,14 +474,15 @@ program fairhead_optimised_vani
     ! -------------- COPY STRAINS TO GPU  --------------
     ! Also goes into this first case if not using PT 
     if (GPUSharerank.eq.0)then 
-        ! Load all strains once and for all for each m value
+        ! Allocate mega strain array
         allocate(allstrains(sm%ngllx, sm%nglly, sm%ngllz, sm%nspec, max_tl1, 6, nmodes), stat=ierr)
         if(ierr.ne.0)then 
             write(*,*)'Error allocating allstrains for proc ', myGlobalrank
             stop 
         endif 
         allstrains = SPLINE_iZERO
-        !ncstsvals  = 0 
+
+        ! Load all the strains in a loop
         do imode = 1, nmodes
             n1       = modeNs(imode)
             l1       = modeLs(imode)
@@ -555,19 +573,20 @@ program fairhead_optimised_vani
 
 
 
-    ! THIS USED TO BE ABOVE THE STRAIN MEGA ARRAY LOOP 
+    ! Create look up table for how each cuda group maps to a matrix elemet 
     idx = 1
     do imode = 1, nmodes
-        l1       = modeLs(imode)
-        this_tl1 = 2*l1 +1
+        l1 = modeLs(imode)
 
-        thisnn1  =  (l1+1)*(l1) + 1 + (l1+1)*(l1)/2
+        !this_tl1 = 2*l1 +1
+        !thisnn1  =  (l1+1)*(l1) + 1 !+ (l1+1)*(l1)/2
+        thisnn1  =  ((l1+1)*(l1+2))/2
 
         do iii = 1, thisnn1
-            modeLUT(idx) = imode-1 ! mode
+            modeLUT(idx) = imode - 1 ! mode
             idx = idx + 1
-            modeLUT(idx) = iii -1   ! place in matrix
-            idx = idx + 1
+            modeLUT(idx) = iii - 1   ! place in matrix
+            idx = idx + 1            ! global index 
 
             ! Get the row and column of this point in the matrix
             ! ie the m1, m2: 
@@ -585,9 +604,11 @@ program fairhead_optimised_vani
             idx = idx + 1
         enddo 
     enddo  
-    ! I think we want to keep this without the subtraction since it 
-    ! is used for the spacing of the arrays etc 
-    max_nn1 = max_tl1*(max_tl1+1)/2
+    
+    ! Compute the maximum number of matrix entries we need the kernel 
+    ! to compute based on the largest mode. We store max_tl1
+    ! but the number of elements is now l+1^2 so
+    max_nn1 = ((max_tl1 - 1)/2  + 1 )**2 
     LUT_ptr = c_loc(modeLUT)
     ierr = copy_LUT_array(LUT_ptr, total_nn1*4)
     if(ierr.ne.0)then 
@@ -681,11 +702,10 @@ program fairhead_optimised_vani
     if(myf90rank.eq.0)then 
         write(*,*)
         write(*,*)' NMSPLIT90 has: '
-        write(*,*)' Fairhead starts at               : ', niterations, myGlobalrank
+        write(*,*)' Fairhead starts at               : ', model_start, myGlobalrank
         write(*,*)' Fairhead number of iterations    : ', niterations, myGlobalrank
         write(*,*)' Fairhead initial model points    : ', FHnvoronoi,  myGlobalrank
         write(*,*)' Fairhead initial model ACLNF     : ', aclnf_8,     myGlobalrank
-        write(*,*)' Fairhead initial model           : ', FHinitmodel, myGlobalrank
         write(*,*)
     endif 
 
@@ -716,23 +736,16 @@ program fairhead_optimised_vani
     !  8        Birth node      7               ID, new x, new y, new z, index of ACLNF, new value * 
     !  9        Kill node       2               ID, nodeID
     ! All values sent as floats so can be sent in single MPI call 
-    !* (note eta1, eta2 are inherited from last node in the order)
-
-    !write(*,*)"About to begin iterations on ", myGlobalrank
-
 
     ! We are about to start iterations so lets get everyhthing up to date
     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
- 
+    
 
     !call system_clock(count_rate=count_rate)
     ! Iterations start at 0 because we need the 0th run through to 
     ! get the NLL before the julia iterations start. 
     do iter = model_start-1, niterations
-
-        ! call system_clock(loop_clock_start)
-        ! iteration 0 is for the first NLL call 
-
+        
         ierr = copy_M3D_array(ptr_m3D, MaxBrettModelPts*5)
         ierr = cpp_project_eta_to_gll(int(FHnvoronoi), sm%nspec, sm%ngllx, aclnf_8)     
 
@@ -763,42 +776,75 @@ program fairhead_optimised_vani
             this_tl1 = 2*l1 + 1
 
             ! Now need all the values: 
-            thisnn1  =  (l1+1)*(l1) + 1 + (l1+1)*(l1)/2
-
-            ! Cast into a matrix
-            do iii = 1, thisnn1
+            do iii = 1, (l1+1)*(l1+1) ! thisnn1
                 ival = iii 
 
                 call find_row_col(ival, thisrow, thiscol, l1)
-                                
-                if(thisrow.eq.l1+1 .and. thiscol.gt.l1+1)then
-                    ! do nothing for now 
+                        
+                if(imode.eq.4.and.myf90rank.eq.0) write(*,*)iii, thisrow, thiscol
+                ! if(thisrow.eq.l1+1 .and. thiscol.gt.l1+1)then
+                !     ! do nothing for now 
+                ! else 
+                ! Normal index
+                VaniAllModes_4(thisrow, thiscol, imode) = Vani_real_4((imode-1)*max_nn1 + iii) + & 
+                                              SPLINE_iONE*Vani_imag_4((imode-1)*max_nn1 + iii)
+        
+                m1 = thisrow - l1 -1 
+                m2 = thiscol - l1 -1 
+            
+                ! Maps the lower right triangular to the top left triangular
+                if(m1.gt.0)then 
+
+
+                    ! nm1 = 2*l1 + 2 - thiscol   
+                    ! nm2 = 2*l1 + 2 - thisrow   
+
+                    VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
+                    ! if(imode.eq.23 .and.myGlobalrank.eq.10)write(*,*)"2:: ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode)
+                    if(imode.eq.4.and.myf90rank.eq.0)write(*,*)"  maps to  ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1
                 else 
-                    ! Normal index
-                    VaniAllModes_4(thisrow, thiscol, imode) = Vani_real_4((imode-1)*max_nn1 + iii) + & 
-                                                                SPLINE_iONE*Vani_imag_4((imode-1)*max_nn1 + iii)
-                    
+                    ! if(thisrow+thiscol.ne.this_tl1+1)then 
+                    !     ! Avoids the diagonal from centre to top right - others are reflected
 
-                    ! Maps the lower right triangular to the top left triangular
-                    if(thisrow > l1+1 )then 
-                        VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
-                    endif 
+                    !     if(imode.eq.4.and.myf90rank.eq.0)write(*,*)"  maps to  ", l1 + 1 -(thiscol - l1 - 1 ), l1 + 1  - (thisrow - l1 - 1)
 
-                    ! Option 3
-                    if(thisrow.lt.l1+1 .and. thiscol.eq.l1+1)then 
-                        VaniAllModes_4(thiscol, this_tl1-thisrow+1, imode) = VaniAllModes_4(thisrow, thiscol, imode) *  ((-one)**real( l1 - thisrow +1 , kind=8 ))
-                    endif 
 
-                endif
+                    !     !VaniAllModes_4(thiscol, this_tl1-thisrow+1, imode) = VaniAllModes_4(thisrow, thiscol, imode) *  ((-one)**real( l1 - thisrow +1 , kind=8 ))
+
+                    !     m1 = thisrow - l1 -1 
+                    !     m2 = thiscol - l1 -1 
+
+                    !     ! Shouldnt always reflect? 
+                    !     VaniAllModes_4( l1 + 1 -(thiscol - l1 - 1 ), l1 + 1  - (thisrow - l1 - 1) , imode) = VaniAllModes_4(thisrow, thiscol, imode) * ((-one)**real( m1 + m2 , kind=8 ))
+                    ! endif 
+                endif 
+
+              
+                if(imode.eq.4.and.myf90rank.eq.0)write(*,*)
+
+                !endif
             enddo 
-    
+
+            if(imode.eq.4)then 
+                if(myf90rank.eq.0)then 
+                    l1 = modeLs(imode)
+                    allocate(Vani(l1, l1))
+                    Vani = VaniAllModes_4(:, :, imode)
+                    call save_Vani_matrix(l1, l1, "ranktest.txt", .false.)
+                endif
+
+                stop 
+            endif 
+
+
 
             ! smax is now the dataSmax
             call get_Ssum_bounds(l1, l1, smin_theoretical, smax_theoretical, num_s, ncols)
             allocate(cst_4(num_s, ncols))
-            call Hcomplex_to_cst_4(VaniAllModes_4(1:this_tl1, 1:this_tl1, imode), l1, l1, cst_4, ncols, num_s, t1, t1, 2)
+            call Hcomplex_to_cst_4(VaniAllModes_4(1:this_tl1, 1:this_tl1, imode)/two_nondimomega(imode) , &
+                                   l1, l1, cst_4, ncols, num_s, t1, t1, 2)
 
-    
+
             ! Starts at smin (s=2)
             thissmax = dataSmax(imode)
             do is = smin+1, thissmax+1, 2
@@ -833,8 +879,9 @@ program fairhead_optimised_vani
             flat3Dmodel_4(:)  = STORE_flat3Dmodel_4(:)
         endif
 
+
         ! This is where PT goes 
-        if (iter.gt.0 .and. MOD(iter, PTexchangeevery).eq.0 .and. using_PT)then 
+        if (iter.ne.model_start-1 .and. MOD(iter, PTexchangeevery).eq.0 .and. using_PT)then 
             ! Swaps happen on JL nodes - we dont care about this 
             ! Regardless of if swap occurs, we broadcast the model
             ! since latency attached to opening the MPI line is the 
@@ -851,6 +898,11 @@ program fairhead_optimised_vani
 
             flat3Dmodel_4(:) = zero 
             flat3Dmodel_4(1:int(FHnvoronoi)*5) = real(JLModelBuffer(7:7+FHnvoronoi*5 - 1), kind=4)
+
+            ! Store this as our new base model: 
+            STORE_aclnf_8(:)    = aclnf_8(:)
+            STORE_FHnvoronoi    = FHnvoronoi
+            STORE_flat3Dmodel_4 = flat3Dmodel_4(:)
         endif 
 
 
@@ -909,6 +961,21 @@ program fairhead_optimised_vani
                 ! Now anything above this should be given a 0 
                 flat3Dmodel_4((FHnvoronoi-1)*5 +1: MaxBrettModelPts*5) = zero 
                 FHnvoronoi = FHnvoronoi - 1
+            elseif(upID.eq.10)then
+                ! BURNIN proposal 
+                ! This is only used in the burn-in window so we can afford a little
+                ! inefficiency - the aim here is that we dont want to use a bigger buffer
+                ! as default (for cases 1-9) so use a second broadcast here
+                ! this is analogous to the PT broadcast
+                JLModelBuffer(:) = zero 
+                call MPI_Bcast(JLModelBuffer, Nmodelbuffersize, MPI_DOUBLE_PRECISION, juliaJFrank, MPI_COMM_JF, ierr)
+
+                ! Update mode
+                FHnvoronoi = JLModelBuffer(1)
+                aclnf_8    = JLModelBuffer(2:6)
+
+                flat3Dmodel_4(:) = zero 
+                flat3Dmodel_4(1:int(FHnvoronoi)*5) = real(JLModelBuffer(7:7+FHnvoronoi*5 - 1), kind=4)
             else
                 !ERROR 
                 write(*,*)"Error updating FH model. ID is not 1-9:", upID

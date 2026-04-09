@@ -8,6 +8,8 @@ program compute_vani_splitting
                      compute_Vani_matrix, compute_vani_matrix_stored, & 
                      compute_Cxyz_at_gll_radialACLNF, compute_Cxyz_at_gll
 
+    use w3j, only: thrj
+
 #ifdef WITH_CUDA
     use v_ani, only: cuda_Vani_matrix_stored_selfcoupling
 #endif
@@ -31,7 +33,7 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
     include 'mpif.h'
 #endif 
 
-    integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, n2, region, ierr, & 
+    integer :: iset, i,j,k,ispec, l1, l2, n1, m1,m2, ic, n2, region, ierr, & 
                tl1, tl2, h, b, sets_per_process, & 
                myset_start, myset_end, i_mode, maxknot, ib, myrank
     character ::  t1
@@ -61,29 +63,31 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
 
     ! Switches 
     logical :: ONLY_ONE_TASK_PER_SET
-    logical, parameter :: load_from_bin         = .true.
-    logical, parameter :: save_to_bin           = .false.
+    logical, parameter :: load_from_bin           = .true.
+    logical, parameter :: save_to_bin             = .false.
 
-    logical, parameter :: force_VTI             = .false.
-    logical, parameter :: constant_angle_vals   = .true.   ! constant, custom angles 
-    logical, parameter :: use_radial_eta12      = .false. ! radial angles
+    logical, parameter :: force_VTI               = .false.
+    logical, parameter :: constant_angle_vals     = .true. ! constant, custom angles 
+    logical, parameter :: use_radial_eta12        = .false. ! radial angles
 
     
     logical, parameter :: constant_ACLNF          = .true.  ! constant ACLNF
+    logical, parameter :: ACLNF_3D                = .false.  ! constant ACLNF
     logical, parameter :: tromp93_model           = .false.
     logical, parameter :: perturbation_on_prem    = .true.
-    logical, parameter :: nondimensionalise_ACLNF = .false. ! usually TRUE
+
+    logical, parameter :: compute_csts            = .true.
+
+    logical, parameter :: nondimensionalise_ACLNF = .false. ! True if computed from PREM or something (i.e. order 1e10)
+    logical, parameter :: redimensionalise_Vani   = .false.
+    logical, parameter :: redimensionalise_csts   = .false.
 
 
-    logical, parameter :: compute_csts          = .true.
-    logical, parameter :: redimensionalise_csts = .false.
+    logical, parameter :: write_to_FH_format      = .true.
 
 
-    logical, parameter :: write_to_FH_format    = .true.
-
-
-    real(kind=CUSTOM_REAL), parameter :: constant_eta1 = 0.9d0
-    real(kind=CUSTOM_REAL), parameter :: constant_eta2 = 1.25d0
+    real(kind=CUSTOM_REAL), parameter :: constant_eta1 = PI/two   !-PI/4  !0.9d0     ! -0.9763823255761747d0
+    real(kind=CUSTOM_REAL), parameter :: constant_eta2 = PI/four ! 0.0  !0.25d0  !0.0001 !8910087879241278d0
 
     ! Modes: 
     !integer, dimension(27), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 16/)
@@ -96,9 +100,19 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
     ! integer, dimension(7), parameter :: modeLs = (/5, 3, 1, 2, 8, 2,  4   /)
     ! integer, dimension(nmodes), parameter :: dataSmax = (/6, 6, 2, 4, 6, 4, 6 /)
 
-    integer, dimension(nmodes), parameter :: modeNs = (/ 2,3,3,3,5,5,6,7,8,8,9,9,11,11,13,13,13,14,15,16,16,17,18,18,20,21,21,22,23,23,27,27 /)
-    integer, dimension(nmodes), parameter :: modeLs = (/ 3,1,2,8,2,3,3,5,1,5,2,3,4,5,1,2,3,4,3,5,7,1,3,4,1,6,7,1,4,5,1,2 /)
-    integer, dimension(nmodes), parameter :: dataSmax = (/ 6,2,4,6,4,6,6,6,2,6,4,6,6,6,2,4,6,6,6,6,6,2,6,6,2,6,6,2,6,6,2,4 /)
+    ! MOST BENCHMARKS CONDUCTED WITH THESE MODES: 
+    ! integer, dimension(nmodes), parameter :: modeNs   = (/2,3,3,3,5,5,6,7,8,8,9,9,11,11,13,13,13,14,15,16,16,17,18,18,20,21,21,22,23,23,27,27 /)
+    ! integer, dimension(nmodes), parameter :: modeLs   = (/3,1,2,8,2,3,3,5,1,5,2,3,4,5,1,2,3,4,3,5,7,1,3,4,1,6,7,1,4,5,1,2 /)
+    ! integer, dimension(nmodes), parameter :: dataSmax = (/6,2,4,6,4,6,6,6,2,6,4,6,6,6,2,4,6,6,6,6,6,2,6,6,2,6,6,2,6,6,2,4 /)
+
+    !integer, dimension(nmodes+10), parameter :: modeNs =   (/2, 7, 21,  7, 13, 15, 20, 25, 27, 21, 16, 3, 8,13,6,8,21,22,9,13,13,15,18,18,23,23,3,5,3,9,11,11,16/)
+    !integer, dimension(nmodes+10), parameter :: modeLs =   (/3, 4,  7,  5,  6,  4,  1,  2,  2,  8,  7, 1, 1, 1,3,5, 6, 1,2, 2, 3, 3, 3, 4, 4, 5,2,3,8,3, 4, 5, 5/)
+    !integer, dimension(nmodes+10), parameter :: dataSmax = (/4, 6,  6,  6,  6,  6,  2,  4,  4,  6,  6, 2, 2, 2,6,6, 6, 2,4, 4, 6, 4, 6, 6, 6, 6,4,6,6,6,6,6,6/)
+
+    ! REDUCED AD modes dataset 
+    integer, dimension(nmodes), parameter :: modeNs=(/ 3,8,13,6,8,21,9,13,13,15,18,18,23,23,2,3,5,3,9,11,11,16 /)
+    integer, dimension(nmodes), parameter :: modeLs=(/ 1,1,1,3,5,6,2,2,3,3,3,4,4,5,3,2,3,8,3,4,5,5 /)
+    integer, dimension(nmodes), parameter :: dataSmax=(/ 2,2,2,6,6,6,4,4,6,4,6,6,6,6,4,4,6,6,6,6,6,6 /)
 
 
     ! integer, dimension(nmodes), parameter :: modeNs = (/ 9/)
@@ -175,6 +189,7 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
     IIN  = 1
     IOUT = 101
     ONLY_ONE_TASK_PER_SET = .false.
+    myrank = 0
 #endif
 
 region = 3
@@ -189,28 +204,34 @@ region = 3
 mineos_ptr => mineos
 
 
-
 if(nondimensionalise_ACLNF)then 
-
- scalingval =   one/(RHOAV*SCALE_V*SCALE_V)
+    scalingval =   one/(RHOAV*SCALE_V*SCALE_V)
 else
-scalingval = one 
+    scalingval = one 
 endif 
+
+write(*,*)"scalingval = ", scalingval
 
 
 
 
 if(tromp93_model)then 
     ! Read TROMP ACLNF model with 33 points (mineos for IC)
+    write(*,*)"TROMP 93 MODEL"
     call load_ACLNF_from_files('/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/tromp93/ACLNF', 33, '', myrank)
 elseif(constant_ACLNF)then 
+    write(*,*)"USING CONSTANT ACLNF"
     Model3D%nconst = 5  
     allocate(Model3D%valconsts(Model3D%nconst))
-    Model3D%valconsts(1) =   0.04d0
-    Model3D%valconsts(2) =  -0.02d0
-    Model3D%valconsts(3) =   0.03d0
-    Model3D%valconsts(4) =  -0.05d0
-    Model3D%valconsts(5) =   0.01d0
+
+    Model3D%valconsts(1) = -0.013d0  ! 0.04d0 !0.025649763600231096d0       ! 0.04d0
+    Model3D%valconsts(2) =  0.025d0  !-0.02d0 !-0.051593988413144505d0      !-0.02d0
+    Model3D%valconsts(3) =  0.049d0 ! 0.03d0 !-0.06743806913406046d0 ! 0.03d0
+    Model3D%valconsts(4) = -0.070d0  !-0.05d0 !0.1710243976713386d0      !-0.05d0
+    Model3D%valconsts(5) =  -0.0075d0 ! 0.01d0 !-0.00040496057190530545d0    
+
+    
+    !0.1170500688589357, 0.21664835327401158, 0.13193117379432362, -0.050805235498402455, 0.16599342426993194
     write(*,*)'Constant ACLNF: ', Model3D%valconsts(:)
 else
     if(myrank.eq.0)write(*,*)'Reading 3D model...'
@@ -218,10 +239,15 @@ else
       !Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
     ! Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/benchmark_TI_perturb_prem.txt"
     !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/benchmark_isorad_perturb_prem.txt"
-     Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/benchmarks/hemisphere_model.txt"
+    ! Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/benchmarks/hemisphere_model.txt"
+     Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/JI3_axis.txt"
+     !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/2axis_model.txt"
+     !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/benchmark_RTI_NMSPLIT.txt"
+     
     ! Model3D%filename = "/scratch/gpfs/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi//MCMC_models/instances/c1_m10900.txt"
     call Model3D%read_model_from_file()
     call Model3D%create_KDtree()
+
     if(myrank.eq.0)write(*,*)'Done.'
 endif
 
@@ -240,7 +266,8 @@ if(ONLY_ONE_TASK_PER_SET)then
                                              Aspl, Cspl, Lspl, Nspl, Fspl, zero, zero)
     else
         allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
-        ! call project_voroni_to_gll(sm, tree)
+
+        ! write(*,*)"Projecting: " 
         ! call Model3D%project_to_gll(sm, glob_eta1, id=1)
         ! call Model3D%project_to_gll(sm, glob_eta2, id=2)
 
@@ -256,11 +283,17 @@ if(ONLY_ONE_TASK_PER_SET)then
         else 
             ! If the ACLNF vary at each point: 
             ! we can use the Aspl arrays: 
-        call Model3D%project_to_gll(sm, Aspl, id=1, scaling=scalingval)
-        call Model3D%project_to_gll(sm, Cspl, id=2, scaling=scalingval)
-        call Model3D%project_to_gll(sm, Lspl, id=3, scaling=scalingval)
-        call Model3D%project_to_gll(sm, Nspl, id=4, scaling=scalingval)
-        call Model3D%project_to_gll(sm, Fspl, id=5, scaling=scalingval)    
+            if(ACLNF_3D)then 
+                call Model3D%project_to_gll(sm, Aspl, id=1, scaling=scalingval)
+                call Model3D%project_to_gll(sm, Cspl, id=2, scaling=scalingval)
+                call Model3D%project_to_gll(sm, Lspl, id=3, scaling=scalingval)
+                call Model3D%project_to_gll(sm, Nspl, id=4, scaling=scalingval)
+                call Model3D%project_to_gll(sm, Fspl, id=5, scaling=scalingval)   
+            else 
+                ! Sort out the velocities if they are constant: 
+                write(*,*)"Setting constant ACLNF from model file"
+                call Model3D%set_constant_ACLNF(sm%nglob, Aspl, Cspl, Lspl, Nspl, Fspl)
+            endif  
         endif 
     
         if(force_VTI)then 
@@ -278,6 +311,7 @@ if(ONLY_ONE_TASK_PER_SET)then
         endif 
 
         if(constant_ACLNF)then 
+            write(*,*)"WARNING: Changed perturbation on PREM here! "
             call compute_Cxyz_at_gll_constantACLNF(sm, Model3D%valconsts(1), & 
                                                    Model3D%valconsts(2), Model3D%valconsts(3), Model3D%valconsts(4), & 
                                                    Model3D%valconsts(5), glob_eta1, glob_eta2, &
@@ -304,17 +338,22 @@ do i_mode = 1, nmodes
     allocate(Vani(mode_1%tl1, mode_1%tl1))
     Vani = SPLINE_iZERO
 
+
     do iset = myset_start, myset_end
         if(.not.ONLY_ONE_TASK_PER_SET)then
             
             sm = create_SetMesh(iset, region)
             call sm%setup_mesh_sem_details(load_from_bin, save_to_bin)
 
+
+            write(*,*)"Finished mesh SEM setup"
+
             if(.not.tromp93_model)then
                 allocate(glob_eta1(sm%nglob), glob_eta2(sm%nglob))
-                !call project_voroni_to_gll(sm, tree)
-                !call Model3D%project_to_gll(sm, glob_eta1, id=1)
-                !call Model3D%project_to_gll(sm, glob_eta2, id=2)
+                
+                !call project_voroni_to_gll(sm, tree) 
+                ! call Model3D%project_to_gll(sm, glob_eta1, id=1)
+                ! call Model3D%project_to_gll(sm, glob_eta2, id=2)
 
                 ! If the ACLNF vary at each point: 
                 ! we can use the Aspl arrays: 
@@ -328,12 +367,19 @@ do i_mode = 1, nmodes
                     Lspl = Model3D%valconsts(3)
                     Nspl = Model3D%valconsts(4)
                     Fspl = Model3D%valconsts(5)   
+                    write(*,*)"Done!"
+
                 else
-                    call Model3D%project_to_gll(sm, Aspl, id=1, scaling=scalingval)
-                    call Model3D%project_to_gll(sm, Cspl, id=2, scaling=scalingval)
-                    call Model3D%project_to_gll(sm, Lspl, id=3, scaling=scalingval)
-                    call Model3D%project_to_gll(sm, Nspl, id=4, scaling=scalingval)
-                    call Model3D%project_to_gll(sm, Fspl, id=5, scaling=scalingval)                     
+                    if(ACLNF_3D)then 
+                        call Model3D%project_to_gll(sm, Aspl, id=1, scaling=scalingval)
+                        call Model3D%project_to_gll(sm, Cspl, id=2, scaling=scalingval)
+                        call Model3D%project_to_gll(sm, Lspl, id=3, scaling=scalingval)
+                        call Model3D%project_to_gll(sm, Nspl, id=4, scaling=scalingval)
+                        call Model3D%project_to_gll(sm, Fspl, id=5, scaling=scalingval) 
+                    else 
+                        ! Sort out the velocities if they are constant: 
+                        call Model3D%set_constant_ACLNF(sm%nglob, Aspl, Cspl, Lspl, Nspl, Fspl) 
+                    endif                   
                 endif 
 
                 if(force_VTI)then 
@@ -430,13 +476,8 @@ do i_mode = 1, nmodes
             endif 
             call sm%cleanup()
         endif
-
-        
     enddo !iset 
 
-
-!write(out_name, '(a,i1,a)')"CVARank", myrank, ".txt"
-!call save_Vani_matrix(l1, l1, out_name)
 
 
 ! ---------------------- OUTPUT THE V MATRIX FOR A MODE ----------------------
@@ -449,6 +490,8 @@ do i_mode = 1, nmodes
     call MPI_Reduce(Vani, Vani_modesum, mode_1%tl1**2, MPI_SPLINE_COMPLEX, &
                     MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
+    
+
     if(myrank.eq.0)then 
         call buffer_int(nstr, n1)
         call buffer_int(lstr, l1)
@@ -457,22 +500,39 @@ do i_mode = 1, nmodes
         else 
             out_name =  './output/sem_fast_'//trim(nstr)// t1//trim(lstr)//'.txt'
         endif 
-        Vani = Vani_modesum
-        call save_Vani_matrix(l1, l1, out_name)
+
+        ! To re-dimensionalise vani we can just multiply by 1/time^2 
+        ! since it has units of ang freq ^2 
+        ! if you want to 'redimensionalise Vani' it needs to be multiplied by 
+        
+        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        ! UNCOMMENT AFTER DEBUG
+        !Vani = Vani_modesum
+
+
+        call save_Vani_matrix(l1, l1, out_name, redimensionalise_Vani)
+
 
         ! Output CSTS if desired
         if(compute_csts)then 
+
+            ! To compute the Csts, we must multiply Vani by 1/(2omega_nondim)
+
             call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
             allocate(cst_imag(num_s, ncols))
-            call Hcomplex_to_cst_8(Vani, l1, l1, cst_imag, ncols, num_s, t1, t1, 2)
+            call Hcomplex_to_cst_8(Vani/(two* scale_T*mode_1%wcom),       &
+                                  l1, l1, cst_imag, ncols, num_s, t1, t1, 2)
     
             out_name = 'output/csts/'//'/cst_'//trim(nstr)//trim(t1)//trim(lstr)//'.txt'
     
             ! dimensionalise: 
-            ! note the scale_T*mode_1%wcom is non-dim omega
-            ! then multiply by 1/SCALE_T for dimensionalisation and the 2pi is --> Hz
+            ! We computed the CSTs from H but H was nondim
+            ! usually H has units of angular freq so to convert to freq in Hz
             if(redimensionalise_csts)then 
-                cst_imag = cst_imag/(2*mode_1%wcom * SCALE_T * SCALE_T * 2 * PI  )
+                cst_imag = cst_imag/(SCALE_T * two * PI )
             endif 
 
             call write_cst_complex_to_file(trim(out_name), cst_imag, ncols, num_s, smin, 2)
@@ -480,9 +540,9 @@ do i_mode = 1, nmodes
             if (write_to_FH_format)then 
                 weight = 1.0
 
-                out_name = 'output/csts/FHformat'//'/AlternativeSyntheticCst.'//trim(nstr)//trim(t1)//trim(lstr)
+                out_name = 'output/csts/FHformat'//'/SyntheticCst.'//trim(nstr)//trim(t1)//trim(lstr)
 
-                call write_cst_to_FH_format(trim(out_name), cst_imag, ncols, num_s, smin, dataSmax(i_mode), weight, 0.00001d0, 2)
+                call write_cst_to_FH_format(trim(out_name), cst_imag, ncols, num_s, smin, dataSmax(i_mode), weight, 0.05d0, 2)
             endif 
 
             write(*,*)'Cst written to '//trim(out_name)
@@ -500,22 +560,14 @@ do i_mode = 1, nmodes
     call buffer_int(lstr, l1)
 
     out_name =  './output/sem_fast_'//trim(nstr)//t1//trim(lstr)//'.txt'
-    call save_Vani_matrix(l1, l1, out_name)
+    call save_Vani_matrix(l1, l1, out_name, redimensionalise_Vani)
 
 
-    ! Output CSTS if desired
-    ! NOTE ON NON-DIMENSIONALISATION: 
-    ! The Vani matrix is re-dimensionalised in save_Vani_matrix by multiplying
-    ! by 1/SCALE_T^2 
-    ! It does not include the multiplication of the 1/(2omega) part
-    ! that would be done in computing Hmat...
-    ! we include that here for the Cst calculation so that the output Cst is the 
-    ! true value Cst contribution from this matrix
-    ! also convert it to Hz, but not mHz
     if(compute_csts)then 
         call get_Ssum_bounds(l1, l1, smin, smax, num_s, ncols)
         allocate(cst_imag(num_s, ncols))
-        call Hcomplex_to_cst_8(Vani, l1, l1, cst_imag, ncols, num_s, t1, t1, 2)
+        call Hcomplex_to_cst_8(Vani/(two * SCALE_T * mode_1%wcom),     &
+                               l1, l1, cst_imag, ncols, num_s, t1, t1, 2)
 
         out_name = 'output/csts/'//'/cst_'//trim(nstr)//trim(t1)//trim(lstr)//'.txt'
 
@@ -523,7 +575,7 @@ do i_mode = 1, nmodes
         ! note the scale_T*mode_1%wcom is non-dim omega
         ! then multiply by 1/SCALE_T for dimensionalisation and the 2pi is --> Hz
         if(redimensionalise_csts)then 
-            cst_imag = cst_imag/(four*pi*SCALE_T*SCALE_T*mode_1%wcom)
+            cst_imag = cst_imag/(two*pi*SCALE_T)
         endif 
 
         call write_cst_complex_to_file(trim(out_name), cst_imag, ncols, num_s, smin, 2)

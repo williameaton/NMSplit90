@@ -51,7 +51,9 @@ __constant__ int Vcont[108] = {0, 0, 1, 0, 1, 1, 0, 2, 1, 0, 3, 2, 0, 4, 2,
                                5, 5, 4};
 
 
-__constant__ int Lvals[27] = {8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 3,  3, 3, 3, 2 , 2, 2,  2, 2,  1,  1, 1,  1,  1};
+//__constant__ int Lvals[27] = {8, 7,   6, 5,  5,  5, 5,  5,  4,  4,   4,  3,  3, 3,  3, 3, 3, 2 , 2, 2,  2, 2,  1,  1, 1,  1,  1};
+__constant__ int Lvals[22] = {1,1,1,3,5,6,2,2,3,3,3,4,4,5,3,2,3,8,3,4,5,5};
+
 
 // extern "C" {
 // int allocate_eta_arrays(int size){
@@ -416,8 +418,13 @@ int force_proc_to_device(int nprocs, int myrank){
       return -1;
     }
 
-    if(nprocs != devcount){
-      printf("Error nprocs != device count: procs %i devices %i", nprocs, devcount );
+    if(nprocs > devcount){
+      printf("Error nprocs < device count: procs %i devices %i", nprocs, devcount );
+      return -1; 
+    } 
+
+    if(nprocs > devcount){
+      printf("Warning: nprocs > device count: procs %i devices %i", nprocs, devcount );
       return -1; 
     } 
 
@@ -462,7 +469,6 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
                                                CPPCUSTOM_REAL * __restrict__ d_vani_real, 
                                                CPPCUSTOM_REAL * __restrict__ d_vani_imag){ 
   // Kernel is launched with dimensions: 
-  // <<< dim3(nblocks_for_all_elems, nn1_total, 81), dim3(nelem_in_block, ngll_in_block, 1) >>>
   int startelem, myspec, ispec, endelem, igllstart, igllend, imode, 
       p, utripos, endispec, row, col, lval;
 
@@ -503,29 +509,32 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   // Which mode am i and which m1, m2 value am I solving? 
   int4 lut_values = __ldg(reinterpret_cast<const int4*>(&d_LUT[blockIdx.y * 4]));
   imode   = lut_values.x;  // The number of this mode
-  utripos = lut_values.y;  // Index of the 
+  utripos = lut_values.y;  // Index of the upper triangular position
   row     = lut_values.z;  // The row of the Vani element
   col     = lut_values.w;  // The column of the Vani element
 
   lval    = Lvals[imode];
 
-
   // reflected (positive m1) position
-  int ltripos = utripos + 2*(lval-row)*(lval+1) - (lval-row)*(lval-row+1)/2;
+  //
+  //int ltripos = utripos + 2*(lval-row)*(lval+1) - (lval-row)*(lval-row+1)/2;
+  // We use the row and col (0-indexed) to get the reflected m1 in matrix
+  // Steps (1) row --> 2l - row to give opposite row, col is the same
+  //       (2) then take row/col and remove l+1 so that the lower right
+  // square (ex diag) is 0 indexed. Then use formula 
+  // index(i, j) = iQ - i(i+1)/2 + j + 1 to get the index of the upper triangular
+  // within this lower right square. This index is added to the midpoint (m1=0, m2=0)
+  // index which we know is always l+1 * l in 0 indexing. Combining this all gives formula 
+  // int ltripos = (3*lval*lval - lval + 2*col - row*(row+1)) /2 ;
 
-
-
-  // if(blockIdx.x == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0 && imode==0){
-  // printf("%i %i %i %i %i %i \n", blockIdx.y, lval, row, col, utripos, ltripos);
-  // }
-
+  // Updated mapping to the lower triangle is to simply take the value from the max val: 
+  // be careful with the zero indexing
+  int ltripos = (lval+1)*(lval+1) - 1 -  utripos;
 
   // -1 ** |m1| ie the positive m1 
-  int m1 = row-lval;
+  int m1 = row - lval;
 
   //float sign = ((lval-row) % 2 == 0) ? 1.0f : -1.0f;
-
-
   // Which of the 81 contractions am i solving? 
   // Any time that we use vp or vq we use it as 
   // vp * 125 * nspec 
@@ -577,12 +586,12 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
   // E_{-m} = (-1)**m E_m conjugate 
   // We can therefore compute the equivalent for m1 > 0 as well
 
-      cont_r_p +=  (real_1.x * real_2.x  - imag_1.x * imag_2.x) * cxyz.x +
+      cont_r_p += (real_1.x * real_2.x  - imag_1.x * imag_2.x) * cxyz.x +
                   (real_1.y * real_2.y  - imag_1.y * imag_2.y) * cxyz.y +
                   (real_1.z * real_2.z  - imag_1.z * imag_2.z) * cxyz.z +  
                   (real_1.w * real_2.w  - imag_1.w * imag_2.w) * cxyz.w;  
 
-      cont_i_p +=  (real_1.x * imag_2.x  + real_2.x * imag_1.x) * cxyz.x +
+      cont_i_p += (real_1.x * imag_2.x  + real_2.x * imag_1.x) * cxyz.x +
                   (real_1.y * imag_2.y  + real_2.y * imag_1.y) * cxyz.y +
                   (real_1.z * imag_2.z  + real_2.z * imag_1.z) * cxyz.z +
                   (real_1.w * imag_2.w  + real_2.w * imag_1.w) * cxyz.w;
@@ -624,8 +633,21 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
       atomicAdd(&d_vani_imag[maxnn1 * imode + utripos], scont_i_m[0]);
 
       // Add reflected value in positive m1, m2
-      atomicAdd(&d_vani_real[maxnn1 * imode + ltripos], scont_r_p[0]);
-      atomicAdd(&d_vani_imag[maxnn1 * imode + ltripos], scont_i_p[0]);
+      // Change the condition here due to re-indexing of the arrays
+      // Now only want reflection if above a certain index value/
+      // if the original index is below a certain value: 
+      // ! .  .  .  .  .  .  1
+      // ! .  .  .  .  .  2  3
+      // ! .  .  .  .  4  5  6
+      // ! .  .  .  7  8  9 10
+      // ! .  .  .  . 13 12 11
+      // ! .  .  .  .  . 15 14
+      // ! .  .  .  .  .  . 16
+      // In the example above we only want to add if index 6 or below
+      if(utripos <= ((lval+1)*(lval))/2 ){
+        atomicAdd(&d_vani_real[maxnn1 * imode + ltripos], scont_r_p[0]);
+        atomicAdd(&d_vani_imag[maxnn1 * imode + ltripos], scont_i_p[0]);
+      }
 
     }
   } else  {
@@ -638,7 +660,6 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
           scont_r_p[tid] += scont_r_p[tid + stride];
           scont_i_p[tid] += scont_i_p[tid + stride];
 
-
       }
       __syncthreads();
     }
@@ -649,11 +670,9 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
         atomicAdd(&d_vani_real[gidx1], scont_r_m[0]);
         atomicAdd(&d_vani_imag[gidx1], scont_i_m[0]);
     
-    
-      if(col -lval >= lval - row && row < lval && col > lval){
-        
+      // see above for condition
+      if(utripos <= ((lval+1)*(lval))/2){
         int gidx2 = (maxnn1 * imode + ltripos);
-
         atomicAdd(&d_vani_real[gidx2], scont_r_p[0]);
         atomicAdd(&d_vani_imag[gidx2], scont_i_p[0]);
       }
@@ -685,7 +704,7 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
   // Stores the launch parameters 
   if (!graphConstructed) {
 
-    int elem_per_thread       = 4 ; // Each thread is responsible for 2 elements
+    int elem_per_thread       = 4 ; // Each thread is responsible for 4 elements
     int nelem_in_block        = 32*elem_per_thread;
     int ngll_in_block         = 4;
     int nblocks_for_all_elems = ceil(float(nspec)/float(nelem_in_block)) ;
@@ -732,14 +751,12 @@ int launch_vanikernel(int ngll, int nspec, int nn1_total, int maxnn1,
   // Synchronize to ensure memory is cleared before launching the graph
   cudaStreamSynchronize(Vanistream);
 
-
   cudaGraphLaunch(VanigraphExec, Vanistream);
 
   ierr = cudaGetLastError();
     if (ierr != cudaSuccess) {
         printf("CUDA kernel launch error: %s\n", cudaGetErrorString(ierr));
     }
-
 
   cudaEventRecord(stopEvent, Vanistream);
   cudaEventSynchronize(stopEvent);
@@ -942,18 +959,23 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
         (double)rad2);
     }
 
-    // // printf("%f %f %f %f \n", rad2, rho, vp, vs);
-    // printf("%f %f %f %f\n", 
-    //    (double)myx, 
-    //    (double)myy, 
-    //    (double)myz, 
-    //    (double)rad2);
 
+    // // // Originally g/cm^3 --> kg/m^3 -> nondimensionalised
+    // rho = (13.088500000 - 8.838100000*rad2)*0.1813466804490;   // 1000.d0/RHOAV
+    // // Originally km/s --> m/s  
+    // vp  = (11.262200000 - 6.364000000*rad2)*0.1459938230354;   // 1000.d0/SCALE_V
+    // vs  = (3.667800000  - 4.447500000*rad2)*0.1459938230354;    // 1000.d0/SCALE_V
+
+
+    // I think Hen is fixing the perturbation based on the central speed rather than
+    // depth varying - testing this here
     // // Originally g/cm^3 --> kg/m^3 -> nondimensionalised
-    rho = (13.088500000 - 8.838100000*rad2)*0.1813466804490;   // 1000.d0/RHOAV
+    rho = (13.088500000)*0.1813466804490;   // 1000.d0/RHOAV
     // Originally km/s --> m/s  
-    vp  = (11.262200000 - 6.364000000*rad2)*0.1459938230354;   // 1000.d0/SCALE_V
-    vs  = (3.667800000  - 4.447500000*rad2)*0.1459938230354;    // 1000.d0/SCALE_V
+    vp  = (11.262200000)*0.1459938230354;   // 1000.d0/SCALE_V
+    vs  = (3.667800000 )*0.1459938230354;    // 1000.d0/SCALE_V
+
+
 
     myA = rho * vp * vp * modelA;
     myC = rho * vp * vp * modelC;
@@ -1025,20 +1047,25 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     Q[0][0] = r11 * r11; 
     Q[1][0] = r21 * r21; 
     Q[2][0] = r31 * r31;
-    Q[3][0] = r21 * r31;
-    Q[4][0] = r31 * r11;
-    Q[5][0] = r11 * r21;
 
     Q[0][1] = r12 * r12;
     Q[1][1] = r22 * r22;
     Q[2][1] = r32 * r32;
-    Q[3][1] = r22 * r32;
-    Q[4][1] = r32 * r12;
-    Q[5][1] = r12 * r22;
 
     Q[0][2] = r13 * r13;
     Q[1][2] = r23 * r23;
     Q[2][2] = r33 * r33;
+
+    Q[3][0] = r21 * r31;
+    Q[4][0] = r31 * r11;
+    Q[5][0] = r11 * r21;
+
+    Q[3][1] = r22 * r32;
+    Q[4][1] = r32 * r12;
+    Q[5][1] = r12 * r22;
+
+
+
     Q[3][2] = r23 * r33;
     Q[4][2] = r33 * r13;
     Q[5][2] = r13 * r23;
@@ -1046,6 +1073,7 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     Q[0][3] = 2.0 * r12 * r13;
     Q[1][3] = 2.0 * r22 * r23;
     Q[2][3] = 2.0 * r32 * r33;
+
     Q[3][3] = r22 * r33 + r32 * r23;
     Q[4][3] = r12 * r33 + r13 * r32;
     Q[5][3] = r12 * r23 + r13 * r22;
@@ -1053,6 +1081,7 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     Q[0][4] = 2.0 * r11 * r13;
     Q[1][4] = 2.0 * r21 * r23;
     Q[2][4] = 2.0 * r33 * r31;
+
     Q[3][4] = r23 * r31 + r21 * r33;
     Q[4][4] = r33 * r11 + r13 * r31;
     Q[5][4] = r13 * r21 + r23 * r11;
@@ -1060,6 +1089,7 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     Q[0][5] = 2.0 * r11 * r12;
     Q[1][5] = 2.0 * r21 * r22;
     Q[2][5] = 2.0 * r31 * r32;
+
     Q[3][5] = r21 * r32 + r31 * r22;
     Q[4][5] = r31 * r12 + r11 * r32;
     Q[5][5] = r11 * r22 + r21 * r12;

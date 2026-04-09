@@ -341,6 +341,7 @@ module piecewise_interpolation
                 call self%interpolate_mineos_variable(Mmode%w,  Mmode%w_spl)
                 call self%interpolate_mineos_variable(Mmode%dw, Mmode%dw_spl)
 
+
                 ! Auxillary variables:  z (DT98 D.20)
                 allocate(Mmode%aux_z(self%n_radial))
                 Mmode%aux_z = (Mmode%dw_spl - Mmode%w_spl/real(self%radial, kind=SPLINE_REAL))/Mmode%kf
@@ -366,8 +367,10 @@ module piecewise_interpolation
                 call self%interpolate_mineos_variable(Mmode%p,  Mmode%p_spl)
                 call self%interpolate_mineos_variable(Mmode%dp, Mmode%dp_spl)
 
+               
                 call self%interpolate_mineos_variable(Mmode%u,  Mmode%u_spl)
                 call self%interpolate_mineos_variable(Mmode%du, Mmode%du_spl)
+
 
                 call self%interpolate_mineos_variable(Mmode%v,  Mmode%v_spl)
                 call self%interpolate_mineos_variable(Mmode%dv, Mmode%dv_spl)
@@ -382,7 +385,7 @@ module piecewise_interpolation
                 Mmode%aux_x = Mmode%dv_spl/Mmode%kf + & 
                              (Mmode%u_spl - Mmode%v_spl/Mmode%kf)/real(self%radial, kind=SPLINE_REAL)
 
-                ! If radius is zero then the auxillary value x will be
+                             ! If radius is zero then the auxillary value x will be
                 ! NaN so need safety check
                 do i = 1, self%n_radial
                     if(self%radial(i).eq.zero)then 

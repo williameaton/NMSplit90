@@ -5,7 +5,7 @@ program optimised_vani
                          nmodes, nprocs, all_warnings, datadir, max_tl1, & 
                         Cxyz, MaxBrettModelPts, glob_eta1, glob_eta2, compute_cst_smax, timingNEX
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
-    use v_ani, only: save_Vani_matrix, compute_Cxyz_at_gll_constantACLNF, & 
+    use v_ani, only: compute_Cxyz_at_gll_constantACLNF, & 
                         compute_Vani_matrix, compute_vani_matrix_stored, & 
                         convert_imag_to_real, save_Vani_real_matrix
     use splitting_function, only: get_Ssum_bounds, Hcomplex_to_cst_4, Hcomplex_to_cst_8, write_cst_complex_to_file

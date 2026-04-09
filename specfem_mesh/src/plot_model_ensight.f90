@@ -48,7 +48,7 @@ program plot_vani_to_ensight
 
         ! Read 3D model and build K-d tree: 
         !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/voronoi_model_new_format.txt"
-        Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/benchmarks/hemisphere_model.txt"
+        Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/benchmarks/6node_model.txt"
         !Model3D%filename = "/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/3D_MODELS/voronoi/MCMC_models/instances/c1_m5000.txt"
         call Model3D%read_model_from_file()
         call Model3D%create_KDtree()
@@ -101,7 +101,7 @@ program plot_vani_to_ensight
 
 
             call Model3D%project_to_gll(sm, glob_eta1, id=1)
-            call write_real_scalar_to_ensight(sm, glob_eta1, 'love_A', 1)
+            call write_real_scalar_to_ensight(sm, glob_eta1, 'longitude', 1)
 
             ! call Model3D%project_to_gll(sm, glob_eta1, id=2)
             ! call write_real_scalar_to_ensight(sm, glob_eta1, 'love_C', 2)

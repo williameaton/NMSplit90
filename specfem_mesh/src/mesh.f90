@@ -1521,14 +1521,17 @@ module specfem_mesh
                             do k = 1, self%ngllz
                                 ! Get ylm and the partial derivatives, and 
                                 ! w at the radius of this node
-                                
                                 w_r   = m0de%w_spl(self%rad_id(i,j,k,ispec))/m0de%kf
-        
+                                                             
+
                                 theta = real(self%thetastore(i,j,k,ispec), kind=CUSTOM_REAL)
                                 phi   = real(self%phistore(i,j,k,ispec), kind=CUSTOM_REAL)
                                 ylm   = ylm_complex(m0de%l, m, theta, phi)
                                 call ylm_deriv(m0de%l, m, theta, phi, dylm_theta, dylm_phi)
         
+                                sinth = real(sinp(theta), kind=SPLINE_REAL)
+
+
                                 if (theta.ge.zero .and. theta.le.pole_tolerance) then 
                                     ! North pole 
                                     ! S_theta (DT98 D.9)
@@ -2061,6 +2064,7 @@ module specfem_mesh
 
                                         ! d_t S_r  (5):
                                         gradS(1,2,i,j,k,ispec) = (u_r - v_r)*spl_dylm_theta/unq_r
+
                                         
                                         ! d_t S_t - same as E_tt: DT98 D.15
                                         gradS(2,2,i,j,k,ispec) = (sp_ylm*u_r - v_r*(spl_dylm_theta/tanth -  &

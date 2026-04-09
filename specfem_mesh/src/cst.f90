@@ -431,6 +431,26 @@ module splitting_function
     end subroutine write_cst_complex_to_file
 
 
+   subroutine write_cst_complex_to_file_4(fname, cst, ncols, nrows, smin, jump)
+        ! Jump of 2 for only even stuff, 1 for all 
+        implicit none 
+        character(len=*)         :: fname
+        complex(kind=4):: cst(nrows, ncols)
+        integer                  :: nrows, ncols, smin, jump, is ,it
+
+
+        open(1,file=trim(fname), form='formatted')
+        do is = 1, nrows, jump
+            do it = 1, 2*(smin + is-1)+1
+                write(1,*)smin+is-1, it - (smin+is-1) - 1, real(cst(is,it)), aimag(cst(is,it))
+            enddo 
+        enddo 
+
+        close(1)
+    end subroutine write_cst_complex_to_file_4
+
+
+
     subroutine write_cst_to_FH_format(fname, cst, ncols, nrows, smin, smax, weight, variance, jump)
         ! Writes CSTS in the format that is read in by Julia fairhead 
         ! The format is as follows: 
@@ -442,7 +462,7 @@ module splitting_function
         character(len=*)         :: fname
         complex(kind=SPLINE_REAL):: cst(nrows, ncols)
         integer                  :: nrows, ncols, smin, smax, jump, is ,it
-        real(kind=SPLINE_REAL)   :: weight, variance
+        real(kind=SPLINE_REAL)   :: weight, variance, uncert 
 
         open(1,file=trim(fname), form='formatted')
 
@@ -450,10 +470,12 @@ module splitting_function
         write(1,*)weight    ! Line 2
         write(1,*)smax      ! Line 3
 
-        ! We ignore s = 0 
-        do is = 3, smax+1, jump
+        ! No longer s = 0 
+        do is = 1, smax+1, jump
             do it = 1, (smin + is-1)+1
-                write(1,'(i3, i3, E15.7, E15.7, E15.7)')smin+is-1, it - (smin+is-1) - 1, real(cst(is,it)), aimag(cst(is,it)), variance
+
+                uncert = variance * ((real(cst(is,it))**two + aimag(cst(is,it))**two)/two)**half 
+                write(1,'(i3, i3, E15.7, E15.7, E15.7)')smin+is-1, it - (smin+is-1) - 1, real(cst(is,it)), aimag(cst(is,it)), uncert
             enddo 
         enddo 
     end subroutine write_cst_to_FH_format

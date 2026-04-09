@@ -356,7 +356,7 @@ subroutine WK_Vphi(m_1, m_2, s, spline_rad, rho_spl, Vphi)
             ! S S: Use the first, second, and fourth lines of the equation
             Vphi = (fs * (fs + one) * rho_spl * m_1%u_spl * m_2%u_spl * BNpmlsld(0, 1, l1, s, l2)/(spline_rad*spline_rad)) + & 
                    (half * rho_spl * (m_1%u_spl * m_2%dv_spl/m_2%kf - m_1%du_spl * m_2%v_spl/m_2%kf + &
-                     (m_1%u_spl * m_2%v_spl/m_2%kf)/spline_rad - two*m_1%aux_f*m_2%v_spl/m_2%kf ) * BNpmlsld(1, 1, l2, l1, s) /(spline_rad)) + & 
+                     (m_1%u_spl * m_2%v_spl/m_2%kf)/spline_rad - two*m_1%aux_f*m_2%v_spl/m_2%kf ) * BNpmlsld(1, 1, l2, l1, s)/spline_rad) + & 
                    (half * rho_spl * (m_2%u_spl * m_1%dv_spl/m_1%kf - m_2%du_spl * m_1%v_spl/m_1%kf + &
                      (m_2%u_spl * m_1%v_spl/m_1%kf)/spline_rad - two*m_2%aux_f*m_1%v_spl/m_1%kf ) * BNpmlsld(1, 1, l1, l2, s) /(spline_rad))    
         else

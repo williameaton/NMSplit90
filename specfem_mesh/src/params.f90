@@ -12,7 +12,7 @@ logical, parameter :: all_warnings  = .false.
 logical, parameter :: safety_checks = .false.
   
 integer, parameter :: nprocs        = 4
-integer, parameter :: nmodes        = 32
+integer, parameter :: nmodes        = 22
  
 ! Optimisation stuff: 
 integer, parameter :: compute_cst_smax  = 6
@@ -23,8 +23,9 @@ character(len=3)   :: timingNEX = '160'
 
 
 ! Specfem mesh files: 
-character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX160/sliced/linear/sets4/'
+!character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX160/sliced/linear/sets4/'
 !character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX64/sliced/'
+character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/sliced/linear/sets4/'
 !character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets4/'
 !character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX176/sliced/linear/sets16/'
 !character(len=250)  :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX240/sliced/linear/sets8/'
@@ -32,7 +33,7 @@ character(len=250) :: datadir   = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_
 !character(len=250) :: datadir = '/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/DATABASES_MPI/NEX96/'
 
 ! Mineos model parameters: 
-! PREM mineos model 
+!PREM mineos model 
 character(len=250), parameter  :: ddir = '/scratch/gpfs/TROMP/we3822/NMSplit90/databases/prem_ani_att_database/'
 character(len=60),  parameter  :: model_fname = 'model'
 character(len=60),  parameter  :: bin_prefix = 'prem_ani_att'
@@ -41,6 +42,13 @@ character(len=60),  parameter  :: bin_prefix = 'prem_ani_att'
 ! character(len=250), parameter  :: ddir = '/scratch/gpfs/TROMP/we3822/NMSplit90/databases/1066a/'
 ! character(len=60),  parameter  :: model_fname = '1066a_mineos_model'
 ! character(len=60),  parameter  :: bin_prefix = '1066a_noatt'
+
+! !perturbed PREM benchmark model - NOT REAL
+! character(len=250), parameter  :: ddir        = '/scratch/gpfs/TROMP/we3822/NMSplit90/databases/RTIperturb_notreal/'
+! character(len=60),  parameter  :: model_fname = 'model'
+! character(len=60),  parameter  :: bin_prefix  = 'benchmark_SNREI'
+
+
 
 ! Assumptions: 
 logical, parameter :: Z_AXIS_EARTH_ROTATION = .true.

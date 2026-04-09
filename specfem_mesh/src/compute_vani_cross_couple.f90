@@ -382,6 +382,7 @@ do i_mode = 1, 2!nmodes
             out_name =  './output/vani'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)//'.txt'
         endif 
         Vani = Vani_modesum
+        write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
         call save_Vani_matrix(l1, l2, out_name)
         deallocate(Vani_modesum)
     endif 
@@ -398,6 +399,7 @@ do i_mode = 1, 2!nmodes
         out_name =  './output/vani'//trim(n1str)//t1//trim(l1str)//'_'//trim(n2str)//t2//trim(l2str)//'.txt'
     endif 
     
+    write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
     call save_Vani_matrix(l1,l2, out_name)
 
     ! Dimensionalise the Vani when it is computing the csts:

@@ -22,7 +22,7 @@ program benchmark_trans_perturb
     real(SPLINE_REAL), allocatable :: integrand(:)
     complex(SPLINE_REAL), allocatable :: W_s(:), W_a(:)
 
-    real(kind=CUSTOM_REAL) :: om2, kf, dw, mf, df_from_c00
+    real(kind=CUSTOM_REAL) :: om2, kf, dw,dw2, mf, df_from_c00
     real(SPLINE_REAL) ::  sum
     complex(kind=SPLINE_REAL), allocatable :: cst_imag(:,:)
     complex(kind=SPLINE_REAL) :: c00
@@ -49,6 +49,7 @@ program benchmark_trans_perturb
 
     ! READ BENCHMARK PROFILES OF ACLNF and RADIUS: 
     if(benchmark_isotropic_perturb)then 
+        write(*,*)"Reading 1"            
         open(unit=1,file='benchmarks/isotropic_perturb_ACLNF_profiles.txt', &
         status='old', form='formatted', iostat=ier)
         read(1,*)nrad
@@ -57,6 +58,9 @@ program benchmark_trans_perturb
             read(1,*) radius(iline), Aspl(iline), Cspl(nrad), Lspl(iline), Nspl(nrad), Fspl(iline)
         enddo 
         close(1)
+
+        write(*,*)"Finished 1"
+
         ! Non-dimensionalise the ACLNF: 
         Aspl = Aspl/(SCALE_V*SCALE_V*RHOAV)
         Cspl = Cspl/(SCALE_V*SCALE_V*RHOAV)
@@ -64,7 +68,9 @@ program benchmark_trans_perturb
         Nspl = Nspl/(SCALE_V*SCALE_V*RHOAV)
         Fspl = Fspl/(SCALE_V*SCALE_V*RHOAV)
     else 
-        open(unit=1,file='benchmarks/isoradial_perturb_ACLNF_profiles.txt', &
+        write(*,*)"Reading 2"
+        !open(unit=1,file='benchmarks/RTI.txt', &
+        open(unit=1,file='benchmarks/SNREI_perturb.txt', &
         status='old', form='formatted', iostat=ier)
         read(1,*)nrad
         allocate(radius(nrad), Aspl(nrad), Cspl(nrad), Lspl(nrad), Nspl(nrad), Fspl(nrad)) 
@@ -82,14 +88,16 @@ program benchmark_trans_perturb
     endif 
     
 
-    knot_lower = 1
-    r_lower    = zero        
-    knot_upper = mineos%disc(mineos%ndisc)
-    r_upper    = mineos%rdisc(mineos%ndisc)
-    npoints    = nrad
+    ! knot_lower = 1
+    ! r_lower    = zero        
+    ! knot_upper = mineos%disc(2)
+    ! r_upper    = mineos%rdisc(2)
+    ! npoints    = nrad
+
+
 
     ! Create interpolator with evenly spaced points in IC 
-    interp = create_PieceInterp(npoints)
+    interp = create_PieceInterp(nrad)
     interp%radial = radius
     call interp%setup()
     call interp%create_interpolation_radial_map()
@@ -102,7 +110,8 @@ program benchmark_trans_perturb
     allocate(K_F(nrad))
     allocate(integrand(nrad))
 
-    do imode = 1, nmodes
+
+    do imode = 1, 27
         ! METHOD FROM CHAPTER 9 of DT 98 
         n1 = modeNs(imode)
         l1 = modeLs(imode)
@@ -112,6 +121,7 @@ program benchmark_trans_perturb
         Vani = SPLINE_iZERO
 
         mode_1 = get_mode(n1, 'S', l1 , mineos_ptr)
+
         call interp%interpolate_mode_eigenfunctions(mode_1)
         
         ! Non dimensional eigenfreq x 2
@@ -138,8 +148,36 @@ program benchmark_trans_perturb
         ! Integrate and re-dimensionalise 
         dw =  integrate_r_traps(interp%radial, integrand, nrad)/SCALE_T
 
+
+
+        ! We can compute these in terms of mu and kappa if SNREI perturb: 
+        ! in this case delta mu = delta L or delta N
+        ! kappa = A - 4/3 L
+        ! use A as the Kappa one: 
+        Aspl = Aspl 
+        ! use Nspl as mu spl 
+        ! kappa kernel: 
+        K_A = ( radius*mode_1%du_spl + two*mode_1%u_spl - mode_1%kf * mode_1%v_spl)**two / om2
+
+        ! mu kernel: 
+        K_N = ( (one/three) * (two*radius*mode_1%du_spl - two*mode_1%u_spl + mode_1%kf * mode_1%v_spl )**two & 
+              + (radius*mode_1%dv_spl - mode_1%v_spl + mode_1%kf * mode_1%u_spl)**two  & 
+              + (mode_1%kf*mode_1%kf - two )*mode_1%v_spl*mode_1%v_spl)/om2
+
+        integrand = Aspl*K_A +  Cspl*K_N 
+
+        ! Integrate and re-dimensionalise 
+        dw2 =  integrate_r_traps(interp%radial, integrand, nrad)/SCALE_T
+
+
         ! convert to microHz:
-        dw = 1.0e6 * dw/(two*PI)
+        dw  = 1.0e3 * dw / (two*PI)
+
+        dw2 = 1.0e3 * dw2/ (two*PI)
+
+
+
+
 
         if(benchmark_isotropic_perturb)then 
             ! NOW LETS MATCH IT WITH TROMP 1993 METHOD
@@ -178,11 +216,11 @@ program benchmark_trans_perturb
             df_from_c00 = df_from_c00 / (four*PI)**half
             deallocate(cst_imag)
 
-            write(*,'(i2, a, i3, a, f15.10, f15.10)') n1, ' S ', l1, ' ', dw, df_from_c00
+            !write(*,'(i2, a, i3, a, f15.10, f15.10)') n1, ' S ', l1, ' ', dw, df_from_c00
 
         else
             ! CANT USE TROMP 93 for radial TI model so print Ch 9 method only
-            write(*,'(i2, a, i2, f15.10, f15.10, f15.10, f15.10)') n1, ' S ', l1,  dw
+            write(*,'(i2, i2, f15.10, f15.10, f15.10, f15.10)') n1, l1,  dw
         endif 
 
         deallocate(Vani)

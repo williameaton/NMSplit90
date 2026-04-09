@@ -438,7 +438,7 @@ contains
             Nf = real(N, kind=CUSTOM_REAL)
 
 
-            if (m.gt.0)then 
+            if (m.ge.0)then 
                 ! DOWNWARD RECURSION 
 
                 ! If we are doing a downward recursion, we need to start with 

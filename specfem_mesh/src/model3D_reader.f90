@@ -55,6 +55,7 @@ module model3d
             procedure :: re_readmodel
             procedure :: create_KDtree
             procedure :: project_to_gll
+            procedure :: set_constant_aclnf
             !procedure :: cleanup
     end type  M3D
 
@@ -401,6 +402,8 @@ module model3d
 
         globvar = zero
         
+
+
         do i = 1, sm%nglob
             da = search%kNearest(self%kdtree, self%xcoord, self%ycoord, self%zcoord, & 
                                  xQuery = sm%x_glob(i), &
@@ -410,6 +413,7 @@ module model3d
                                  
             ! Index of the closest voronoi point 
             point =  da%i%values(1)
+
             globvar(i) = self%valspats(point,id)*scale_value
 
             !write(*,*)'Scale value: ', scale_value, one/(SCALE_V*SCALE_V*RHOAV)
@@ -433,6 +437,37 @@ module model3d
     end subroutine project_to_gll
 
 
+
+    subroutine set_constant_ACLNF(self, spl_len, Aspl, Cspl, Lspl, Nspl, Fspl)
+
+        implicit none
+        include "constants.h"
+        class(M3D) :: self
+        real(kind=CUSTOM_REAL) :: Aspl(spl_len), Cspl(spl_len), Lspl(spl_len), & 
+                                  Nspl(spl_len), Fspl(spl_len)
+
+
+        integer :: ic, spl_len
+        if(self%exists_const)then 
+            do ic = 1, self%nconst
+                if (self%idconsts(ic).eq.1)then 
+                    Aspl(:) = self%valconsts(ic)
+                endif 
+                if (self%idconsts(ic).eq.2)then 
+                    Cspl(:) = self%valconsts(ic)
+                endif 
+                if (self%idconsts(ic).eq.3)then 
+                    Lspl(:) = self%valconsts(ic)
+                endif 
+                if (self%idconsts(ic).eq.4)then 
+                    Nspl(:) = self%valconsts(ic)
+                endif 
+                if (self%idconsts(ic).eq.5)then 
+                    Fspl(:) = self%valconsts(ic)
+                endif 
+            enddo 
+        endif   
+    end subroutine set_constant_ACLNF
 
     ! subroutine cleanup(self)
     !     use allocation_module, only: deallocate_if_allocated

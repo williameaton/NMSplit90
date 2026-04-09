@@ -153,7 +153,10 @@ module modes
         close(iocat)
     
         if (ios .gt. 0) stop 'Error reading 1'
-        if (ios .lt. 0) stop 'Mode   not found in the catalogue' !when would this ever trigger? 
+        if (ios .lt. 0)then
+             write(*,*) 'Mode ', self%n, self%t, self%l, ' not found in the catalogue' !when would this ever trigger? 
+             stop 
+        endif 
         
         if(verbose.ge.3) write(*,'(a,1x,i6)')'Found mode at ID', nrec
     
@@ -170,6 +173,7 @@ module modes
         ! Check if we have gone past the data in our reads
         if (n4old.eq.n4.and.l4old.eq.l4)then
             write(*,*)'Mode not in catalogue. Looped past end of file binary read.'
+            write(*,*)"Was looking for mode: ", self%n, self%t, self%l
             stop
         endif 
         n4old = n4
@@ -180,7 +184,6 @@ module modes
 
 
         if(savefreq)then
-
             call buffer_int4(n1str, n4)
             call buffer_int4(l1str, l4)
 
@@ -226,9 +229,9 @@ module modes
         if (abs(wwmhz*2*PI/1000 - self%wcom) > eps ) then      
             stop 'Error: frequencies do not match'
         endif 
-        if ( abs(self%qmod - qqmod) > eps) then 
-            write(*,*)'Warning: Q do not match error - ', abs(self%qmod - qqmod)
-        endif 
+        ! if ( abs(self%qmod - qqmod) > eps) then 
+        !     write(*,*)'Warning: Q do not match error - ', abs(self%qmod - qqmod)
+        ! endif 
         
 
         ! There is a difference in normalisation between the eigenfunctions of 
@@ -240,11 +243,11 @@ module modes
         ! Format buffer into arrays 
         if(ntype.eq.1 .or. ntype.eq.4)then
             ! Toroidal only
-            self%w(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)   * self%wcom*SCALE_T
+            self%w(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)                * self%wcom*SCALE_T
             self%dw(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL) * self%wcom*SCALE_T
         else
             ! Spheroidal 
-            self%u(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)   * self%wcom*SCALE_T
+            self%u(1  : self%len) = real(buf(1 : self%len), kind=SPLINE_REAL)                   * self%wcom*SCALE_T
             self%du(1 : self%len) = real(buf(self%len + 1 : 2 * self%len), kind=SPLINE_REAL)    * self%wcom*SCALE_T
             if (ntype == 2) then
                 ! Radial

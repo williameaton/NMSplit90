@@ -137,6 +137,7 @@ contains
         Q(1,2) = r12 * r12
         Q(2,2) = r22 * r22
         Q(3,2) = r32 * r32
+        
         Q(4,2) = r22*r32
         Q(5,2) = r32*r12
         Q(6,2) = r12*r22
@@ -302,7 +303,7 @@ contains
         
         use params, only: Cxyz, verbose
         use allocation_module, only: deallocate_if_allocated
-        use PREMModel, only: get_PREM_ACLNF_at_radius
+        use PREMModel, only: get_PREM_ACLNF_at_radius, get_prem_aclnf_at_centre
         implicit none 
         include "constants.h"
 
@@ -334,7 +335,12 @@ contains
                     do k = 1, sm%ngllz 
 
                         if(perturbation_on_PREM)then
-                            call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)
+                            !call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)
+                            ! WARNING WARNING WARNING
+                            ! WARNING WARNING WARNING
+                            ! WARNING WARNING WARNING
+                            call get_PREM_ACLNF_at_centre(Aprem, Cprem, Lprem, Nprem, Fprem)
+
                             call setup_Cnatural(Cnat, A*Aprem, C*Cprem, L*Lprem, N*Nprem, F*Fprem)
 
                         endif 
@@ -472,6 +478,7 @@ contains
             call sm%rotate_complex_sym_matrix_rtp_to_xyz(sm%strain1)
 
             if(store)then
+                !write(*,*)"Storing!"
                 call sm%save_mode_strain_binary(n1, t1, l1, m1, 1)
             endif      
 
@@ -1034,11 +1041,9 @@ contains
         enddo
 
     
-        if (s.eq.2)then 
-            write(*,*)"NIs t val: ", N, I, s , 0,  maxval(integrand),  maxval(gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL))
-        endif 
-
-        
+        ! if (s.eq.2)then 
+        !     write(*,*)"NIs t val: ", N, I, s , 0,  maxval(integrand),  maxval(gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL))
+        ! endif 
 
         integrand = integrand * gam * real(thrj(l,s,l,w1,w2,w3), kind=SPLINE_REAL)
         integrate_GNIr2 =  integrate_r_traps(rvals, integrand, nlen)
@@ -1075,10 +1080,9 @@ contains
         ! Sum over sdash = 0, 2, 4
         sum = SPLINE_iZERO
 
-        do sdash = 0, s, 2
+        do sdash = 0, 4, 2
 
             if (t.eq.0)then 
-
                 sum = sum +  (phi2-phi1) * gammaD1_coeff(abgd, sdash, Alove, Clove, Llove, Nlove, Flove) * IssNtt(s, sdash, N, 0, 0)
             else 
                 phicoeff = ( dsin(tf*phi2)-dsin(tf*phi1) + SPLINE_iONE*(dcos(tf*phi2) - dcos(tf*phi1))  ) / tf
@@ -1090,7 +1094,6 @@ contains
         ! The overall sum in 34 has this term - not to be confused with the one in front
         ! of the total integral 
         gamst_hemispheric = ((two * sf + one)/(four*PI)) *  sum 
-
 
     end function gamst_hemispheric
 
@@ -1106,7 +1109,7 @@ contains
         ! Inputs 
         integer, intent(in) :: s, s1, N, t1, t
         
-        complex(kind=CUSTOM_REAL) :: frac
+        complex(kind=CUSTOM_REAL) :: frac, thisISNT
         real(kind=CUSTOM_REAL) :: Nf, tf, t1f, t2f, t3f, theta 
         integer :: t2, t3
 
@@ -1116,13 +1119,19 @@ contains
     
         theta = PI/two
 
+      if(abs(N).gt.min(s,s1).or.abs(t1).gt.s1.or.abs(t).gt.s) then
+        IssNtt = SPLINE_iZERO
+
+      else 
 
         IssNtt = SPLINE_iZERO
-        do t2 = -s, s 
+        do t2 = -s1, s1 
             t2f = real(t2, kind=CUSTOM_REAL)
-
+            ! write(*,*)"t2 = ", t2
             do t3 = -s, s 
                 t3f = real(t3, kind=CUSTOM_REAL)
+                
+                ! write(*,*)"  t3 = ", t3
 
                 if (t2+t3.eq.1)then 
                     frac = - SPLINE_iONE * PI/two 
@@ -1133,15 +1142,18 @@ contains
                 endif 
 
 
-                IssNtt = IssNtt + (     XNlm(theta, t2, s1, t)           & 
-                                      * XNlm(theta, t2, s1, t1)          & 
-                                      * XNlm(theta, t3, s,  N)           &
-                                      * XNlm(theta, t3, s,  t) )* frac 
+                thisISNT =  (  XNlm(theta, t2, s1, N)           & 
+                             * XNlm(theta, t2, s1, t1)          & 
+                             * XNlm(theta, t3, s,  N)           &
+                             * XNlm(theta, t3, s,  t) )* frac 
 
+                IssNtt = IssNtt + thisISNT
             enddo 
         enddo 
 
         IssNtt = IssNtt * SPLINE_iONE**(two*Nf - tf - t1f)
+
+    endif
 
     end function IssNtt
 
@@ -1332,9 +1344,9 @@ contains
         enddo
 
 
-        if(t.eq.0.and.s.eq.2)then 
-           write(*,*)"NIst, val: ", N, I, s , t,  maxval(integrand), maxval(coeff)
-        endif 
+        ! if(t.eq.0.and.s.eq.2)then 
+        !    write(*,*)"NIst, val: ", N, I, s , t,  maxval(integrand), maxval(coeff)
+        ! endif 
 
         integrand = integrand * coeff 
 
@@ -1353,35 +1365,43 @@ contains
 
 
 
-    subroutine save_Vani_matrix(l1, l2, fname)
+    subroutine save_Vani_matrix(l1, l2, fname, scalebyT2)
         use params, only: Vani
         implicit none 
         include "constants.h"
         character(len=*) :: fname
         integer :: l1, l2
-
+        logical :: scalebyT2
+        real :: scaling 
         integer :: row, col
 
-
+        write(*,*)"SAVE VANI NO LONGER DIVISION BY SCALE_T ^2 "
+        
         write(*,*)'Writing to ', trim(fname)
+
+        scaling = one 
+        if(scalebyT2)then 
+            scaling = scaling/(SCALE_T*SCALE_T)
+        endif 
+
         ! Dimensionalised 
         open(1,file=trim(fname))
         ! Write the real matrix 
         do row =1, 2*l1 + 1
             do col = 1, 2*l2 + 1
                 if (col .lt. 2*l2+1)then 
-                write(1,'(E15.6)', advance='no')real(Vani(row,col)/(SCALE_T*SCALE_T))
+                write(1,'(E15.6)', advance='no')real(Vani(row,col)*scaling)
                 else 
-                    write(1,'(E15.6)', advance='yes')real(Vani(row,col)/(SCALE_T*SCALE_T))
+                    write(1,'(E15.6)', advance='yes')real(Vani(row,col)*scaling)
                 endif
             enddo 
         enddo 
         do row =1, 2*l1 + 1
             do col = 1, 2*l2 + 1
                 if (col .lt. 2*l2+1)then 
-                write(1,'(E15.6)', advance='no')aimag(Vani(row,col)/(SCALE_T*SCALE_T))
+                write(1,'(E15.6)', advance='no')aimag(Vani(row,col)*scaling)
                 else 
-                    write(1,'(E15.6)', advance='yes')aimag(Vani(row,col)/(SCALE_T*SCALE_T))
+                    write(1,'(E15.6)', advance='yes')aimag(Vani(row,col)*scaling)
                 endif
             enddo 
         enddo 

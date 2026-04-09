@@ -63,7 +63,7 @@ subroutine compute_W_matrix(SM, interp, n1, t1, l1, n2, t2, l2, store)
         l_loop = l2
     endif
 
-    do m = -l_loop,  -l_loop+1!l_loop
+    do m = -l_loop,  l_loop
             ! Get 1st displacement 
             call sm%compute_mode_displacement(m, mode_1, sm%disp1)
             call sm%rotate_complex_vector_rtp_to_xyz(sm%disp1)
@@ -73,11 +73,11 @@ subroutine compute_W_matrix(SM, interp, n1, t1, l1, n2, t2, l2, store)
 
             ! Get 2nd displacement
             if(self_coupling)then 
+                write(*,*)"SELF COUPLING"
                 sm%disp2(:,:,:,:,:) = sm%disp1(:,:,:,:,:)
             else
                 call sm%compute_mode_displacement(m, mode_2, sm%disp2)
                 call sm%rotate_complex_vector_rtp_to_xyz(sm%disp2)
-
                 if(store)then
                     call sm%save_mode_disp_binary(n2, t2, l2, m, 2)
                 endif
@@ -96,9 +96,11 @@ subroutine compute_W_matrix(SM, interp, n1, t1, l1, n2, t2, l2, store)
                         do k = 1, sm%ngllz
 
                             sum = sum + rho_spl(sm%rad_id(i,j,k,ispec)) * & 
-                            (- conjg(sm%disp1(1,i,j,k,ispec))*sm%disp2(2,i,j,k,ispec) +  & 
-                               conjg(sm%disp1(2,i,j,k,ispec))*sm%disp2(1,i,j,k,ispec)) * & 
-                              sm%detjac(i,j,k,ispec) * sm%wgll(i) * sm%wgll(j) * sm%wgll(k)    
+                            (conjg(sm%disp1(2,i,j,k,ispec))*sm%disp2(1,i,j,k,ispec) - &
+                             conjg(sm%disp1(1,i,j,k,ispec))*sm%disp2(2,i,j,k,ispec)) * & 
+                              sm%detjac(i,j,k,ispec) * sm%wgll(i) * sm%wgll(j) * sm%wgll(k) 
+                              
+                            !write(*,*)sm%disp2(2,i,j,k,ispec)
                         enddo 
                     enddo
                 enddo
@@ -107,6 +109,10 @@ subroutine compute_W_matrix(SM, interp, n1, t1, l1, n2, t2, l2, store)
             Wmat(m+l1+1, m+l2+1) = Wmat(m+l1+1, m+l2+1) + sum
 
     enddo ! m
+
+
+    deallocate(sm%disp1)
+    deallocate(sm%disp2)
 end subroutine compute_W_matrix
 
 
@@ -236,3 +242,124 @@ subroutine save_W_matrix(l1, l2, fname)
     close(1)
 
 end subroutine save_W_matrix
+
+
+
+
+
+
+subroutine alt_W80_compute_W_matrix(SM, interp, n1, t1, l1, n2, t2, l2, store)
+    use params, only: Wmat, datadir, rho_spl
+    use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
+    use modes, only: Mode, get_mode
+    use specfem_mesh, only: SetMesh 
+    use piecewise_interpolation, only: InterpPiecewise
+    use mineos_model, only: mineos_ptr
+    implicit none 
+    include "constants.h"
+
+    ! IO variables 
+    character             :: t1, t2 
+    integer               :: n1, n2, l1, l2 , m1, m2
+    type(SetMesh)         :: sm
+    type(InterpPiecewise) :: interp
+    logical               :: store
+
+    ! Local: 
+    integer               :: i, j, k, ispec, m, l_loop
+    logical               :: self_coupling
+    complex(SPLINE_REAL)  :: sum
+    type(Mode)            :: mode_1, mode_2
+
+
+    
+    ! Check if self_coupling  
+    if (t1.eq.t2 .and. l1.eq.l2 .and. n1.eq.n2)then 
+        self_coupling = .true.
+    else
+        self_coupling = .false.
+    endif 
+
+    ! Get density at each radius 
+    call deallocate_if_allocated(rho_spl)
+    allocate(rho_spl(interp%n_radial))
+    call interp%interpolate_mineos_variable(real(interp%m%rho_mineos, kind=SPLINE_REAL), rho_spl)
+
+    
+    if(store)then
+        call save_rhospline_binary(sm%unique_r, rho_spl, sm%n_unique_rad, sm%iset)
+    endif
+
+
+    ! Load modes and interpolates eigenfunctions:  
+    mode_1 =  get_mode(n1, t1, l1, mineos_ptr)
+    call interp%interpolate_mode_eigenfunctions(mode_1)
+
+    if(.not.self_coupling)then 
+        mode_2 =  get_mode(n2, t2, l2, mineos_ptr)
+        call interp%interpolate_mode_eigenfunctions(mode_2)    
+    endif
+
+
+    allocate(sm%disp1(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec) )
+    allocate(sm%disp2(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec) )
+
+
+    ! In general I believe there are only non-zero values when m1 = m2 
+    ! THIS IS NOT TRUE BUT CAN BE USED TO GENERATE THE BINARIES WE NEED 
+    if (l2 .gt. l1) then 
+        l_loop = l1 
+    else 
+        l_loop = l2
+    endif
+
+    do m1 = -l1,  l1
+            ! Get 1st displacement 
+            call sm%compute_mode_displacement(m1, mode_1, sm%disp1)
+            call sm%rotate_complex_vector_rtp_to_xyz(sm%disp1)
+            !if(store)then
+                !call sm%save_mode_disp_binary(n1, t1, l1, m1, 1)
+            !endif
+
+        do m2 = -l2,  l2
+            ! Get 2nd displacement
+            !if(self_coupling)then 
+            !    write(*,*)"SELF COUPLING"
+            !    sm%disp2(:,:,:,:,:) = sm%disp1(:,:,:,:,:)
+            !else
+            call sm%compute_mode_displacement(m2, mode_2, sm%disp2)
+            call sm%rotate_complex_vector_rtp_to_xyz(sm%disp2)
+            !if(store)then
+            !endif
+            !endif
+
+            sum = SPLINE_iZERO
+            ! Compute D.36 integral
+            ! Note that \Omega should only be non-zero in the z-direction
+            ! Hence the integrand should be 
+            ! rho \tilde{s}^*  \dot (-i\Omega S_y, i\Omega s_x, 0)
+            ! Note also that naturally the global mode displacement
+            ! is computed in r, theta, phi and needs to be converted
+            do ispec = 1, sm%nspec 
+                do i = 1, sm%ngllx
+                    do j = 1, sm%nglly
+                        do k = 1, sm%ngllz
+                            sum = sum + rho_spl(sm%rad_id(i,j,k,ispec)) * & 
+                            ((sm%disp2(1,i,j,k,ispec) * conjg( - sm%disp1(2,i,j,k,ispec) * iONE)) +  & 
+                             (sm%disp2(2,i,j,k,ispec) * conjg(   sm%disp1(1,i,j,k,ispec) * iONE)) ) * & 
+                              sm%detjac(i,j,k,ispec) * sm%wgll(i) * sm%wgll(j) * sm%wgll(k) 
+                            !write(*,*)sm%disp2(2,i,j,k,ispec)
+                        enddo 
+                    enddo
+                enddo
+            enddo
+
+            Wmat(m1+l1+1, m2+l2+1) = Wmat(m1+l1+1, m2+l2+1) + sum
+
+        enddo ! m2
+    enddo ! m1
+
+
+    deallocate(sm%disp1)
+    deallocate(sm%disp2)
+end subroutine alt_W80_compute_W_matrix

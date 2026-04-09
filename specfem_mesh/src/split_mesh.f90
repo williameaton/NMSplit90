@@ -33,7 +33,7 @@ program split_mesh
         ! Get mesh for this processor
         call sm%read_proc_coordinates()
         call sm%load_ibool()
-        call sm%load_original_boundaries()
+        !call sm%load_original_boundaries()
         ! Ignore the boundary loads here bc only removing central cube 
         ! which wont have any relevant values.
         call sm%compute_rtp_from_xyz(.false.)

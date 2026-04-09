@@ -34,8 +34,10 @@ type(SetMesh) :: sm
 
 integer :: ibsctr, igllx, iglly, isetib, iblspec
 
+logical, parameter :: include_boundaries = .false.
+
 ! Setup parameters: 
-region        = 1      ! CM
+region        = 3      ! CM
 nprocs_before = 6      ! Current setup 
 nsets         = 4      ! new setup 
 
@@ -86,12 +88,14 @@ allocate(ib_store_proc(sm%ngllx, sm%nglly, sm%ngllz,nspec_per_set))
 ! There can now be an unequal number of boundary elements in each set
 ! Because of this, we will play it safe because we know there cant be more
 ! Elements with a boundary than elements in the set
-allocate(ib_top(nspec_per_set)) 
-allocate(ib_topproc(nspec_per_set)) 
-allocate(ib_bottom(nspec_per_set)) 
-allocate(ib_bottomproc(nspec_per_set)) 
-ib_top    = -1 
-ib_bottom = -1 
+if(include_boundaries)then 
+    allocate(ib_top(nspec_per_set)) 
+    allocate(ib_topproc(nspec_per_set)) 
+    allocate(ib_bottom(nspec_per_set)) 
+    allocate(ib_bottomproc(nspec_per_set)) 
+    ib_top    = -1 
+    ib_bottom = -1 
+endif
 
 
 ! Will set remaining_in_processor to the nspec of the proc
@@ -377,7 +381,7 @@ subroutine load_new_proc(sm, iproc, region, rem_in_proc, proc_id_ff)
     sm = create_setmesh(iproc, region)
     call sm%read_proc_coordinates()
     call sm%load_ibool()
-    call sm%load_original_boundaries()
+    !call sm%load_original_boundaries()
     
     rem_in_proc = sm%nspec
     proc_id_ff  = 1
