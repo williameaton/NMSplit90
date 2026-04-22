@@ -67,6 +67,8 @@ program test_constant_Vani_matrix
         deallocate(eta1, eta2)
     enddo 
 
+            write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
+
     write(out_name, '(a,i1,a,i1,a)')'./v_ani_matrix/sem_', n1, t1, l1, '.txt'
     call save_Vani_matrix(l1,l1, out_name)
 

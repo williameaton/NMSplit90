@@ -148,6 +148,9 @@ program radial_perturb
         endif 
         outfmt = trim(outfmt)//',a)'
 
+
+        write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
+
         write(out_name, trim(outfmt))'./v_ani_matrix/radial_', mode_1%n, mode_1%t, mode_1%l, '.txt'
         call save_Vani_matrix(mode_1%l, mode_1%l, out_name)
 

@@ -335,11 +335,11 @@ contains
                     do k = 1, sm%ngllz 
 
                         if(perturbation_on_PREM)then
-                            !call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)
+                            call get_PREM_ACLNF_at_radius(sm%rstore(i,j,k,ispec), Aprem, Cprem, Lprem, Nprem, Fprem)
                             ! WARNING WARNING WARNING
                             ! WARNING WARNING WARNING
                             ! WARNING WARNING WARNING
-                            call get_PREM_ACLNF_at_centre(Aprem, Cprem, Lprem, Nprem, Fprem)
+                            !call get_PREM_ACLNF_at_centre(Aprem, Cprem, Lprem, Nprem, Fprem)
 
                             call setup_Cnatural(Cnat, A*Aprem, C*Cprem, L*Lprem, N*Nprem, F*Fprem)
 

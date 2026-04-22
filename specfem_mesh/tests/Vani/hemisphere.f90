@@ -1,6 +1,6 @@
 ! Benchmark for a VTI hemisphere 
 program hemisphere
-    use params, only: Vani, rho_spl, vp_spl, Arad, Crad, Lrad, Nrad, Frad, nprocs, nmodes
+    use params, only: Vani, rho_spl, vp_spl, vs_spl, Arad, Crad, Lrad, Nrad, Frad, nprocs, nmodes
     use Integrate, only: integrate_r_traps
     use allocation_module, only: allocate_if_unallocated, deallocate_if_allocated
     use mesh_utils, only:  delta_spline
@@ -19,11 +19,18 @@ program hemisphere
     ! Expanded I_n 
     integer, dimension(5), parameter :: I_nsimple = (/ 5, 3, 3, 1, 1/)
     integer, dimension(9), parameter :: I_n = (/1, 1, 3, 3, 5, 3, 3, 1, 1/)
+    character(len=2) nstr, lstr
+
+
+    integer, dimension(6), parameter :: modeNs = (/15, 13, 6, 7, 5, 3/)
+    integer, dimension(6), parameter :: modeLs = (/ 3,  1, 3, 5, 2, 8/)
+
 
     real(kind=CUSTOM_REAL) :: Alove, Clove, Llove, Nlove, Flove, phi1, phi2, theta(101), out(101), xval, pol, mf, mf1, mf2 ,& 
                               r_lower, r_upper
-    integer :: i,j,k, N, s, m, t, nl, ll, m1, m2, knot_lower, knot_upper, npoints, tl1
+    integer :: i,j,k, N, s, m, t, nl, ll, m1, m2, imode, knot_lower, knot_upper, npoints, tl1,  ell 
     complex(kind=CUSTOM_REAL) :: sum
+    character(100) :: out_name
     ! Set a constant ACLNF values 
     Alove =  0.04d0
     Clove = -0.02d0
@@ -32,34 +39,12 @@ program hemisphere
     Flove =  0.01d0
 
     phi1 = 0.0
-    phi2 = two*PI!PI/three
+    phi2 = PI/three
 
- 
-    ! Test the values for XNlm: 
-
-    !XNlm(theta, N, l, m)
-
-    ! ! We want to evaluate the 21 radial integrals that come from the 
-    ! ! more generalised Mochizuchi equation 
-
-    ! ! We shouldnt need to go higher than this because the original L does not
-    ! ! have anything higher than s = 0, 2, or 
-
-    ! ! SELF COUPLING so l = l' 
-
-    nl = 3
-    ll = 1
-
-    tl1 = 2*ll + 1
-
-    allocate(Vani(tl1, tl1))
 
     ! Read mineos model 
     call mineos%process_mineos_model(.false.)
     mineos_ptr => mineos
-
-    mode_1 = get_mode(nl, 'S', ll, mineos_ptr)
-
 
 
     ! Values for the inner core
@@ -74,10 +59,7 @@ program hemisphere
     call interp%setup()
     call interp%create_interpolation_radial_map()
 
-    ! Interpolate the mode splines
-    call interp%interpolate_mode_eigenfunctions(mode_1)
-
-        
+  
     ! Constant value over the radius
     allocate(Arad(npoints))
     allocate(Crad(npoints))
@@ -85,15 +67,44 @@ program hemisphere
     allocate(Nrad(npoints))
     allocate(Frad(npoints))
 
-    Arad(:) = Alove
-    Crad(:) = Clove
-    Lrad(:) = Llove
-    Nrad(:) = Nlove
-    Frad(:) = Flove
 
+
+    allocate(rho_spl(npoints))
+    allocate(vp_spl(npoints))
+    allocate(vs_spl(npoints))
+
+    call interp%interpolate_mineos_variable(real(mineos%rho_mineos, kind=SPLINE_REAL), rho_spl)
+    call interp%interpolate_mineos_variable(real(mineos%vp_mineos,  kind=SPLINE_REAL), vp_spl)
+    call interp%interpolate_mineos_variable(real(mineos%vs_mineos,  kind=SPLINE_REAL), vs_spl)
+
+
+    Arad = Alove * (vp_spl*vp_spl)*rho_spl
+    Crad = Clove * (vp_spl*vp_spl)*rho_spl
+    Lrad = Llove * (vs_spl*vs_spl)*rho_spl
+    Nrad = Nlove * (vs_spl*vs_spl)*rho_spl
+    Frad = Flove * ((vp_spl*vp_spl)*rho_spl - two*  (vs_spl*vs_spl)*rho_spl )
+
+
+do imode = 1, 6 
+
+    ! Test the values for XNlm: 
+    nl = modeNs(imode)
+    ll = modeLs(imode)
+
+    call buffer_int(nstr, nl)
+    call buffer_int(lstr, ll)
+
+    tl1 = 2*ll + 1
+
+    allocate(Vani(tl1, tl1))
+
+    mode_1 = get_mode(nl, 'S', ll, mineos_ptr)
+
+  ! Interpolate the mode splines
+    call interp%interpolate_mode_eigenfunctions(mode_1)
 
     ! Original method
-        Vani(:,:) = SPLINE_iZERO
+    Vani(:,:) = SPLINE_iZERO
 
     do m = -mode_1%l, mode_1%l
         mf1 = real(m, kind=CUSTOM_REAL)
@@ -119,20 +130,15 @@ program hemisphere
         enddo 
     enddo 
 
-    call save_Vani_matrix(ll, ll, "hemisphere1.txt")
 
-    write(*,*)
-    write(*,*)
-    write(*,*)
-    write(*,*)
+
+    out_name =  './Vani/hemisphere_mats/tromp1995_'//trim(nstr)//"S"//trim(lstr)//'.txt'
+    call save_Vani_matrix(ll, ll, out_name, .true.)
 
 
 
     ! General method 
-    write(*,*)"Starting integration"
-
     Vani(:,:) = SPLINE_iZERO
-
 
     do m1 = -mode_1%l, mode_1%l
         mf1 = real(m1, kind=CUSTOM_REAL)
@@ -167,8 +173,10 @@ program hemisphere
         !enddo! m2
     enddo ! m1 
 
+    out_name =  './Vani/hemisphere_mats/hemisphere_'//trim(nstr)//"S"//trim(lstr)//'.txt'
+    call save_Vani_matrix(ll, ll, out_name, .true.)
 
-    call save_Vani_matrix(ll, ll, "hemisphere2.txt")
-
+    deallocate(Vani)
+enddo ! imode  
 
 end program hemisphere

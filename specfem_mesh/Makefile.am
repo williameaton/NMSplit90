@@ -20,7 +20,7 @@ endif
 
 bin_PROGRAMS = split_mesh read_mesh compute_vani linbreak_mesh plot_vani  \
                break_mesh opt_vani comp_split reopt plot_model cross_vani \
-               rot_ell FH_vani rad_knl benchmark_trans_pert
+               rot_ell FH_vani rad_knl benchmark_trans_pert extract_modes
 
 # Basic files for all programs 
 SETUP_SRCS = params.f90 allocation.f90 math.f90 mesh_utils.f90 ylm_plm.f90 thrj.f90
@@ -63,7 +63,6 @@ binding.o: src/binding.f90
 
 rot_ell_SOURCES       = $(MED_SRCS) \
                         W_matrix.f90 \
-                        woodhouse.f90\
                         cst.f90\
                         V_cen_matrix.f90\
                         rot_ell.f90 
@@ -80,6 +79,7 @@ split_mesh_SOURCES    = $(MED_SRCS) split_mesh.f90
 
 read_mesh_SOURCES     = $(MED_SRCS)  visual.f90  read_mesh.f90 
 
+extract_modes_SOURCES = $(MED_SRCS) extract_modes.f90
 
 break_mesh_SOURCES    = $(MED_SRCS) break_mesh.f90
 
@@ -167,6 +167,7 @@ linbreak_mesh_LDADD = -lcoretran
 rad_knl_LDADD = -lcoretran
 benchmark_trans_pert_LDADD = -lcoretran
 rot_ell_LDADD = -lcoretran
+extract_modes_LDADD = -lcoretran
 
  
 

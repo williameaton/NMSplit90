@@ -37,7 +37,9 @@ bin_PROGRAMS = test_plm_function    \
                test_surf_int        \
                ell_gll              \
                radial_perturb       \
-               test_hemisphere
+               test_hemisphere      \
+               wrot_cross           \
+               wrot_whole_cross
 
 
 d_cst  = cst
@@ -114,6 +116,9 @@ vcen_semi_SOURCES             = $(VCEN_SRCS)  $(d_vcen)/vcen_woodhouse.f90
 test_amp_SOURCES              = $(AMP_SRCS)   $(d_amp)/rotation_amplitude.f90
 reproduce_tromp93_SOURCES     = $(T93_SRCS)   $(d_t93)/reproduce_vani.f90
 ell_gll_SOURCES               = $(ELL_SRCS)   $(d_ell)/ell_gll.f90
+
+wrot_cross_SOURCES            = $(WMAT_SRCS)  $(d_wrm)/cross_coupled.f90
+wrot_whole_cross_SOURCES      = $(WMAT_SRCS)  $(d_wrm)/cross_coupled_whole.f90
 
 
 #reproduce_tromp93_LDADD = -lcoretran 

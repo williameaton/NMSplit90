@@ -168,6 +168,7 @@ program radial_method
 
         enddo 
     enddo 
+        write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
 
     write(out_name, '(a,i1,a,i1,a)')'./matrices/radial_', n1, type, l, '.txt'
     call save_Vani_matrix(l,l, out_name)

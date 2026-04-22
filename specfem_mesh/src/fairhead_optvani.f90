@@ -101,7 +101,7 @@ program fairhead_optimised_vani
     ! BINDING PARAMETERS TO CPP : 
     integer :: cppprec
     logical :: cppdouble
-    integer :: size_of_array
+    integer :: size_of_array, debugmode
     integer(kind=8) :: strainsize, straingb
     type(C_PTR) :: ta_ptr, eta1_ptr, eta2_ptr, cxyz_ptr, LUT_ptr, strain_r_ptr, strain_i_ptr, Vani_real_ptr, Vani_imag_ptr, wgll_ptr
 
@@ -775,13 +775,15 @@ program fairhead_optimised_vani
             n1  = modeNs(imode)
             this_tl1 = 2*l1 + 1
 
+            !debugmode = 5
+
             ! Now need all the values: 
             do iii = 1, (l1+1)*(l1+1) ! thisnn1
                 ival = iii 
 
                 call find_row_col(ival, thisrow, thiscol, l1)
                         
-                if(imode.eq.4.and.myf90rank.eq.0) write(*,*)iii, thisrow, thiscol
+                !if(imode.eq.debugmode.and.myf90rank.eq.0) write(*,*)iii, thisrow, thiscol
                 ! if(thisrow.eq.l1+1 .and. thiscol.gt.l1+1)then
                 !     ! do nothing for now 
                 ! else 
@@ -801,40 +803,41 @@ program fairhead_optimised_vani
 
                     VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
                     ! if(imode.eq.23 .and.myGlobalrank.eq.10)write(*,*)"2:: ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode)
-                    if(imode.eq.4.and.myf90rank.eq.0)write(*,*)"  maps to  ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1
+                    if(imode.eq.debugmode.and.myf90rank.eq.0)write(*,*)"  maps to  ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1
                 else 
-                    ! if(thisrow+thiscol.ne.this_tl1+1)then 
+                    if(thisrow+thiscol.ne.this_tl1+1)then 
                     !     ! Avoids the diagonal from centre to top right - others are reflected
 
-                    !     if(imode.eq.4.and.myf90rank.eq.0)write(*,*)"  maps to  ", l1 + 1 -(thiscol - l1 - 1 ), l1 + 1  - (thisrow - l1 - 1)
+                    !     if(imode.eq.5.and.myf90rank.eq.0)write(*,*)"  maps to  ", l1 + 1 -(thiscol - l1 - 1 ), l1 + 1  - (thisrow - l1 - 1)
 
 
                     !     !VaniAllModes_4(thiscol, this_tl1-thisrow+1, imode) = VaniAllModes_4(thisrow, thiscol, imode) *  ((-one)**real( l1 - thisrow +1 , kind=8 ))
 
-                    !     m1 = thisrow - l1 -1 
-                    !     m2 = thiscol - l1 -1 
+                        !m1 = thisrow - l1 -1 
+                        !m2 = thiscol - l1 -1 
 
                     !     ! Shouldnt always reflect? 
-                    !     VaniAllModes_4( l1 + 1 -(thiscol - l1 - 1 ), l1 + 1  - (thisrow - l1 - 1) , imode) = VaniAllModes_4(thisrow, thiscol, imode) * ((-one)**real( m1 + m2 , kind=8 ))
-                    ! endif 
+                        VaniAllModes_4( l1 + 1 -(thiscol - l1 - 1 ), l1 + 1  - (thisrow - l1 - 1) , imode) = VaniAllModes_4(thisrow, thiscol, imode) * ((-one)**real( m1 + m2 , kind=8 ))
+                    
+                        ! if(imode.eq.debugmode.and.myf90rank.eq.0)write(*,*)"  maps to  ", l1 + 1 -(thiscol - l1 - 1 ), l1 + 1  - (thisrow - l1 - 1)
+                    endif 
                 endif 
 
               
-                if(imode.eq.4.and.myf90rank.eq.0)write(*,*)
-
+                ! if(imode.eq.debugmode.and.myf90rank.eq.0)write(*,*)
                 !endif
             enddo 
 
-            if(imode.eq.4)then 
-                if(myf90rank.eq.0)then 
-                    l1 = modeLs(imode)
-                    allocate(Vani(l1, l1))
-                    Vani = VaniAllModes_4(:, :, imode)
-                    call save_Vani_matrix(l1, l1, "ranktest.txt", .false.)
-                endif
-
-                stop 
-            endif 
+            ! if(imode.eq.debugmode)then 
+            !     !if(myf90rank.eq.0)then 
+            !         l1 = modeLs(imode)
+            !         allocate(Vani(l1, l1))
+            !         Vani = VaniAllModes_4(:, :, imode)
+            !         write(out_name, '(a, i1, a)')"ranktest_", myf90rank,".txt"
+            !         write(*,*)"saving to "//trim(out_name)
+            !         call save_Vani_matrix(l1, l1, trim(out_name), .false.)
+            !     !endif
+            ! endif 
 
 
 

@@ -7,8 +7,8 @@ set -e  # Exit on error
 # === Ask for model number ===
 read -p "Enter the model number: " model_num
 
-ddir="WeightedReal"
-prefix="Weighted_Obs"
+ddir="TTI_3Axes"
+prefix="SyntheticCst"
 
 # === Define paths ===
 mode_file="/scratch/gpfs/TROMP/we3822/fairhead/Models/${model_num}/ModeList.txt"
@@ -17,6 +17,7 @@ output_dir="/scratch/gpfs/TROMP/we3822/fairhead/Models/${model_num}"
 maxs_file="${output_dir}/mode_max_s"
 params_f90="/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/src/params.f90"
 optvani_f90="/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/src/fairhead_optvani.f90"
+vani_cu="/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/src/vani.cu"  # ← Update this path
 
 # === Check inputs ===
 if [[ ! -f "$mode_file" ]]; then
@@ -71,9 +72,25 @@ Ls_string=$(IFS=, ; echo "${Ls[*]}")
 Smax_string=$(IFS=, ; echo "${Smax[*]}")
 
 # === Step 5: Update fairhead_optvani.f90 arrays ===
-sed -i.bak -E "/:: modeNs =/c\    integer, dimension(nmodes), parameter :: modeNs = (/ $Ns_string /)" "$optvani_f90"
-sed -i -E "/:: modeLs =/c\    integer, dimension(nmodes), parameter :: modeLs = (/ $Ls_string /)" "$optvani_f90"
-sed -i -E "/:: dataSmax =/c\    integer, dimension(nmodes), parameter :: dataSmax = (/ $Smax_string /)" "$optvani_f90"
+sed -i.bak -E "/:: modeNs\s*=/c\    integer, dimension(nmodes), parameter :: modeNs=(/ $Ns_string /)" "$optvani_f90"
+grep -q "modeNs" "$optvani_f90" && echo "✅ modeNs updated" || echo "❌ modeNs sed failed to match"
 
+sed -i -E "/:: modeLs\s*=/c\    integer, dimension(nmodes), parameter :: modeLs=(/ $Ls_string /)" "$optvani_f90"
+grep -q "modeLs" "$optvani_f90" && echo "✅ modeLs updated" || echo "❌ modeLs sed failed to match"
+
+sed -i -E "/:: dataSmax\s*=/c\    integer, dimension(nmodes), parameter :: dataSmax=(/ $Smax_string /)" "$optvani_f90"
+grep -q "dataSmax" "$optvani_f90" && echo "✅ dataSmax updated" || echo "❌ dataSmax sed failed to match"
 echo "✅ Updated modeNs, modeLs, and dataSmax in $optvani_f90"
+
+# === Step 6: Update Lvals in vani.cu ===
+if [[ ! -f "$vani_cu" ]]; then
+    echo "❌ vani.cu not found: $vani_cu"
+    exit 1
+fi
+
+# Replace both the array size and values on the active Lvals line
+# Matches both commented-out and active lines safely by targeting the uncommented one
+sed -i.bak -E "s|^(__constant__ int Lvals\[)[0-9]+(\] = \{)[^}]+(.*)|\\1${nmodes}\\2${Ls_string}\\3|" "$vani_cu"
+
+echo "✅ Updated Lvals[${nmodes}] in $vani_cu"
 echo "🎉 All updates completed successfully for model ${model_num}"

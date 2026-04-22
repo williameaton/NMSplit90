@@ -89,6 +89,7 @@ program Tromp93_SEM
 
         call cleanup_for_mode()
     enddo 
+        write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
 
     write(out_name, '(a,i1,a,i1,a)')'./matrices/sem_', n1, type_1, l1, '.txt'
     call save_Vani_matrix(l1, l1, out_name)

@@ -13,8 +13,13 @@ integer :: iproc, region, knot_lower, knot_upper, n1, n2, l1, l2, imode, cmdleng
 character :: t1, t2
 type(SetMesh)         :: sm
 type(InterpPiecewise) :: interp
-character(len=60)     :: out_name
+type(Mode)             :: mode_1 
 
+character(len=60)     :: out_name
+character(len=2)      :: nstr ,lstr
+character(len=1)      :: Tval
+integer :: nstart, nstop, lfinish, lval, nval , lstart
+logical :: toroidal 
 character(len=:), allocatable :: arg
 
 
@@ -29,6 +34,8 @@ call mineos%process_mineos_model(.false.)
 mineos_ptr => mineos
 
 
+Tval = 'S'
+
 
 num_args = command_argument_count()
 call get_command_argument(1, length=cmdlength)
@@ -40,6 +47,7 @@ elseif(cmdlength.eq.2)then
     read(arg,'(i2)') iproc
 else 
     write(*,*)"ERROR IN LENGTH: HERE!!"
+    stop 
 endif 
 
 write(*,*)'iproc is ', iproc
@@ -47,52 +55,107 @@ write(*,*)'iproc is ', iproc
 
 
 
-do imode = 1, 1
-
-    n1 = modeNs(imode)
-    n2 = modeNs(imode)
-
-    t1 = 'S'
-    t2 = 'S'
-
-    l1 = modeLs(imode)
-    l2 = modeLs(imode)
-
-    region = 0
-
-    ! The matrix should be 2l + 1 from -m to m 
-    allocate(Wmat(2*l1+1, 2*l2+1))
-    allocate(Vcen(2*l1+1, 2*l2+1))
-    Wmat = SPLINE_iZERO
-    Vcen = SPLINE_iZERO
+if (Tval.eq."S")then
+    nstart = 0
+    nstop  = 6
+    toroidal = .false.
+else 
+    nstart = 0
+    nstop  = 1
+    toroidal = .true. 
+endif 
 
 
-    !do iproc = 0, nprocs-1
-    !do iproc = 1, 35
-        ! Things that need to be done for each processor
-        sm = create_SetMesh(iproc, region)
-        call sm%read_proc_coordinates()
-        call sm%load_ibool()
-        call sm%setup_gll()
-        call sm%compute_jacobian(.true.)
-        call sm%compute_wglljac(.false.)
 
-        call sm%compute_rtp_from_xyz(.true.)
+t1 = Tval
+t2 = Tval
 
-        call sm%setup_global_coordinate_arrays(.true.)
-        call sm%compute_rtp_from_xyz(.true.)
-        call sm%get_unique_radii(.true.)
-        call sm%compute_rotation_matrix()
+
+
+
+
+!do iproc = 0, nprocs-1
+!do iproc = 1, 35
+! Things that need to be done for each processor
+sm = create_SetMesh(iproc, region)
+call sm%read_proc_coordinates()
+call sm%load_ibool()
+call sm%setup_gll()
+call sm%compute_jacobian(.true.)
+call sm%compute_wglljac(.false.)
+
+call sm%compute_rtp_from_xyz(.true.)
+
+call sm%setup_global_coordinate_arrays(.true.)
+call sm%compute_rtp_from_xyz(.true.)
+call sm%get_unique_radii(.true.)
+call sm%compute_rotation_matrix()
+
+
+
+
+do nval = nstart, nstop  
+
+    if (nval.eq.0)then 
+        lstart  = 2
+        lfinish = 12
+
+        if(toroidal)then 
+            lfinish = lfinish + 1 
+        endif 
+        
+    elseif(nval.eq.1)then
+        lstart  = 2 
+        if(toroidal)then 
+            lfinish = 6
+        else 
+            lfinish = 9
+        endif 
+    elseif(nval.eq.2)then
+        lstart  = 1 
+        lfinish = 7
+    elseif(nval.eq.3)then
+        lstart  = 1 
+        lfinish = 4
+    elseif(nval.eq.4)then
+        lstart  = 1 
+        lfinish = 2
+    else
+        lstart  = 1 
+        lfinish = 1
+    endif 
+
+    do lval = lstart, lfinish 
+
+
+
+
+        n1 = nval !modeNs(imode)
+        n2 = nval  !modeNs(imode)
+
+
+        l1 = lval !modeLs(imode)
+        l2 = lval !modeLs(imode)
+
+        region = 0
+
+        ! The matrix should be 2l + 1 from -m to m 
+        allocate(Wmat(2*l1+1, 2*l2+1))
+        !allocate(Vcen(2*l1+1, 2*l2+1))
+        Wmat = SPLINE_iZERO
+        !Vcen = SPLINE_iZERO
 
         ! W matrix 
-        !call compute_W_matrix(sm, sm%interp, n1, t1, l1, & 
-        !                                     n2, t2, l2, & 
-        !                                     .true.)
+
+        call compute_W_matrix(sm, sm%interp, n1, t1, l1, & 
+                                             n2, t2, l2, & 
+                                             .true.)
+
 
         !Vcen matrix
-        call compute_Vcentrifugal(sm, sm%interp, n1, t1, l1, & 
-                                                 n2, t2, l2, & 
-                                                 .true.)
+        ! call compute_Vcentrifugal(sm, sm%interp, n1, t1, l1, & 
+        !                                          n2, t2, l2, & 
+        !                                          .true.)
 
         !allocate(gpsi(3, sm%ngllx, sm%nglly, sm%ngllz, sm%nspec))
         !call compute_grad_centrifugal(sm, gpsi, ggpsi, myrank)
@@ -100,26 +163,28 @@ do imode = 1, 1
 
 
         !deallocate(gpsi)
-        call sm%cleanup()
+        !call sm%cleanup()
 
-    !enddo 
+        !enddo 
 
 
-    ! Constants so multiply after
-    !Wmat = Wmat * OMEGA * iONE
+        ! Constants so multiply after
+        Wmat = Wmat * OMEGA * iONE
 
-    !write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'rot_mat/Wmat_', n1, t1, l1, '_', n2, t2, l2, '_proc'//trim(arg)//'.txt'
-    !call save_W_matrix(l1, l2, trim(out_name))
+        call buffer_int(nstr, n1)
+        call buffer_int(lstr, l1)
 
-    write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'rot_mat/VcenProcs/Vcen_', n1, t1, l1, '_', n2, t2, l2,'_proc'//trim(arg)//'.txt'
+        write(out_name, '(a)')'rot_mat/Wmat_'//trim(nstr)// trim(Tval)// trim(lstr)// '_proc'//trim(arg)//'.txt'
+        call save_W_matrix(l1, l2, trim(out_name))
 
-    call save_Vcen_matrix(l1, l2, trim(out_name))
+        ! write(out_name, '(a,i1,a,i1,a,i1,a,i1,a)')'rot_mat/VcenProcs/Vcen_', n1, t1, l1, '_', n2, t2, l2,'_proc'//trim(arg)//'.txt'
 
-    deallocate(Wmat)
-    deallocate(Vcen)
+        ! call save_Vcen_matrix(l1, l2, trim(out_name))
 
-    write(*,*)"Finished mode: ", imode
+        deallocate(Wmat)
+        ! deallocate(Vcen)
 
+    enddo 
 enddo 
 
 

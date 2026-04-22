@@ -12,7 +12,7 @@ program tromp_1995
     implicit none
     include "constants.h"
 
-    integer :: imode, i, j, k, l, m, n, n1, s, q, ispec, lentrim, iproc, region, m1, m2, knot_lower, knot_upper, is
+    integer :: imode, i, j, k, l, m, n, n1, s, q, ispec, myrank, lentrim, iproc, region, m1, m2, knot_lower, knot_upper, is
     character(len=1)   :: t1
     character(len=250)  :: out_name, outfmt
     real(SPLINE_REAL)  :: sum
@@ -27,11 +27,11 @@ program tromp_1995
     type(InterpPiecewise) :: interp
 
     ! If we want to test lots: 
-    integer, dimension(29), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
-    integer, dimension(29), parameter :: modeLs = (/3, 3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
+    integer, dimension(30), parameter :: modeNs = (/9, 2, 5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
+    integer, dimension(30), parameter :: modeLs = (/3, 3, 3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
     
 
-    logical, parameter :: tromp_93_model = .false.
+    logical, parameter :: tromp_93_model = .true.
 
     thirty = three * ten 
     twone  = three * seven 
@@ -106,7 +106,14 @@ program tromp_1995
 
                 write(*,*)"Loading ACLNF from files"
                 call load_ACLNF_from_files('/scratch/gpfs/TROMP/we3822/NMSplit90/specfem_mesh/tests/Vani/Tromp_1993_model/ACLNF/radial', & 
-                                            npoints, '_0', myrank)
+                                            npoints, '_0', 0)
+
+                ! Now we load in actual PREM perturbations so we need to non-dimensionalise 
+                Arad = Arad/(RHOAV*SCALE_V*SCALE_V)
+                Crad = Crad/(RHOAV*SCALE_V*SCALE_V)
+                Lrad = Lrad/(RHOAV*SCALE_V*SCALE_V)
+                Nrad = Nrad/(RHOAV*SCALE_V*SCALE_V)
+                Frad = Frad/(RHOAV*SCALE_V*SCALE_V)
 
                 ! Interpolate the vp and rho to the relevant points
                 ! since these need to be abs perturbations not % perturbs
@@ -117,11 +124,11 @@ program tromp_1995
                 call interp%interpolate_mineos_variable(real(mineos%vp_mineos,  kind=SPLINE_REAL), vp_spl)
 
                 ! Compute A0 for rel scaling -- kappa + 4*mu 
-                Arad = Arad * (vp_spl*vp_spl)*rho_spl
-                Crad = Crad * (vp_spl*vp_spl)*rho_spl
-                Lrad = Lrad * (vp_spl*vp_spl)*rho_spl
-                Nrad = Nrad * (vp_spl*vp_spl)*rho_spl
-                Frad = Frad * (vp_spl*vp_spl)*rho_spl
+                !Arad = Arad * (vp_spl*vp_spl)*rho_spl
+                !Crad = Crad * (vp_spl*vp_spl)*rho_spl
+                !Lrad = Lrad * (vp_spl*vp_spl)*rho_spl
+                !Nrad = Nrad * (vp_spl*vp_spl)*rho_spl
+                !Frad = Frad * (vp_spl*vp_spl)*rho_spl
 
 
         else 
@@ -177,10 +184,14 @@ program tromp_1995
             outfmt = trim(outfmt)//'i1'
         endif 
         outfmt = trim(outfmt)//',a)'
+        write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
 
+
+        ! Save the non-dim versoin
         write(out_name, trim(outfmt))'./v_ani_matrix/radial_', mode_1%n, mode_1%t, mode_1%l, '.txt'
-        call save_Vani_matrix(mode_1%l, mode_1%l, out_name)
+        call save_Vani_matrix(mode_1%l, mode_1%l, out_name, .false.)
 
+        write(*,*)"Real freq; ", mode_1%wcom, mode_1%wcom*SCALE_T / (two*PI)
 
 
              ! Write the eigenfunctions to disk for reference
@@ -191,6 +202,7 @@ program tromp_1995
             enddo 
         close(1)
 
+        stop 
 
         deallocate(Vani)
         deallocate(Arad)

@@ -644,7 +644,8 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
       // ! .  .  .  .  . 15 14
       // ! .  .  .  .  .  . 16
       // In the example above we only want to add if index 6 or below
-      if(utripos <= ((lval+1)*(lval))/2 ){
+      // strict less than because of 0 indexing
+      if(utripos < ((lval+1)*(lval))/2 ){
         atomicAdd(&d_vani_real[maxnn1 * imode + ltripos], scont_r_p[0]);
         atomicAdd(&d_vani_imag[maxnn1 * imode + ltripos], scont_i_p[0]);
       }
@@ -671,7 +672,7 @@ __global__ void vanikernel_allstrains_allmodes(int maxtl1, int nspec, int ngll_p
         atomicAdd(&d_vani_imag[gidx1], scont_i_m[0]);
     
       // see above for condition
-      if(utripos <= ((lval+1)*(lval))/2){
+      if(utripos < ((lval+1)*(lval))/2){
         int gidx2 = (maxnn1 * imode + ltripos);
         atomicAdd(&d_vani_real[gidx2], scont_r_p[0]);
         atomicAdd(&d_vani_imag[gidx2], scont_i_p[0]);
@@ -960,20 +961,20 @@ __global__ void project_eta_to_gll(int npoints, int ngll, int nspec,
     }
 
 
-    // // // Originally g/cm^3 --> kg/m^3 -> nondimensionalised
-    // rho = (13.088500000 - 8.838100000*rad2)*0.1813466804490;   // 1000.d0/RHOAV
-    // // Originally km/s --> m/s  
-    // vp  = (11.262200000 - 6.364000000*rad2)*0.1459938230354;   // 1000.d0/SCALE_V
-    // vs  = (3.667800000  - 4.447500000*rad2)*0.1459938230354;    // 1000.d0/SCALE_V
-
-
-    // I think Hen is fixing the perturbation based on the central speed rather than
-    // depth varying - testing this here
-    // // Originally g/cm^3 --> kg/m^3 -> nondimensionalised
-    rho = (13.088500000)*0.1813466804490;   // 1000.d0/RHOAV
+    // // // // Originally g/cm^3 --> kg/m^3 -> nondimensionalised
+    rho = (13.08850000 - 8.838100000*rad2)*0.1813466804490;   // 1000.d0/RHOAV
     // Originally km/s --> m/s  
-    vp  = (11.262200000)*0.1459938230354;   // 1000.d0/SCALE_V
-    vs  = (3.667800000 )*0.1459938230354;    // 1000.d0/SCALE_V
+    vp  = (11.26220000 - 6.364000000*rad2)*0.1459938230354;   // 1000.d0/SCALE_V
+    vs  = (3.667800000 - 4.447500000*rad2)*0.1459938230354;    // 1000.d0/SCALE_V
+
+
+    // // I think Hen is fixing the perturbation based on the central speed rather than
+    // // depth varying - testing this here
+    // // // Originally g/cm^3 --> kg/m^3 -> nondimensionalised
+    // rho = (13.088500000)*0.1813466804490;   // 1000.d0/RHOAV
+    // // Originally km/s --> m/s  
+    // vp  = (11.262200000)*0.1459938230354;   // 1000.d0/SCALE_V
+    // vs  = (3.667800000 )*0.1459938230354;    // 1000.d0/SCALE_V
 
 
 

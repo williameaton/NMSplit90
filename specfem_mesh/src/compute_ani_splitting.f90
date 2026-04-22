@@ -86,8 +86,8 @@ use splitting_function, only: get_Ssum_bounds, Hreal_to_cst, write_cst_to_file, 
     logical, parameter :: write_to_FH_format      = .true.
 
 
-    real(kind=CUSTOM_REAL), parameter :: constant_eta1 = PI/two   !-PI/4  !0.9d0     ! -0.9763823255761747d0
-    real(kind=CUSTOM_REAL), parameter :: constant_eta2 = PI/four ! 0.0  !0.25d0  !0.0001 !8910087879241278d0
+    real(kind=CUSTOM_REAL), parameter :: constant_eta1 = 0.9d0  !-PI/4  !0.9d0     ! -0.9763823255761747d0
+    real(kind=CUSTOM_REAL), parameter :: constant_eta2 = 0.25d0 ! 0.0  !0.25d0  !0.0001 !8910087879241278d0
 
     ! Modes: 
     !integer, dimension(27), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 16/)
@@ -505,12 +505,12 @@ do i_mode = 1, nmodes
         ! since it has units of ang freq ^2 
         ! if you want to 'redimensionalise Vani' it needs to be multiplied by 
         
-        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
-        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
-        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
-        write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        ! write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        ! write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        ! write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
+        ! write(*,*)"ERROR ERROR ERROR: ONLY USING RANK 0 SEE DEBUG"
         ! UNCOMMENT AFTER DEBUG
-        !Vani = Vani_modesum
+        Vani = Vani_modesum
 
 
         call save_Vani_matrix(l1, l1, out_name, redimensionalise_Vani)

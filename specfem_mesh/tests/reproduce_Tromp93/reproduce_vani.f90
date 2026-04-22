@@ -235,6 +235,8 @@ do i_mode = 1, nmodes
         out_name =  './reproduce_Tromp93/matrices//vani'//trim(n1str)//t1//trim(l1str)//'.txt'
 
         Vani = Vani_modesum
+        write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
+
         call save_Vani_matrix(l1, l1, out_name)
         deallocate(Vani_modesum)
     endif 
@@ -246,7 +248,8 @@ do i_mode = 1, nmodes
 
     out_name =  './reproduce_Tromp93/matrices//vani'//trim(n1str)//t1//trim(l1str)//'.txt'
 
-    
+            write(*,*)"WARNING: WE UPDATED save_VANI - need division by 1/(2omega * SCALE_T) here"
+
     call save_Vani_matrix(l1,l1, out_name)
 
     ! Write as a CST
