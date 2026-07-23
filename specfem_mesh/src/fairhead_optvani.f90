@@ -803,7 +803,7 @@ program fairhead_optimised_vani
 
                     VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode) = VaniAllModes_4(thisrow, thiscol, imode) * (-one)**real( (thisrow + thiscol - two*(l1 +1)) ,kind=8)
                     ! if(imode.eq.23 .and.myGlobalrank.eq.10)write(*,*)"2:: ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, VaniAllModes_4(this_tl1 - thiscol + 1, this_tl1 - thisrow + 1, imode)
-                    if(imode.eq.debugmode.and.myf90rank.eq.0)write(*,*)"  maps to  ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1
+                    ! if(imode.eq.debugmode.and.myf90rank.eq.0)write(*,*)"  maps to  ", this_tl1 - thiscol + 1, this_tl1 - thisrow + 1
                 else 
                     if(thisrow+thiscol.ne.this_tl1+1)then 
                     !     ! Avoids the diagonal from centre to top right - others are reflected

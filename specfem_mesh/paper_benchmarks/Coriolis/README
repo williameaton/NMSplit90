@@ -1,0 +1,7 @@
+# Benchmark compares the b (Coriolis splitting) from dw = w (a + bm + cm^2)
+
+# To produce: 
+
+(1) Compute the b parameters by using make rot_ell and ./rot_ell 
+(2) This will save the abc to this_directory/abc (note a and c currently not benchmarked)
+(3) 

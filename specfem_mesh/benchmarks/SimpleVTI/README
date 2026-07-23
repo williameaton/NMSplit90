@@ -1,0 +1,29 @@
+make tests/test_tromp1995 
+Run it with tromp_93_model = .false. and
+
+Run for a bunch of modes 
+integer, dimension(29), parameter :: modeNs = (/2, 5, 6, 7, 8, 21, 7, 9, 2, 3, 9, 9, 11, 11, 13, 13, 13, 13, 15, 15, 18, 18, 20, 21, 25, 27, 21, 21, 16/)
+integer, dimension(29), parameter :: modeLs = (/3, 3, 3, 4, 5,  7, 5, 2, 3, 2, 3, 4,  4,  5,  1,  2,  3,  6,  3,  4,  3,  4,  1,  6,  2,  2,  8,  6,  7/)
+
+
+This generates ./v_ani_matrix/radial_3S2.txt
+
+Next make compute_vani
+
+
+    ! Switches 
+    logical, parameter :: load_from_bin         = .false.
+    logical, parameter :: save_to_bin           = .true.
+    logical, parameter :: force_VTI             = .true.
+
+    logical, parameter :: constant_angle_vals   = .false. ! constant, custom angles 
+
+    logical, parameter :: constant_ACLNF        = .true.  ! constant ACLNF
+    logical, parameter :: use_radial_eta12      = .false. ! radial angles
+    logical, parameter :: tromp93_model         = .false.
+    logical, parameter :: perturbation_on_prem  = .false.
+
+
+    logical, parameter :: compute_csts          = .true.
+    logical, parameter :: redimensionalise_csts = .false.
+
